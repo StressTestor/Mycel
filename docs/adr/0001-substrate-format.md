@@ -14,9 +14,9 @@ the substrate must be queryable by typed fields, append-friendly, easy to back u
 
 use a **hybrid substrate**:
 
-- SQLite is the canonical local store. **confidence: directional. load-bearing.**
-- JSONL is the append-only import/export and audit interchange format. **confidence: directional. load-bearing.**
-- markdown workspace files are projections generated from the canonical store. **confidence: directional. load-bearing.**
+- SQLite is the canonical local store.
+- JSONL is the append-only import/export and audit interchange format.
+- markdown workspace files are projections generated from the canonical store.
 
 ## rationale
 
@@ -30,19 +30,19 @@ markdown projections keep the substrate legible to agents and humans without mak
 
 | option | result |
 | --- | --- |
-| SQLite only | strong querying, weaker portable audit stream. **confidence: directional.** |
-| JSONL only | easy append and audit, weaker indexed matching and updates. **confidence: directional.** |
+| SQLite only | strong querying, weaker portable audit stream. |
+| JSONL only | easy append and audit, weaker indexed matching and updates. |
 | markdown only | friendly to agents, too brittle as canonical state. **confidence: directional. load-bearing.** |
 
 ## consequences
 
 - every substrate mutation needs a canonical database write. **confidence: directional. load-bearing.**
 - every exported event should have a stable schema version. **confidence: directional. load-bearing.**
-- projection regeneration must be deterministic enough for review. **confidence: directional.**
-- corruption recovery can use JSONL replay if the database is lost. **confidence: directional.**
+- projection regeneration must be deterministic enough for review.
+- corruption recovery can use JSONL replay if the database is lost.
 
 ## unresolved
 
-- whether to use SQLite FTS, sqlite-vec, or deterministic tags for v0.1 antibody matching. **confidence: directional. load-bearing.**
-- whether JSONL is always emitted or only on explicit export. **confidence: directional.**
-- whether projections are updated per mutation or during scheduled maintenance. **confidence: directional.**
+- whether to use SQLite FTS, sqlite-vec, or deterministic tags for v0.1 antibody matching.
+- whether JSONL is always emitted or only on explicit export.
+- whether projections are updated per mutation or during scheduled maintenance.

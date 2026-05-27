@@ -21,11 +21,11 @@ lock four canonical workspace files:
 | `COMPOST.md` | decayed findings, distillations, pruned context notes |
 | `MYCELIUM.md` | kin graph, live threads, dormant sclerotia, bequests |
 
-these files are generated projections from the substrate store. **confidence: directional. load-bearing.**
+these files are generated projections from the substrate store.
 
 ## rationale
 
-four files map to the ecological model without forcing every agent to query SQLite directly. **confidence: directional.**
+four files map to the ecological model without forcing every agent to query SQLite directly.
 
 locking names early makes skills and interop adapters easier to write. **confidence: directional. load-bearing.**
 
@@ -33,13 +33,13 @@ using projections avoids making markdown edits the consistency model. **confiden
 
 ## consequences
 
-- agents can read the workspace state through predictable files. **confidence: directional.**
-- humans can review substrate state without a database browser. **confidence: directional.**
+- agents can read the workspace state through predictable files.
+- humans can review substrate state without a database browser.
 - manual edits need a clear policy because projections can overwrite them. **confidence: directional. load-bearing.**
-- every file needs a generated header that explains source of truth and edit policy. **confidence: directional.**
+- every file needs a generated header that explains source of truth and edit policy.
 
 ## unresolved
 
-- whether to allow a fifth `MYCEL_OVERRIDES.md` for human edits. **confidence: directional.**
-- how much detail belongs in `SUBSTRATE.md` before it becomes noise. **confidence: directional.**
-- whether dormant sclerotia deserve their own file after v0.3. **confidence: directional.**
+- whether to allow a fifth `MYCEL_OVERRIDES.md` for human edits.
+- how much detail belongs in `SUBSTRATE.md` before it becomes noise.
+- whether dormant sclerotia deserve their own file after v0.3.

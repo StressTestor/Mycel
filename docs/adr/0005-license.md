@@ -6,13 +6,13 @@ date: 2026-05-27
 
 ## context
 
-mycel is intended as a personal local-first agent harness with possible adapter and ecosystem reuse. **confidence: directional.**
+mycel is intended as a personal local-first agent harness with possible adapter and ecosystem reuse.
 
 the requested license candidate is MIT. **confidence: solid. load-bearing.**
 
 ## decision
 
-use the MIT license. **confidence: directional. load-bearing.**
+use the MIT license.
 
 ## rationale
 
@@ -24,7 +24,7 @@ MIT avoids forcing license strategy decisions before the substrate model is prov
 
 - commercial and closed-source reuse is allowed. **confidence: solid. load-bearing.**
 - patent protection is less explicit than Apache-2.0. **confidence: solid. load-bearing.**
-- contributors should understand that permissive reuse is intentional. **confidence: directional.**
+- contributors should understand that permissive reuse is intentional.
 
 ## alternatives
 
@@ -32,8 +32,8 @@ MIT avoids forcing license strategy decisions before the substrate model is prov
 | --- | --- |
 | Apache-2.0 | stronger patent language, more text. **confidence: solid.** |
 | MPL-2.0 | file-level copyleft, more governance weight. **confidence: solid.** |
-| AGPL-3.0 | strong network copyleft, poor fit for early adapter experimentation. **confidence: directional.** |
+| AGPL-3.0 | strong network copyleft, poor fit for early adapter experimentation. |
 
 ## unresolved
 
-- whether future distributed substrate services need a different license boundary. **confidence: vibes.**
+- whether future distributed substrate services need a different license boundary.

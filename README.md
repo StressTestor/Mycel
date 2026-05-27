@@ -8,31 +8,31 @@ confidence key: **solid** means verified or strongly supported. **directional** 
 
 ## language recommendation
 
-recommendation: **rust core, with thin python and typescript adapters**. **confidence: directional. load-bearing.**
+recommendation: **rust core, with thin python and typescript adapters**.
 
 why:
 
 | option | read |
 | --- | --- |
-| rust | best fit for a local-first harness that writes durable state, evaluates spawn rules, and shares antibody records with Sentinel. **confidence: directional. load-bearing.** |
-| python | best fit for agent experiments and Hermes interop, but weaker as the long-term substrate runtime. **confidence: directional. load-bearing.** |
-| typescript | best fit for OpenClaw plugin interop and editor-adjacent tooling, but less aligned with Sentinel. **confidence: directional. load-bearing.** |
-| hybrid | best fit if the core stays small and adapters stay dumb. **confidence: directional. load-bearing.** |
+| rust | best fit for local state, typed policy, and Sentinel pairing. rust should reduce runtime ambiguity in the substrate core. **confidence: directional. load-bearing.** |
+| python | best fit for Hermes interop and eval experiments. weaker as the long-term policy runtime. **confidence: directional. load-bearing.** |
+| typescript | best fit for OpenClaw manifest work and editor-adjacent tooling. less aligned with Sentinel. **confidence: directional. load-bearing.** |
+| hybrid | best fit if the core stays small and adapters stay schema-driven. **confidence: directional. load-bearing.** |
 
 initial runtime shape:
 
-- rust owns substrate storage, antibody matching, condition evaluation, and file projection. **confidence: directional. load-bearing.**
-- python adapters export and import Hermes-compatible skills and run optional eval tooling. **confidence: directional.**
-- typescript adapters export and import OpenClaw-compatible plugin and skill metadata. **confidence: directional.**
-- no source directories exist yet. this repo starts with design docs only. **confidence: solid. load-bearing.**
+- rust owns substrate storage, antibody matching, condition evaluation, and file projection.
+- python adapters export and import Hermes-compatible skills and run optional eval tooling.
+- typescript adapters export and import OpenClaw-compatible plugin and skill metadata.
+- no source directories exist yet. **confidence: solid. load-bearing.**
 
 ## v0.1 pick
 
-v0.1 should ship **fail-pattern immunity** first. **confidence: directional. load-bearing.**
+v0.1 ships **fail-pattern immunity** first.
 
-the reason is boring in the useful way: it proves the substrate has memory, policy, and enforcement without requiring full autonomous spawning. it also pairs directly with Sentinel. Sentinel block logs can become antibody candidates, and Mycel antibodies can later become Sentinel rules. **confidence: directional. load-bearing.**
+the reason is boring in the useful way: it proves the substrate has memory, policy, and enforcement before autonomous spawning. it also pairs directly with Sentinel. Sentinel block logs can become antibody candidates, and Mycel antibodies can later become Sentinel rules. **confidence: directional. load-bearing.**
 
-the tradeoff: immunity is less visually magical than spore discovery or sclerotia. the win is that it creates a hard measurable loop: failed run, antibody record, future refusal or warning. **confidence: directional.**
+v0.1 also drafts self-spec schema and makes the interop decision early. early interop design should reduce schema churn once Hermes and OpenClaw export losses are visible. **confidence: directional. load-bearing.**
 
 ## repo structure proposal
 
@@ -56,7 +56,7 @@ mycel/
     open-questions.md
 ```
 
-future source layout, not created yet:
+future source layout, still uncreated:
 
 ```text
 crates/
@@ -69,23 +69,23 @@ schemas/               json schema for spores, antibodies, sclerotia
 examples/              small local workspaces
 ```
 
-justification:
+why:
 
-- keep v0 design reviewable before code appears. **confidence: solid. load-bearing.**
-- separate the rust core from adapter languages so interop does not infect the substrate model. **confidence: directional. load-bearing.**
-- put schemas at the repo root once formats stabilize, because spores and antibodies are public-ish contracts. **confidence: directional.**
+- keeping v0 document-first lowers early churn while decisions are still moving. **confidence: directional. load-bearing.**
+- separating the rust core from adapter languages should keep interop from shaping the substrate model too early. **confidence: directional. load-bearing.**
+- schemas likely belong at repo root once formats stabilize because spores and antibodies become public-ish contracts. **confidence: directional.**
 
 ## mechanisms
 
-| mechanism | v1 role | confidence |
-| --- | --- | --- |
-| decay-pruned context | ttl-tiered context compaction on schedule, driven by solid, directional, and vibes confidence tags | **directional. load-bearing.** |
-| spore-based plugin discovery | finished agents emit typed manifests of completed work and adjacent opportunities | **directional.** |
-| self-spec on death | terminating agents write the next agent spec before exit | **directional.** |
-| substrate-conditioned spawning | agents start when typed environmental tuples match | **directional. load-bearing.** |
-| fail-pattern immunity | failed signatures become antibody records that refuse or pre-flag similar runs | **directional. load-bearing.** |
-| sclerotia | blocked agents serialize work-in-progress and wake conditions | **directional. load-bearing.** |
-| mycorrhizal kin-sharing | terminating agents bequeath useful context to related live or dormant work | **directional.** |
+| mechanism | v1 role |
+| --- | --- |
+| fail-pattern immunity | failed signatures become antibody records that refuse or pre-flag similar runs |
+| decay-pruned context | ttl-tiered context compaction on schedule, driven by solid, directional, and vibes tiers |
+| self-spec on death | terminating agents write the next agent spec before exit |
+| sclerotia | blocked agents serialize work-in-progress with wake conditions |
+| spore-based plugin discovery | finished agents emit typed manifests of completed work and adjacent opportunities |
+| mycorrhizal kin-sharing | terminating agents bequeath useful context to related live or dormant work |
+| substrate-conditioned spawning | agents start when typed environmental tuples match |
 
 post-v1:
 
@@ -95,20 +95,20 @@ post-v1:
 
 ## workspace files
 
-mycel workspaces should expose four canonical human files:
+mycel workspaces expose four canonical human files:
 
-| file | role | confidence |
-| --- | --- | --- |
-| `SUBSTRATE.md` | current substrate summary, active conditions, durable findings | **directional. load-bearing.** |
-| `SPORES.md` | emitted manifests and germination candidates | **directional.** |
-| `COMPOST.md` | decayed findings, distillations, and pruned context notes | **directional.** |
-| `MYCELIUM.md` | kin graph, live threads, dormant sclerotia, resource transfers | **directional. load-bearing.** |
+| file | role |
+| --- | --- |
+| `SUBSTRATE.md` | current substrate summary, active conditions, durable findings |
+| `SPORES.md` | emitted manifests and germination candidates |
+| `COMPOST.md` | decayed findings, distillations, and pruned context notes |
+| `MYCELIUM.md` | kin graph, live threads, dormant sclerotia, resource transfers |
 
 these files should be projections from the local substrate store. the database stays the source of truth. **confidence: directional. load-bearing.**
 
 ## getting started shape
 
-this is hypothetical until implementation begins:
+hypothetical until implementation begins:
 
 ```sh
 mycel init
@@ -119,19 +119,19 @@ mycel substrate maintain
 
 expected v0.1 workflow:
 
-1. initialize a local workspace substrate. **confidence: directional.**
-2. ingest Sentinel block logs or failed run records. **confidence: directional.**
-3. normalize them into typed antibody records. **confidence: directional.**
-4. evaluate a proposed run against the antibody registry. **confidence: directional.**
-5. refuse, warn, or allow with attached context. **confidence: directional.**
+1. initialize a local workspace substrate.
+2. ingest Sentinel block logs or failed run records.
+3. normalize them into typed antibody records.
+4. evaluate a proposed run against the antibody registry.
+5. refuse, warn, or allow with attached context.
 
 ## positioning
 
 OpenClaw is a useful reference for a typed context-engine lifecycle and native plugin manifests. its current context engine interface includes bootstrap, ingest, after-turn, assemble, compact, maintain, and subagent lifecycle hooks. **confidence: solid. source-checked 2026-05-27.**
 
-Hermes Agent is a useful reference for a pluggable context engine, overflow or threshold-triggered compression, background review after turns, and active/stale/archive skill curation. **confidence: solid. source-checked 2026-05-27.**
+Hermes Agent is a useful reference for a pluggable context engine, threshold-triggered compression, background review after turns, and active/stale/archive skill curation. **confidence: solid. source-checked 2026-05-27.**
 
-mycel's wedge is ecological substrate management: immune memory, dormancy, and kin-aware death transfer. **confidence: directional. load-bearing.**
+mycel's wedge is ecological substrate management: immune memory, dormancy, and kin-aware death transfer.
 
 ## references checked
 
