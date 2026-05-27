@@ -1,5 +1,7 @@
 # architecture
 
+note: sections marked superseded-by-ADR defer to the relevant ADR once 0001-0005 are merged. this file is high-level overview, not the source of truth for decisions.
+
 confidence key: **solid** means verified or strongly supported. **directional** means the shape is likely right, but details may change. **vibes** means a useful hypothesis, not a fact.
 
 ## project overview
@@ -10,41 +12,72 @@ the v0 design goal is to prove that agent runs can leave durable substrate recor
 
 ## stack and dependencies
 
+superseded-by-ADR: `docs/adr/0003-language-and-runtime.md`
+
 planned stack:
 
 | layer | choice |
 | --- | --- |
 | core runtime | Rust |
+| canonical interface | MCP |
+| command surface | CLI built on MCP tool surface |
+| runtime defense | Sentinel as workspace subsystem |
 | canonical substrate | SQLite |
 | event interchange | JSONL |
 | human projections | markdown |
 | Hermes interop | Python adapter |
 | OpenClaw interop | TypeScript adapter |
 
-rust should reduce ambiguity in local policy and state handling. **confidence: directional. load-bearing.**
+Rust should reduce ambiguity in local policy and state handling. **confidence: directional. load-bearing.**
 
-SQLite should be enough for local substrate queries without adding a service dependency. **confidence: solid. load-bearing.**
-
-no runtime dependencies are installed yet. **confidence: solid. load-bearing.**
+SQLite should be enough for local substrate queries without adding a service dependency.
 
 ## directory structure
 
-current structure:
+superseded-by-ADR: `docs/adr/0003-language-and-runtime.md`
+
+planned structure:
 
 ```text
 mycel/
-  ARCHITECTURE.md
-  README.md
-  ROADMAP.md
-  CONTRIBUTING.md
-  LICENSE
-  .gitignore
+  crates/
+    mycel-core/
+    mycel-mcp/
+    mycel-cli/
+    sentinel-guard/
+  adapters/
+    hermes/
+    openclaw/
+  schemas/
+  examples/
   docs/
     adr/
+    schemas/
     open-questions.md
 ```
 
-source directories are intentionally absent during initialization. **confidence: solid. load-bearing.**
+current repo still contains docs only.
+
+## core subsystems
+
+| subsystem | role |
+| --- | --- |
+| `mycel-core` | substrate, antibodies, wake rules, decay policy |
+| `mycel-mcp` | canonical MCP interface |
+| `mycel-cli` | local command surface built on MCP tools |
+| `sentinel-guard` | always-on runtime defense and shared policy evaluator |
+
+Sentinel gates three scopes:
+
+| gate scope | purpose |
+| --- | --- |
+| agent launch | every spawn passes Sentinel before an agent starts |
+| tool invocation | every tool call is filtered before execution |
+| substrate mutation | every substrate write is checked before commit |
+
+Each gate scope owns its policy surface but shares the Sentinel evaluator.
+
+Volva-shedding uses Sentinel as the gate substrate. it stays post-v1, but the integration path is defined.
 
 ## key patterns
 
@@ -52,40 +85,36 @@ source directories are intentionally absent during initialization. **confidence:
 - confidence-tagged empirical claims and assumptions.
 - schema-driven adapter boundaries.
 - generated human-readable workspace projections.
+- always-on runtime defense through shared Sentinel gates.
 
-schema-driven adapters should reduce cross-language coupling. **confidence: directional. load-bearing.**
+Schema-driven adapters should reduce cross-language coupling. **confidence: directional. load-bearing.**
 
 ## database schema
 
-no database schema exists yet. **confidence: solid. load-bearing.**
+superseded-by-ADR: `docs/adr/0001-substrate-format.md`
 
 planned first tables likely cover antibodies, source events, decisions, and projections. **confidence: directional.**
 
 ## environment variables
 
-no environment variables are required yet. **confidence: solid. load-bearing.**
+no environment variables are required yet.
 
 future cloud or model provider variables must be optional unless an ADR says otherwise. **confidence: directional. load-bearing.**
 
 ## deployment and infrastructure
 
-no deployment target exists yet. **confidence: solid. load-bearing.**
+no deployment target exists yet.
 
-the default operating model is local CLI or local service.
+the default operating model is local CLI plus local MCP server.
 
 ## external services and integrations
 
-planned integrations:
-
 | system | role |
 | --- | --- |
-| Sentinel | antibody source and future rule consumer |
 | STs-Mission-Control | possible kin-detection layer |
 | PromptPressure | confidence-tier input for context decay |
 | OpenClaw | plugin and skill interop reference |
 | Hermes Agent | skill and context lifecycle reference |
-
-Sentinel pairing is the strongest reason to start with fail-pattern immunity. **confidence: directional. load-bearing.**
 
 OpenClaw and Hermes are useful references for interop design, but Mycel-specific ecology metadata will need graceful degradation. **confidence: directional. load-bearing.**
 
@@ -95,6 +124,7 @@ OpenClaw and Hermes are useful references for interop design, but Mycel-specific
 - the canonical store stays separate from the human-readable files.
 - vibes-tier claims stay hypotheses.
 - autonomous spawning waits behind refusal, dormancy, decay, and handoff controls.
+- Sentinel is core runtime defense.
 
 generated projections can overwrite manual edits unless an override policy exists. **confidence: directional. load-bearing.**
 
@@ -107,7 +137,7 @@ git status --short
 git log --oneline
 ```
 
-implementation commands do not exist yet. **confidence: solid. load-bearing.**
+implementation commands do not exist yet.
 
 ## last updated
 

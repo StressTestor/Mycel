@@ -13,6 +13,7 @@ confidence key: **solid** means verified or strongly supported. **directional** 
 - how should no-compost records be represented so they cannot be accidentally summarized away?
 - what belongs in a Mycel-native skill that cannot be represented in Hermes or OpenClaw exports?
 - how much interop design belongs in v0.1 before it slows down antibody work?
+- what vocabulary should volva-shedding use for trust signals from Sentinel gate outcomes?
 
 ## research
 

@@ -12,7 +12,7 @@ OpenClaw has native plugin manifests through `openclaw.plugin.json`, plus compat
 
 Hermes Agent has a skill lifecycle with background review and active/stale/archive curation. **confidence: solid. source-checked 2026-05-27.**
 
-mycel adds ecology-aware features that those exports should not pretend to support. **confidence: directional. load-bearing.**
+mycel adds ecology-aware features that exported runtimes must avoid claiming without enforcement. **confidence: directional. load-bearing.**
 
 ## decision
 

@@ -32,6 +32,7 @@ success metrics:
 - expiry mechanism passes at least 10 time-shift fixtures.
 - every refusal includes a remediation string and source pointer.
 - interop loss matrix covers Mycel-native, Hermes, OpenClaw, and agentskills.io-compatible export shapes.
+- all three gate scopes, agent launch, tool invocation, and substrate mutation, are wired with at least one fixture-validated policy each.
 
 rollback or pivot:
 

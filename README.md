@@ -22,9 +22,10 @@ why:
 initial runtime shape:
 
 - rust owns substrate storage, antibody matching, condition evaluation, and file projection.
+- sentinel is a core runtime-defense subsystem inside the future cargo workspace.
 - python adapters export and import Hermes-compatible skills and run optional eval tooling.
 - typescript adapters export and import OpenClaw-compatible plugin and skill metadata.
-- no source directories exist yet. **confidence: solid. load-bearing.**
+- no source directories exist yet.
 
 ## v0.1 pick
 
@@ -60,13 +61,18 @@ future source layout, still uncreated:
 
 ```text
 crates/
-  mycel-core/          substrate, antibodies, wake rules
-  mycel-cli/           local command surface
+  mycel-core/        substrate, antibodies, wake rules
+  mycel-mcp/         MCP server, canonical interface
+  mycel-cli/         local command surface (built on MCP tool surface)
+  sentinel-guard/    workspace member, also published independently
 adapters/
-  hermes/              python skill import/export
-  openclaw/            typescript plugin and skill import/export
-schemas/               json schema for spores, antibodies, sclerotia
-examples/              small local workspaces
+  hermes/            python skill import/export
+  openclaw/          typescript plugin and skill import/export
+schemas/             json schema for spores, antibodies, sclerotia
+examples/            small local workspaces
+docs/
+  adr/               architectural decision records
+  schemas/           schema appendix
 ```
 
 why:

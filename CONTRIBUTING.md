@@ -1,6 +1,6 @@
 # contributing
 
-mycel is in design-first mode. no production source directories should be added until the initial ADRs are settled. **confidence: solid. load-bearing.**
+mycel is in design-first mode. no production source directories should be added until the initial ADRs are settled.
 
 ## basics
 
@@ -24,4 +24,4 @@ for now, design changes should include:
 
 ## code changes
 
-code changes are intentionally out of scope until the project exits initialization. **confidence: solid. load-bearing.**
+code changes are intentionally out of scope until the project exits initialization.

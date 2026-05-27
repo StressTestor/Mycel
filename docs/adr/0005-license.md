@@ -8,7 +8,7 @@ date: 2026-05-27
 
 mycel is intended as a personal local-first agent harness with possible adapter and ecosystem reuse.
 
-the requested license candidate is MIT. **confidence: solid. load-bearing.**
+the requested license candidate is MIT.
 
 ## decision
 

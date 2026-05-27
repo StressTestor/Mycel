@@ -1,15 +1,32 @@
 .DS_Store
+
+# rust
 target/
+**/*.rs.bk
+
+# node/typescript
 dist/
 build/
 node_modules/
+.pnpm-store/
+coverage/
+
+# python
 .venv/
+venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# local data and logs
 *.log
 *.db
 *.sqlite
 *.sqlite3
+
+# env
 .env
 .env.*
 !.env.example

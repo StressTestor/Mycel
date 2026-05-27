@@ -23,6 +23,11 @@ lock four canonical workspace files:
 
 these files are generated projections from the substrate store.
 
+substrate edit policy:
+
+- v0.1 is projection-only. humans and agents do not edit canonical projection files as input.
+- v0.2 and later plan projection-with-override through a separate override path.
+
 ## rationale
 
 four files map to the ecological model without forcing every agent to query SQLite directly.
@@ -31,15 +36,16 @@ locking names early makes skills and interop adapters easier to write. **confide
 
 using projections avoids making markdown edits the consistency model. **confidence: directional. load-bearing.**
 
+projection-only v0.1 keeps mutation authority in one place while the substrate format is still proving itself. **confidence: directional. load-bearing.**
+
 ## consequences
 
 - agents can read the workspace state through predictable files.
 - humans can review substrate state without a database browser.
-- manual edits need a clear policy because projections can overwrite them. **confidence: directional. load-bearing.**
-- every file needs a generated header that explains source of truth and edit policy.
+- generated headers need to state that projection files are not input surfaces in v0.1.
+- override design can wait until the projection format has real usage.
 
-## unresolved
+## resolved items
 
-- whether to allow a fifth `MYCEL_OVERRIDES.md` for human edits.
-- how much detail belongs in `SUBSTRATE.md` before it becomes noise.
-- whether dormant sclerotia deserve their own file after v0.3.
+- substrate edit policy: projection-only for v0.1.
+- planned upgrade path: projection-with-override for v0.2 and later.
