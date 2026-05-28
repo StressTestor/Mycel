@@ -77,8 +77,8 @@ publication path for non-Mycel users.
 | subsystem | role |
 | --- | --- |
 | `mycel-core` | substrate, antibodies, deterministic proposed-run evaluation, audit/projection runtime |
-| `mycel-mcp` | canonical MCP interface |
-| `mycel-cli` | local command surface built on MCP tools |
+| `mycel-mcp` | canonical tool surface for ingest, evaluate, list-antibodies, and harness metrics |
+| `mycel-cli` | local command surface that calls the MCP tool surface |
 | `sentinel-guard` | always-on runtime defense and shared policy evaluator |
 
 Sentinel gates three scopes:
@@ -132,6 +132,13 @@ and schedules `SUBSTRATE.md` regeneration for 500ms after the latest mutation.
 and not an input surface. audit logs rotate from `name.jsonl` to `name.1.jsonl`
 when the configured size limit would be exceeded by the next event.
 
+## eval harness
+
+The v0.1 harness has an in-code seed corpus with at least 25 antibodies, 50
+evaluation fixtures, 10 Sentinel events, 10 expiry fixtures, and all three gate
+scopes. `mycel harness` calls the MCP tool surface and prints JSON metrics for
+the roadmap success criteria.
+
 ## environment variables
 
 no environment variables are required yet.
@@ -172,6 +179,7 @@ current useful commands:
 ```sh
 cargo build --workspace
 cargo test --workspace
+mycel harness
 git status --short
 git log --oneline
 ```

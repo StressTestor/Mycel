@@ -938,7 +938,14 @@ dependencies = [
 name = "mycel-cli"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "assert_cmd",
+ "chrono",
+ "clap",
+ "mycel-core",
  "mycel-mcp",
+ "predicates",
+ "serde_json",
 ]
 
 [[package]]
@@ -958,6 +965,7 @@ dependencies = [
 name = "mycel-mcp"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "mycel-core",
 ]
 

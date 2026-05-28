@@ -9,4 +9,5 @@ repository.workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+chrono = { version = "0.4", features = ["serde"] }
 mycel-core = { path = "../mycel-core" }

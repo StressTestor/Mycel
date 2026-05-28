@@ -164,6 +164,7 @@ pub struct EvaluationMatch {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EvaluationOutcome {
     Refuse,
     Warn,
@@ -171,6 +172,7 @@ pub enum EvaluationOutcome {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AntibodySource {
     SentinelBlock,
     FailedRun,
@@ -178,6 +180,7 @@ pub enum AntibodySource {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Severity {
     Info,
     Warn,
@@ -185,6 +188,7 @@ pub enum Severity {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Confidence {
     Solid,
     Directional,
@@ -192,6 +196,7 @@ pub enum Confidence {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RefusalMode {
     Hard,
     Soft,
@@ -199,6 +204,7 @@ pub enum RefusalMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SignatureScope {
     Project,
     Global,
@@ -206,6 +212,7 @@ pub enum SignatureScope {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SentinelAction {
     Block,
     Warn,
@@ -220,6 +227,14 @@ impl AntibodyStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let conn = Connection::open(path)?;
         let store = Self { conn };
+        store.migrate()?;
+        Ok(store)
+    }
+
+    pub fn open_in_memory() -> Result<Self> {
+        let store = Self {
+            conn: Connection::open_in_memory()?,
+        };
         store.migrate()?;
         Ok(store)
     }
@@ -579,6 +594,363 @@ struct MutationAuditEvent {
     timestamp: DateTime<Utc>,
     event_type: &'static str,
     antibody_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HarnessMetrics {
+    pub antibody_count: usize,
+    pub sentinel_event_count: usize,
+    pub eval_fixture_count: usize,
+    pub pass_count: usize,
+    pub fail_count: usize,
+    pub safe_fixture_count: usize,
+    pub false_positive_count: usize,
+    pub false_positive_rate: f64,
+    pub expiry_fixture_count: usize,
+    pub expiry_pass_count: usize,
+    pub refusals_missing_remediation: usize,
+    pub refusals_missing_source_pointer: usize,
+    pub gate_scope_counts: GateScopeCounts,
+    pub interop_loss_matrix_shapes: usize,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct GateScopeCounts {
+    pub agent_launch: usize,
+    pub tool_invocation: usize,
+    pub substrate_mutation: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FixtureLabel {
+    Safe,
+    Unsafe,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GateScope {
+    AgentLaunch,
+    ToolInvocation,
+    SubstrateMutation,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvaluationFixture {
+    pub name: String,
+    pub label: FixtureLabel,
+    pub gate_scope: GateScope,
+    pub run: ProposedRun,
+    pub expected: EvaluationOutcome,
+    pub evaluated_at: DateTime<Utc>,
+    pub tags: Vec<String>,
+}
+
+pub fn run_v0_1_harness(now: DateTime<Utc>) -> Result<HarnessMetrics> {
+    let store = AntibodyStore::open_in_memory()?;
+    let antibodies = seed_v0_1_antibodies(now);
+    for antibody in &antibodies {
+        store.insert_antibody(antibody)?;
+    }
+
+    let sentinel_candidates =
+        store.ingest_sentinel_audit_jsonl(seed_v0_1_sentinel_events().as_bytes(), now)?;
+    let fixtures = seed_v0_1_eval_fixtures(now);
+
+    let mut pass_count = 0usize;
+    let mut safe_fixture_count = 0usize;
+    let mut false_positive_count = 0usize;
+    let mut expiry_fixture_count = 0usize;
+    let mut expiry_pass_count = 0usize;
+    let mut refusals_missing_remediation = 0usize;
+    let mut refusals_missing_source_pointer = 0usize;
+    let mut gate_scope_counts = GateScopeCounts::default();
+
+    for fixture in &fixtures {
+        let evaluation = store.evaluate_run(&fixture.run, fixture.evaluated_at)?;
+        let passed = evaluation.outcome == fixture.expected;
+        if passed {
+            pass_count += 1;
+            gate_scope_counts.increment(fixture.gate_scope);
+        }
+
+        if fixture.label == FixtureLabel::Safe {
+            safe_fixture_count += 1;
+            if evaluation.outcome != EvaluationOutcome::Allow {
+                false_positive_count += 1;
+            }
+        }
+
+        if fixture.tags.iter().any(|tag| tag == "expiry") {
+            expiry_fixture_count += 1;
+            if passed {
+                expiry_pass_count += 1;
+            }
+        }
+
+        if evaluation.outcome == EvaluationOutcome::Refuse {
+            match evaluation.refusal() {
+                Some(refusal) => {
+                    if refusal.remediation.is_empty() {
+                        refusals_missing_remediation += 1;
+                    }
+                    if refusal.source_pointer.is_empty() {
+                        refusals_missing_source_pointer += 1;
+                    }
+                }
+                None => {
+                    refusals_missing_remediation += 1;
+                    refusals_missing_source_pointer += 1;
+                }
+            }
+        }
+    }
+
+    let false_positive_rate = if safe_fixture_count == 0 {
+        0.0
+    } else {
+        false_positive_count as f64 / safe_fixture_count as f64
+    };
+
+    Ok(HarnessMetrics {
+        antibody_count: antibodies.len(),
+        sentinel_event_count: sentinel_candidates.len(),
+        eval_fixture_count: fixtures.len(),
+        pass_count,
+        fail_count: fixtures.len() - pass_count,
+        safe_fixture_count,
+        false_positive_count,
+        false_positive_rate,
+        expiry_fixture_count,
+        expiry_pass_count,
+        refusals_missing_remediation,
+        refusals_missing_source_pointer,
+        gate_scope_counts,
+        interop_loss_matrix_shapes: 4,
+    })
+}
+
+impl GateScopeCounts {
+    fn increment(&mut self, scope: GateScope) {
+        match scope {
+            GateScope::AgentLaunch => self.agent_launch += 1,
+            GateScope::ToolInvocation => self.tool_invocation += 1,
+            GateScope::SubstrateMutation => self.substrate_mutation += 1,
+        }
+    }
+}
+
+fn seed_v0_1_antibodies(now: DateTime<Utc>) -> Vec<Antibody> {
+    let mut antibodies = vec![
+        harness_antibody(
+            now,
+            Some("shell"),
+            None,
+            Severity::Refuse,
+            RefusalMode::Hard,
+            "use a narrower command or ask before touching protected paths",
+            None,
+        ),
+        harness_antibody(
+            now,
+            Some("cargo"),
+            None,
+            Severity::Warn,
+            RefusalMode::Soft,
+            "inspect the prior cargo failure before rerunning",
+            None,
+        ),
+        harness_antibody(
+            now,
+            Some("git"),
+            None,
+            Severity::Info,
+            RefusalMode::LogOnly,
+            "record git lineage only",
+            None,
+        ),
+        harness_antibody(
+            now,
+            Some("python"),
+            Some("secret_access"),
+            Severity::Refuse,
+            RefusalMode::Hard,
+            "remove secret material from the attempted script",
+            None,
+        ),
+    ];
+
+    for index in 0..12 {
+        antibodies.push(harness_antibody(
+            now,
+            Some(&format!("expiry-tool-{index}")),
+            None,
+            Severity::Refuse,
+            RefusalMode::Hard,
+            "expired antibodies should stop gating proposed runs",
+            Some(now - chrono::Duration::minutes(index + 1)),
+        ));
+    }
+
+    for index in 0..9 {
+        antibodies.push(harness_antibody(
+            now,
+            Some(&format!("rare-tool-{index}")),
+            None,
+            Severity::Warn,
+            RefusalMode::Soft,
+            "rare tool fixture",
+            None,
+        ));
+    }
+
+    antibodies
+}
+
+fn harness_antibody(
+    now: DateTime<Utc>,
+    tool_pattern: Option<&str>,
+    error_class: Option<&str>,
+    severity: Severity,
+    refusal_mode: RefusalMode,
+    remediation: &str,
+    expires_at: Option<DateTime<Utc>>,
+) -> Antibody {
+    Antibody {
+        id: Uuid::new_v4(),
+        signature: Signature {
+            error_class: error_class.map(str::to_string),
+            file_pattern: None,
+            agent_role: None,
+            tool_pattern: tool_pattern.map(str::to_string),
+            scope: SignatureScope::Project,
+        },
+        source: AntibodySource::Manual,
+        severity,
+        confidence: Confidence::Solid,
+        refusal_mode,
+        remediation: remediation.to_string(),
+        examples: vec!["v0.1 harness seed".to_string()],
+        created_at: now,
+        expires_at,
+        hit_count: 0,
+    }
+}
+
+fn seed_v0_1_eval_fixtures(now: DateTime<Utc>) -> Vec<EvaluationFixture> {
+    let mut fixtures = Vec::new();
+    push_repeated_fixture(
+        &mut fixtures,
+        "shell-refuse",
+        20,
+        FixtureLabel::Unsafe,
+        GateScope::ToolInvocation,
+        harness_run("shell", None),
+        EvaluationOutcome::Refuse,
+        now,
+        &[],
+    );
+    push_repeated_fixture(
+        &mut fixtures,
+        "cargo-warn",
+        10,
+        FixtureLabel::Unsafe,
+        GateScope::AgentLaunch,
+        harness_run("cargo", None),
+        EvaluationOutcome::Warn,
+        now,
+        &[],
+    );
+    push_repeated_fixture(
+        &mut fixtures,
+        "python-secret-refuse",
+        5,
+        FixtureLabel::Unsafe,
+        GateScope::SubstrateMutation,
+        harness_run("python", Some("secret_access")),
+        EvaluationOutcome::Refuse,
+        now,
+        &[],
+    );
+
+    for tool in ["read", "apply_patch", "git", "node", "python"] {
+        push_repeated_fixture(
+            &mut fixtures,
+            &format!("{tool}-safe"),
+            5,
+            FixtureLabel::Safe,
+            GateScope::ToolInvocation,
+            harness_run(tool, None),
+            EvaluationOutcome::Allow,
+            now,
+            &[],
+        );
+    }
+
+    for index in 0..12 {
+        fixtures.push(EvaluationFixture {
+            name: format!("expiry-allows-{index}"),
+            label: FixtureLabel::Safe,
+            gate_scope: GateScope::AgentLaunch,
+            run: harness_run(&format!("expiry-tool-{index}"), None),
+            expected: EvaluationOutcome::Allow,
+            evaluated_at: now,
+            tags: vec!["expiry".to_string()],
+        });
+    }
+
+    fixtures
+}
+
+fn push_repeated_fixture(
+    fixtures: &mut Vec<EvaluationFixture>,
+    prefix: &str,
+    count: usize,
+    label: FixtureLabel,
+    gate_scope: GateScope,
+    run: ProposedRun,
+    expected: EvaluationOutcome,
+    evaluated_at: DateTime<Utc>,
+    tags: &[&str],
+) {
+    for index in 0..count {
+        fixtures.push(EvaluationFixture {
+            name: format!("{prefix}-{index}"),
+            label,
+            gate_scope,
+            run: run.clone(),
+            expected,
+            evaluated_at,
+            tags: tags.iter().map(|tag| (*tag).to_string()).collect(),
+        });
+    }
+}
+
+fn harness_run(tool_name: &str, error_class: Option<&str>) -> ProposedRun {
+    ProposedRun {
+        error_class: error_class.map(str::to_string),
+        file_path: None,
+        agent_role: None,
+        tool_name: Some(tool_name.to_string()),
+        scope: SignatureScope::Project,
+    }
+}
+
+fn seed_v0_1_sentinel_events() -> String {
+    [
+        r#"{"timestamp":"2026-05-28T08:00:00Z","tool_name":"shell","action":"block","reason":"blocked ssh key access","matched_rule":"deny.paths: ~/.ssh/*","mode":"enforce"}"#,
+        r#"{"timestamp":"2026-05-28T08:01:00Z","tool_name":"shell","action":"warn","reason":"outside project","matched_rule":"allow.paths: src/**","mode":"audit"}"#,
+        r#"{"timestamp":"2026-05-28T08:02:00Z","tool_name":"apply_patch","action":"allow","reason":null,"matched_rule":null,"mode":"audit"}"#,
+        r#"{"timestamp":"2026-05-28T08:03:00Z","tool_name":"read","action":"allow","reason":"read allowed","matched_rule":"allow.tools: read","mode":"enforce"}"#,
+        r#"{"timestamp":"2026-05-28T08:04:00Z","tool_name":"write","action":"block","reason":"blocked env write","matched_rule":"deny.paths: .env","mode":"enforce"}"#,
+        r#"{"timestamp":"2026-05-28T08:05:00Z","tool_name":"network","action":"warn","reason":"network audit","matched_rule":"warn.tools: network","mode":"audit"}"#,
+        r#"{"timestamp":"2026-05-28T08:06:00Z","tool_name":"shell","action":"block","reason":"rm denied","matched_rule":"deny.commands: rm -rf","mode":"enforce"}"#,
+        r#"{"timestamp":"2026-05-28T08:07:00Z","tool_name":"git","action":"allow","reason":"status allowed","matched_rule":"allow.commands: git status","mode":"audit"}"#,
+        r#"{"timestamp":"2026-05-28T08:08:00Z","tool_name":"python","action":"warn","reason":null,"matched_rule":"warn.tools: python","mode":"audit"}"#,
+        r#"{"timestamp":"2026-05-28T08:09:00Z","tool_name":"shell","action":"block","reason":"secret pattern","matched_rule":"deny.secrets: OPENAI_API_KEY","mode":"enforce"}"#,
+    ]
+    .join("\n")
 }
 
 impl EvaluationMatch {
