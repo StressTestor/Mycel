@@ -76,7 +76,7 @@ publication path for non-Mycel users.
 
 | subsystem | role |
 | --- | --- |
-| `mycel-core` | substrate, antibodies, deterministic proposed-run evaluation |
+| `mycel-core` | substrate, antibodies, deterministic proposed-run evaluation, audit/projection runtime |
 | `mycel-mcp` | canonical MCP interface |
 | `mycel-cli` | local command surface built on MCP tools |
 | `sentinel-guard` | always-on runtime defense and shared policy evaluator |
@@ -102,6 +102,8 @@ Volva-shedding uses Sentinel as the gate substrate. it stays post-v1, but the in
 - always-on runtime defense through shared Sentinel gates.
 - deterministic antibody evaluation: populated signature fields are AND matches,
   empty signature fields are wildcards, and expired antibodies do not gate runs.
+- substrate mutations append JSONL audit events immediately and debounce
+  `SUBSTRATE.md` projection regeneration by 500ms.
 
 Schema-driven adapters should reduce cross-language coupling. **confidence: directional. load-bearing.**
 
@@ -119,6 +121,16 @@ current tables:
 SQLite `PRAGMA user_version` is the migration marker. version `2` creates the
 `antibodies` table, indexes antibody `tool_pattern` and `scope`, and indexes
 Sentinel `matched_rule` for source-event lineage queries.
+
+## projections and audit
+
+`SubstrateRuntime` wraps the SQLite store when mutations need filesystem side
+effects. every antibody insert, update, and delete appends one JSONL audit event
+and schedules `SUBSTRATE.md` regeneration for 500ms after the latest mutation.
+
+`SUBSTRATE.md` carries a generated-file header that says it is projection-only
+and not an input surface. audit logs rotate from `name.jsonl` to `name.1.jsonl`
+when the configured size limit would be exceeded by the next event.
 
 ## environment variables
 
