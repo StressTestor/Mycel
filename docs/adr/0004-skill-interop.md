@@ -1,6 +1,6 @@
 # 0004: skill interop
 
-status: proposed
+status: accepted
 
 date: 2026-05-27
 

@@ -1,6 +1,6 @@
 # 0002: workspace convention
 
-status: proposed
+status: accepted
 
 date: 2026-05-27
 

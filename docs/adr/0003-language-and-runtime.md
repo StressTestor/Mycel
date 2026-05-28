@@ -1,6 +1,6 @@
 # 0003: language and runtime
 
-status: proposed
+status: accepted
 
 date: 2026-05-27
 
