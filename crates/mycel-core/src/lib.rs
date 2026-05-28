@@ -116,6 +116,41 @@ pub struct SentinelMetadata {
     pub matched_rule: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Evaluation {
+    pub outcome: EvaluationOutcome,
+    pub matches: Vec<EvaluationMatch>,
+}
+
+impl Evaluation {
+    pub fn refusal(&self) -> Option<&EvaluationMatch> {
+        if self.outcome == EvaluationOutcome::Refuse {
+            self.matches
+                .iter()
+                .find(|matched| matched.outcome == EvaluationOutcome::Refuse)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvaluationMatch {
+    pub antibody_id: Uuid,
+    pub outcome: EvaluationOutcome,
+    pub severity: Severity,
+    pub refusal_mode: RefusalMode,
+    pub remediation: String,
+    pub source_pointer: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EvaluationOutcome {
+    Refuse,
+    Warn,
+    Allow,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AntibodySource {
     SentinelBlock,
@@ -291,6 +326,24 @@ impl AntibodyStore {
             .collect())
     }
 
+    pub fn evaluate_run(&self, run: &ProposedRun, now: DateTime<Utc>) -> Result<Evaluation> {
+        let mut matches = self
+            .matching_antibodies(run)?
+            .into_iter()
+            .filter(|antibody| !is_expired(antibody, now))
+            .map(EvaluationMatch::from_antibody)
+            .collect::<Vec<_>>();
+        matches.sort_by_key(|matched| matched.outcome.rank());
+
+        let outcome = matches
+            .iter()
+            .map(|matched| matched.outcome)
+            .min_by_key(|outcome| outcome.rank())
+            .unwrap_or(EvaluationOutcome::Allow);
+
+        Ok(Evaluation { outcome, matches })
+    }
+
     pub fn ingest_sentinel_audit_jsonl(
         &self,
         reader: impl Read,
@@ -405,6 +458,44 @@ impl AntibodyStore {
         )?;
         Ok(())
     }
+}
+
+impl EvaluationMatch {
+    fn from_antibody(antibody: Antibody) -> Self {
+        let outcome = EvaluationOutcome::from_policy(antibody.severity, antibody.refusal_mode);
+        Self {
+            antibody_id: antibody.id,
+            outcome,
+            severity: antibody.severity,
+            refusal_mode: antibody.refusal_mode,
+            remediation: antibody.remediation,
+            source_pointer: format!("antibody:{}", antibody.id),
+        }
+    }
+}
+
+impl EvaluationOutcome {
+    fn from_policy(severity: Severity, refusal_mode: RefusalMode) -> Self {
+        match (severity, refusal_mode) {
+            (Severity::Refuse, RefusalMode::Hard) => Self::Refuse,
+            (_, RefusalMode::LogOnly) | (Severity::Info, _) => Self::Allow,
+            _ => Self::Warn,
+        }
+    }
+
+    fn rank(self) -> u8 {
+        match self {
+            Self::Refuse => 0,
+            Self::Warn => 1,
+            Self::Allow => 2,
+        }
+    }
+}
+
+fn is_expired(antibody: &Antibody, now: DateTime<Utc>) -> bool {
+    antibody
+        .expires_at
+        .is_some_and(|expires_at| expires_at <= now)
 }
 
 #[derive(Debug, Deserialize)]

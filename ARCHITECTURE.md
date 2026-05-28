@@ -76,7 +76,7 @@ publication path for non-Mycel users.
 
 | subsystem | role |
 | --- | --- |
-| `mycel-core` | substrate, antibodies, wake rules, decay policy |
+| `mycel-core` | substrate, antibodies, deterministic proposed-run evaluation |
 | `mycel-mcp` | canonical MCP interface |
 | `mycel-cli` | local command surface built on MCP tools |
 | `sentinel-guard` | always-on runtime defense and shared policy evaluator |
@@ -100,6 +100,8 @@ Volva-shedding uses Sentinel as the gate substrate. it stays post-v1, but the in
 - schema-driven adapter boundaries.
 - generated human-readable workspace projections.
 - always-on runtime defense through shared Sentinel gates.
+- deterministic antibody evaluation: populated signature fields are AND matches,
+  empty signature fields are wildcards, and expired antibodies do not gate runs.
 
 Schema-driven adapters should reduce cross-language coupling. **confidence: directional. load-bearing.**
 
