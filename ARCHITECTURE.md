@@ -32,6 +32,16 @@ Rust should reduce ambiguity in local policy and state handling. **confidence: d
 
 SQLite should be enough for local substrate queries without adding a service dependency.
 
+current Rust dependency roles:
+
+| dependency | role |
+| --- | --- |
+| `rusqlite` with bundled SQLite | canonical local store access |
+| `chrono` | UTC timestamps and expiry fields |
+| `uuid` | antibody identifiers |
+| `serde` and `serde_json` | typed records and JSON fields |
+| `thiserror` | error propagation |
+
 ## directory structure
 
 superseded-by-ADR: `docs/adr/0003-language-and-runtime.md`
@@ -97,7 +107,15 @@ Schema-driven adapters should reduce cross-language coupling. **confidence: dire
 
 superseded-by-ADR: `docs/adr/0001-substrate-format.md`
 
-planned first tables likely cover antibodies, source events, decisions, and projections. **confidence: directional.**
+current tables:
+
+| table | role |
+| --- | --- |
+| `antibodies` | v0.1 fail-pattern immunity records, including signature fields, source, severity, confidence, refusal mode, remediation, examples, expiry, and hit count |
+
+SQLite `PRAGMA user_version` is the migration marker. version `1` creates the
+`antibodies` table and indexes `tool_pattern` and `scope` for deterministic
+matching.
 
 ## environment variables
 

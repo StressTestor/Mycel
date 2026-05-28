@@ -1,5 +1,5 @@
 pub fn tool_surface_name() -> &'static str {
-    mycel_core::crate_name()
+    mycel_core::CORE_CRATE_NAME
 }
 
 #[cfg(test)]
