@@ -3,6 +3,7 @@ members = [
   "crates/mycel-core",
   "crates/mycel-mcp",
   "crates/mycel-cli",
+  "crates/mycel-tests",
   "crates/sentinel-guard",
 ]
 resolver = "2"

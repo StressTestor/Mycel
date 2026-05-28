@@ -55,6 +55,7 @@ mycel/
     mycel-core/
     mycel-mcp/
     mycel-cli/
+    mycel-tests/
     sentinel-guard/
   adapters/
     hermes/
@@ -79,6 +80,7 @@ publication path for non-Mycel users.
 | `mycel-core` | substrate, antibodies, deterministic proposed-run evaluation, audit/projection runtime |
 | `mycel-mcp` | canonical tool surface for ingest, evaluate, list-antibodies, and harness metrics |
 | `mycel-cli` | local command surface that calls the MCP tool surface |
+| `mycel-tests` | external black-box adversarial suite for v0.1 fail-pattern immunity |
 | `sentinel-guard` | always-on runtime defense and shared policy evaluator |
 
 Sentinel gates three scopes:
