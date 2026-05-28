@@ -36,10 +36,11 @@ SQLite should be enough for local substrate queries without adding a service dep
 
 superseded-by-ADR: `docs/adr/0003-language-and-runtime.md`
 
-planned structure:
+current structure:
 
 ```text
 mycel/
+  Cargo.toml
   crates/
     mycel-core/
     mycel-mcp/
@@ -56,7 +57,10 @@ mycel/
     open-questions.md
 ```
 
-current repo still contains docs only.
+`crates/sentinel-guard` enters the workspace as a Git submodule pointed at
+`https://github.com/StressTestor/sentinel.git`. Mycel builds it as a workspace
+member while Sentinel keeps its own package metadata, repository, license, and
+publication path for non-Mycel users.
 
 ## core subsystems
 
@@ -133,6 +137,8 @@ generated projections can overwrite manual edits unless an override policy exist
 current useful commands:
 
 ```sh
+cargo build --workspace
+cargo test --workspace
 git status --short
 git log --oneline
 ```
@@ -141,4 +147,4 @@ implementation commands do not exist yet.
 
 ## last updated
 
-2026-05-27
+2026-05-28

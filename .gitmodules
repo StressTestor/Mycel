@@ -1,0 +1,3 @@
+[submodule "crates/sentinel-guard"]
+	path = crates/sentinel-guard
+	url = https://github.com/StressTestor/sentinel.git
