@@ -112,10 +112,11 @@ current tables:
 | table | role |
 | --- | --- |
 | `antibodies` | v0.1 fail-pattern immunity records, including signature fields, source, severity, confidence, refusal mode, remediation, examples, expiry, and hit count |
+| `sentinel_audit_events` | ingested Sentinel JSONL `AuditEvent` records, preserving stable fields as typed columns and unstable fields as metadata |
 
-SQLite `PRAGMA user_version` is the migration marker. version `1` creates the
-`antibodies` table and indexes `tool_pattern` and `scope` for deterministic
-matching.
+SQLite `PRAGMA user_version` is the migration marker. version `2` creates the
+`antibodies` table, indexes antibody `tool_pattern` and `scope`, and indexes
+Sentinel `matched_rule` for source-event lineage queries.
 
 ## environment variables
 
