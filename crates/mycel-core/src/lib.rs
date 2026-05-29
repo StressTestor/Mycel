@@ -1075,7 +1075,7 @@ fn is_active(antibody: &Antibody, now: DateTime<Utc>) -> bool {
     antibody.created_at <= now
         && antibody
             .expires_at
-            .map_or(true, |expires_at| now < expires_at)
+            .is_none_or(|expires_at| now < expires_at)
 }
 
 #[derive(Debug, Deserialize)]
