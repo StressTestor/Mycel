@@ -90,6 +90,15 @@ their creation time.
 | expired antibody with `hit_count = 99` | allowed | handled-correctly: expiry overrides prior hits |
 | antibody `created_at` one hour in the future | refused | gap-found: evaluator does not account for future-created antibodies under clock skew |
 
+v0.1.1 resolution (Cluster 2): **closed.** An antibody is now active only while
+`created_at <= now < expires_at`. before: a future-created antibody refused at
+the current instant. after: it does not gate until `now` reaches its
+`created_at`. The lower bound is inclusive (`created_at == now` gates) and the
+upper bound stays exclusive (`expires_at == now` is expired), so both edges are
+deterministic. Fixtures: `expiry_and_clock_skew_edges_are_handled_correctly`
+(adds created-at boundary equality and a one-millisecond-future case) plus three
+`clock-skew-allows` fixtures in the metric corpus.
+
 ## category 4: signature collision
 
 Expected behavior: if multiple antibodies match, resolution should be

@@ -198,8 +198,15 @@ fn false_negative_bait_exposes_surface_variant_under_matching() {
     );
 }
 
+// v0.1.1 (Cluster 2, clock-skew expiry): an antibody is active only while
+// `created_at <= now < expires_at`. Guarding the lower bound means a
+// future-created antibody (clock skew) no longer gates runs before its creation
+// instant.
+//
+// before: an antibody created one hour in the future still refused (gap-found).
+// after:  it does not gate until `now` reaches its `created_at`.
 #[test]
-fn expiry_edge_cases_expose_boundary_and_clock_skew_behavior() {
+fn expiry_and_clock_skew_edges_are_handled_correctly() {
     let store = store();
     let base = now();
 
@@ -241,6 +248,26 @@ fn expiry_edge_cases_expose_boundary_and_clock_skew_behavior() {
     future_created.expires_at = Some(base + Duration::hours(2));
     insert(&store, future_created);
 
+    // Lower-bound boundary equality: created_at == now is active (inclusive).
+    let mut created_now = antibody(
+        signature(Some("expiry_check"), None, None, Some("created-now-tool")),
+        Severity::Refuse,
+        RefusalMode::Hard,
+        "created-at-boundary fixture",
+    );
+    created_now.created_at = base;
+    insert(&store, created_now);
+
+    // One millisecond into the future is not yet active.
+    let mut created_just_after = antibody(
+        signature(Some("expiry_check"), None, None, Some("created-future-tool")),
+        Severity::Refuse,
+        RefusalMode::Hard,
+        "created-just-after-now fixture",
+    );
+    created_just_after.created_at = base + Duration::milliseconds(1);
+    insert(&store, created_just_after);
+
     assert_eq!(
         outcome(
             &store,
@@ -262,12 +289,30 @@ fn expiry_edge_cases_expose_boundary_and_clock_skew_behavior() {
         ),
         EvaluationOutcome::Allow
     );
+    // Closed gap: a future-created antibody no longer gates before its creation
+    // instant.
     assert_eq!(
         outcome(
             &store,
             &run(Some("expiry_check"), None, None, Some("future-created-tool"))
         ),
+        EvaluationOutcome::Allow
+    );
+    // created_at == now is active and still gates.
+    assert_eq!(
+        outcome(
+            &store,
+            &run(Some("expiry_check"), None, None, Some("created-now-tool"))
+        ),
         EvaluationOutcome::Refuse
+    );
+    // created_at one millisecond after now is not yet active.
+    assert_eq!(
+        outcome(
+            &store,
+            &run(Some("expiry_check"), None, None, Some("created-future-tool"))
+        ),
+        EvaluationOutcome::Allow
     );
 }
 

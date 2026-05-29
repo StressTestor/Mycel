@@ -388,7 +388,7 @@ impl AntibodyStore {
         let mut matches = self
             .matching_antibodies(run)?
             .into_iter()
-            .filter(|antibody| !is_expired(antibody, now))
+            .filter(|antibody| is_active(antibody, now))
             .map(EvaluationMatch::from_antibody)
             .collect::<Vec<_>>();
         matches.sort_by_key(|matched| matched.outcome.rank());
@@ -817,6 +817,22 @@ fn seed_v0_1_antibodies(now: DateTime<Utc>) -> Vec<Antibody> {
         ));
     }
 
+    // Clock-skew antibodies: created in the future, so they must not gate until
+    // `now` reaches their creation instant.
+    for index in 0..3 {
+        let mut future = harness_antibody(
+            now,
+            Some(&format!("future-created-tool-{index}")),
+            Some("clock_skew"),
+            Severity::Refuse,
+            RefusalMode::Hard,
+            "future-created antibodies should not gate before their creation time",
+            Some(now + chrono::Duration::hours(2)),
+        );
+        future.created_at = now + chrono::Duration::hours(1);
+        antibodies.push(future);
+    }
+
     for index in 0..9 {
         antibodies.push(harness_antibody(
             now,
@@ -952,6 +968,19 @@ fn seed_v0_1_eval_fixtures(now: DateTime<Utc>) -> Vec<EvaluationFixture> {
         });
     }
 
+    // Clock-skew: a future-created antibody does not gate at the current instant.
+    for index in 0..3 {
+        fixtures.push(EvaluationFixture {
+            name: format!("clock-skew-allows-{index}"),
+            label: FixtureLabel::Safe,
+            gate_scope: GateScope::AgentLaunch,
+            run: harness_run(&format!("future-created-tool-{index}"), Some("clock_skew")),
+            expected: EvaluationOutcome::Allow,
+            evaluated_at: now,
+            tags: vec!["expiry".to_string()],
+        });
+    }
+
     fixtures
 }
 
@@ -1037,10 +1066,16 @@ impl EvaluationOutcome {
     }
 }
 
-fn is_expired(antibody: &Antibody, now: DateTime<Utc>) -> bool {
-    antibody
-        .expires_at
-        .is_some_and(|expires_at| expires_at <= now)
+/// An antibody gates a run only while it is active: created at or before `now`
+/// and not yet expired. The lower bound guards against clock skew, where a
+/// future-created antibody must not gate runs before its creation instant.
+/// Both bounds are deterministic: `created_at == now` is active (inclusive
+/// lower bound) and `expires_at == now` is expired (exclusive upper bound).
+fn is_active(antibody: &Antibody, now: DateTime<Utc>) -> bool {
+    antibody.created_at <= now
+        && antibody
+            .expires_at
+            .map_or(true, |expires_at| now < expires_at)
 }
 
 #[derive(Debug, Deserialize)]
