@@ -40,7 +40,24 @@ rate from the v0.1 metric corpus is recorded in the final section.
 | malformed sentinel input | 5 | 4 | 1 |
 | wildcard explosion | 3 | 3 | 0 |
 
-total categories with at least one gap: 4 of 6.
+total categories with at least one gap (v0.1): 4 of 6.
+
+post-hardening (v0.1.1) status of the 7 prior `gap-found` fixtures. "closed"
+means behavior changed to remove the gap; "accepted" means behavior is now
+documented as correct-by-design; "deferred" means reclassified as a v0.2 item.
+
+| category | gap-found (v0.1) | closed | accepted | deferred to v0.2 |
+| --- | ---: | ---: | ---: | ---: |
+| false-positive bait | 2 | 1 (`shell`) | 1 (`README.md`) | 0 |
+| false-negative bait | 3 | 1 (`permission_denied`) | 0 | 2 |
+| expiry edge cases | 1 | 1 (future-created) | 0 | 0 |
+| malformed sentinel input | 1 | 1 (empty `tool_name`) | 0 | 0 |
+
+4 of 7 gaps closed by a behavior change; 1 accepted as a bounded advisory warn
+(the `README.md` file-only signature can no longer escalate to refuse); 2
+reclassified as documented v0.2 sqlite-vec similarity items (a renamed file path
+and a wrapper command), which Cluster 3 explicitly scopes out of v0.1.1. No gap
+remains unaddressed, and no prior `handled-correctly` fixture regressed.
 
 ## category 1: false-positive bait
 
@@ -127,6 +144,10 @@ deterministic and the strongest safety action should win.
 | --- | --- | --- |
 | hard refuse, soft warn, and log-only antibodies inserted in 6 order variants and evaluated repeatedly | refuse always wins | handled-correctly |
 
+v0.1.1 note (Cluster 1): the colliding antibodies were migrated to two-field
+signatures so the hard-refuse member stays refuse-capable under the specificity
+rule; resolution is unchanged and refuse still wins every order variant.
+
 ## category 5: malformed sentinel input
 
 Expected behavior: malformed Sentinel JSONL should degrade gracefully and never
@@ -171,7 +192,47 @@ direct store and MCP insert paths. Fixture:
 
 ## public API coverage notes
 
-The public API was sufficient to exercise every requested category. It was not
-sufficient to model command intent, normalized command arguments, or true
-mid-evaluation expiry. Those limits are part of the observed findings rather
-than blockers for the suite.
+The public API was sufficient to exercise every requested category. The v0.1
+note that it could not model normalized command arguments or clock-skew expiry
+is now addressed: v0.1.1 adds deterministic argument/whitespace normalization
+(Cluster 3) and a `created_at <= now` activation guard (Cluster 2). Modeling
+full command *intent* (distinguishing a wrapper command from the command it
+wraps) still needs semantic similarity and stays a v0.2 sqlite-vec item.
+
+## v0.1.1 false-positive rate (real, post-hardening)
+
+The v0.1 metric corpus reported a false-positive rate of `0.0`, but that number
+was synthetic: the safe-labeled fixtures did not include lookalikes of the
+blocked patterns, so the over-match surface was never exercised.
+
+The post-hardening corpus (`run_v0_1_harness`) adds safe-labeled bait that
+resembles blocked work but differs in a discriminating field, and migrates
+refuse antibodies to specific (≥ 2 field) signatures:
+
+- `shell-safe-benign`: a benign `shell` run with no `protected_path` error
+  class. A pre-hardening single-field `shell` refuse would have blocked this.
+- `shell-safe-variant`: an upper-cased `SHELL` run, exercising normalization.
+- three `clock-skew-allows` runs against future-created antibodies.
+
+Measured result (`mycel harness`):
+
+| metric | value |
+| --- | --- |
+| eval fixtures | 85 |
+| pass / fail | 85 / 0 |
+| safe-labeled fixtures | 50 |
+| false positives (safe, non-allow) | 0 |
+| **false-positive rate** | **0.0** |
+| hard-block false positives (safe, refuse) | 0 |
+| expiry fixtures pass | 15 / 15 |
+
+This `0.0` is now trusted rather than synthetic: every safe lookalike of a
+blocked pattern is correctly allowed because specificity (refuse needs ≥ 2
+fields) plus AND matching keep the discriminating field load-bearing, and the
+clock-skew guard keeps future-created records inert. It is well under the 20%
+ROADMAP threshold.
+
+Residual, by design: a single-field warn signature still emits an advisory warn
+on a matching run. That is intended (warn is advisory, not a block) and cannot
+escalate to refuse under the specificity rule, so the metric corpus does not
+label such advisory warns as safe-must-allow fixtures.
