@@ -35,5 +35,8 @@ fn mcp_tools_expose_ingest_evaluate_and_list_antibodies() {
         )
         .expect("evaluate run");
 
-    assert_eq!(format!("{:?}", evaluation.outcome), "Refuse");
+    // A Sentinel block maps to a refuse candidate (locked), but Sentinel-derived
+    // antibodies populate only `tool_pattern`, so the single-field signature is
+    // demoted to a soft warn when persisted under the v0.1.1 specificity rule.
+    assert_eq!(format!("{:?}", evaluation.outcome), "Warn");
 }

@@ -57,8 +57,10 @@ fn antibody_round_trips_through_sqlite() {
 #[test]
 fn antibody_can_be_updated_and_deleted() {
     let (_dir, store) = temp_store();
+    // Two populated fields so the refuse update is specific enough to persist
+    // under the v0.1.1 specificity rule (single-field refuse would be demoted).
     let mut saved = antibody(Signature {
-        error_class: None,
+        error_class: Some("protected_path".to_string()),
         file_pattern: None,
         agent_role: None,
         tool_pattern: Some("shell".to_string()),

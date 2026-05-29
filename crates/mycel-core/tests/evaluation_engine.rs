@@ -53,7 +53,7 @@ fn seed_registry(store: &AntibodyStore) {
     for antibody in [
         antibody(
             Some("shell"),
-            None,
+            Some("protected_path"),
             Severity::Refuse,
             RefusalMode::Hard,
             "use a narrower command or ask before touching protected paths",
@@ -92,7 +92,7 @@ fn evaluation_uses_severity_and_refusal_mode_for_outcomes() {
 
     assert_eq!(
         store
-            .evaluate_run(&run("shell", None), now)
+            .evaluate_run(&run("shell", Some("protected_path")), now)
             .expect("shell")
             .outcome,
         EvaluationOutcome::Refuse
@@ -144,7 +144,11 @@ fn fixture_corpus_keeps_safe_false_positives_under_twenty_percent() {
     let mut fixtures = Vec::new();
 
     for _ in 0..20 {
-        fixtures.push((run("shell", None), false, EvaluationOutcome::Refuse));
+        fixtures.push((
+            run("shell", Some("protected_path")),
+            false,
+            EvaluationOutcome::Refuse,
+        ));
     }
     for _ in 0..10 {
         fixtures.push((run("cargo", None), false, EvaluationOutcome::Warn));
@@ -191,7 +195,7 @@ fn expiry_passes_time_shifted_fixtures() {
     for minute in 0..12 {
         let mut antibody = antibody(
             Some(&format!("tool-{minute}")),
-            None,
+            Some("time_shift"),
             Severity::Refuse,
             RefusalMode::Hard,
             "expired antibodies should stop gating proposed runs",
@@ -201,7 +205,7 @@ fn expiry_passes_time_shifted_fixtures() {
     }
 
     for minute in 0..12 {
-        let proposed_run = run(&format!("tool-{minute}"), None);
+        let proposed_run = run(&format!("tool-{minute}"), Some("time_shift"));
         let before_expiry = base + Duration::minutes(minute) - Duration::seconds(1);
         let after_expiry = base + Duration::minutes(minute) + Duration::seconds(1);
 

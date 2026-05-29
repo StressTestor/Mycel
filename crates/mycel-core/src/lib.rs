@@ -33,7 +33,17 @@ pub enum MycelError {
     InvalidAuditPath(PathBuf),
     #[error("at least one signature field must be populated")]
     EmptySignature,
+    #[error("sentinel audit event has an empty tool_name")]
+    EmptyToolName,
 }
+
+/// Minimum number of populated, non-empty signature fields required for a
+/// `refuse`-severity antibody. Refuse is the strongest safety action, so it
+/// must be specific: an AND match across at least this many fields. Signatures
+/// with fewer populated fields cannot justify refuse and are demoted to warn.
+///
+/// See `docs/schemas/antibody.md` for the full specificity rule.
+pub const MIN_REFUSE_SIGNATURE_FIELDS: usize = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Antibody {
@@ -61,11 +71,23 @@ pub struct Signature {
 }
 
 impl Signature {
+    /// Number of signature fields that are populated with a non-empty value.
+    /// An empty or whitespace-only string counts as unpopulated (a wildcard),
+    /// the same as `None`.
+    pub fn populated_field_count(&self) -> usize {
+        [
+            is_populated(&self.error_class),
+            is_populated(&self.file_pattern),
+            is_populated(&self.agent_role),
+            is_populated(&self.tool_pattern),
+        ]
+        .into_iter()
+        .filter(|populated| *populated)
+        .count()
+    }
+
     pub fn has_populated_field(&self) -> bool {
-        self.error_class.is_some()
-            || self.file_pattern.is_some()
-            || self.agent_role.is_some()
-            || self.tool_pattern.is_some()
+        self.populated_field_count() > 0
     }
 
     fn matches(&self, run: &ProposedRun) -> bool {
@@ -247,7 +269,8 @@ impl AntibodyStore {
     }
 
     pub fn insert_antibody(&self, antibody: &Antibody) -> Result<()> {
-        validate_signature(&antibody.signature)?;
+        let (severity, refusal_mode) =
+            enforce_specificity(&antibody.signature, antibody.severity, antibody.refusal_mode)?;
         self.conn.execute(
             "INSERT INTO antibodies (
                 id, error_class, file_pattern, agent_role, tool_pattern, scope,
@@ -262,9 +285,9 @@ impl AntibodyStore {
                 antibody.signature.tool_pattern,
                 antibody.signature.scope.as_str(),
                 antibody.source.as_str(),
-                antibody.severity.as_str(),
+                severity.as_str(),
                 antibody.confidence.as_str(),
-                antibody.refusal_mode.as_str(),
+                refusal_mode.as_str(),
                 antibody.remediation,
                 serde_json::to_string(&antibody.examples)?,
                 antibody.created_at.to_rfc3339(),
@@ -305,7 +328,8 @@ impl AntibodyStore {
     }
 
     pub fn update_antibody(&self, antibody: &Antibody) -> Result<()> {
-        validate_signature(&antibody.signature)?;
+        let (severity, refusal_mode) =
+            enforce_specificity(&antibody.signature, antibody.severity, antibody.refusal_mode)?;
         self.conn.execute(
             "UPDATE antibodies
             SET error_class = ?2,
@@ -331,9 +355,9 @@ impl AntibodyStore {
                 antibody.signature.tool_pattern,
                 antibody.signature.scope.as_str(),
                 antibody.source.as_str(),
-                antibody.severity.as_str(),
+                severity.as_str(),
                 antibody.confidence.as_str(),
-                antibody.refusal_mode.as_str(),
+                refusal_mode.as_str(),
                 antibody.remediation,
                 serde_json::to_string(&antibody.examples)?,
                 antibody.created_at.to_rfc3339(),
@@ -746,7 +770,7 @@ fn seed_v0_1_antibodies(now: DateTime<Utc>) -> Vec<Antibody> {
         harness_antibody(
             now,
             Some("shell"),
-            None,
+            Some("protected_path"),
             Severity::Refuse,
             RefusalMode::Hard,
             "use a narrower command or ask before touching protected paths",
@@ -785,7 +809,7 @@ fn seed_v0_1_antibodies(now: DateTime<Utc>) -> Vec<Antibody> {
         antibodies.push(harness_antibody(
             now,
             Some(&format!("expiry-tool-{index}")),
-            None,
+            Some("expired_pattern"),
             Severity::Refuse,
             RefusalMode::Hard,
             "expired antibodies should stop gating proposed runs",
@@ -846,8 +870,36 @@ fn seed_v0_1_eval_fixtures(now: DateTime<Utc>) -> Vec<EvaluationFixture> {
         20,
         FixtureLabel::Unsafe,
         GateScope::ToolInvocation,
-        harness_run("shell", None),
+        harness_run("shell", Some("protected_path")),
         EvaluationOutcome::Refuse,
+        now,
+        &[],
+    );
+    // Safe-labeled false-positive bait: a benign `shell` run that lacks the
+    // `protected_path` error class the refuse antibody requires. A pre-hardening
+    // single-field `shell` refuse would have blocked this; the specificity rule
+    // (refuse needs two fields) plus AND matching now allow it.
+    push_repeated_fixture(
+        &mut fixtures,
+        "shell-safe-benign",
+        5,
+        FixtureLabel::Safe,
+        GateScope::ToolInvocation,
+        harness_run("shell", None),
+        EvaluationOutcome::Allow,
+        now,
+        &[],
+    );
+    // Safe-labeled surface variant: an upper-cased tool name that normalizes to
+    // `shell` but still lacks the discriminating error class, so it stays allowed.
+    push_repeated_fixture(
+        &mut fixtures,
+        "shell-safe-variant",
+        5,
+        FixtureLabel::Safe,
+        GateScope::ToolInvocation,
+        harness_run("SHELL", None),
+        EvaluationOutcome::Allow,
         now,
         &[],
     );
@@ -893,7 +945,7 @@ fn seed_v0_1_eval_fixtures(now: DateTime<Utc>) -> Vec<EvaluationFixture> {
             name: format!("expiry-allows-{index}"),
             label: FixtureLabel::Safe,
             gate_scope: GateScope::AgentLaunch,
-            run: harness_run(&format!("expiry-tool-{index}"), None),
+            run: harness_run(&format!("expiry-tool-{index}"), Some("expired_pattern")),
             expected: EvaluationOutcome::Allow,
             evaluated_at: now,
             tags: vec!["expiry".to_string()],
@@ -1003,6 +1055,13 @@ struct RawSentinelAuditEvent {
 
 impl RawSentinelAuditEvent {
     fn into_event(self) -> Result<SentinelAuditEvent> {
+        // An empty (or whitespace-only) tool_name is a present-but-empty stable
+        // field. It maps to an empty `tool_pattern`, which is a wildcard, so a
+        // block event would yield a refuse-capable antibody that matches every
+        // run. Reject it at ingestion instead of normalizing it to a tripwire.
+        if self.tool_name.trim().is_empty() {
+            return Err(MycelError::EmptyToolName);
+        }
         Ok(SentinelAuditEvent {
             id: Uuid::new_v4(),
             timestamp: parse_datetime_result(&self.timestamp)?,
@@ -1124,11 +1183,36 @@ fn collect_rows<T>(rows: impl Iterator<Item = rusqlite::Result<T>>) -> rusqlite:
     Ok(items)
 }
 
-fn validate_signature(signature: &Signature) -> Result<()> {
-    if signature.has_populated_field() {
-        Ok(())
+fn is_populated(value: &Option<String>) -> bool {
+    value
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+}
+
+/// Applies the v0.1.1 signature specificity rule and returns the severity and
+/// refusal mode that should actually be persisted.
+///
+/// - Zero populated fields is an all-wildcard signature and is rejected; a
+///   refuse/hard wildcard would gate every run. Empty or whitespace-only
+///   string fields count as unpopulated, so a signature whose fields are all
+///   present-but-empty is rejected here too.
+/// - A `refuse`-severity signature with fewer than [`MIN_REFUSE_SIGNATURE_FIELDS`]
+///   populated fields is too broad to justify a hard refusal and is demoted to
+///   a soft warn. Warn and info severities are unchanged: a single specific
+///   field is enough to justify an advisory signal.
+fn enforce_specificity(
+    signature: &Signature,
+    severity: Severity,
+    refusal_mode: RefusalMode,
+) -> Result<(Severity, RefusalMode)> {
+    let populated = signature.populated_field_count();
+    if populated == 0 {
+        return Err(MycelError::EmptySignature);
+    }
+    if severity == Severity::Refuse && populated < MIN_REFUSE_SIGNATURE_FIELDS {
+        Ok((Severity::Warn, RefusalMode::Soft))
     } else {
-        Err(MycelError::EmptySignature)
+        Ok((severity, refusal_mode))
     }
 }
 
