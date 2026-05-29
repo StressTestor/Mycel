@@ -72,6 +72,36 @@ For Sentinel ingestion, an `AuditEvent` whose `tool_name` is empty or
 whitespace-only is rejected (`MycelError::EmptyToolName`) instead of being
 normalized into a refuse-capable antibody with an empty (wildcard) `tool_pattern`.
 
+Because Sentinel-derived antibodies populate only `tool_pattern` (a single
+field), a persisted Sentinel block is demoted to a soft warn by this rule even
+though the ingestion mapping (`block -> refuse/hard`) is unchanged. The locked
+mapping describes the candidate; persistence enforces specificity.
+
+## surface-variant normalization (v0.1.1)
+
+status: locked for v0.1.1 hardening; matching stays deterministic-only in v0.1
+
+Before matching, each field is run through a deterministic normalization pass.
+Both the signature value and the proposed-run value are normalized, then
+compared for equality. Normalization is applied at match time only; stored
+values are kept raw.
+
+| field | normalization |
+| --- | --- |
+| `error_class`, `agent_role` | case-fold; split on separators and camelCase boundaries; rejoin with `_`. `permission_denied`, `PermissionDenied`, and `permissionDenied` all match. |
+| `tool_pattern` / `tool_name` | single token: as an identifier (above). Whitespace-separated command: case-fold, collapse whitespace, sort tokens so argument order does not matter. |
+| `file_pattern` / `file_path` | lexically canonicalize: normalize separators and resolve `.` and `..` without touching the filesystem. Not case-folded (POSIX paths). |
+
+A field that normalizes to an empty value is treated as unpopulated (a
+wildcard), which is also how the specificity rule counts fields.
+
+This closes surface-variant false negatives that normalization can reach. It is
+deliberately not fuzzy or semantic. Variants that need similarity are **deferred
+to v0.2** (sqlite-vec), not v0.1.1 gaps:
+
+- a renamed or moved file path (`src/config.rs` vs `src/settings/config.rs`);
+- a wrapper command (`bash -lc cargo test` vs `cargo test`).
+
 ## Sentinel-derived antibody source fields
 
 lineage: see `docs/schemas/sentinel-fields.md`.

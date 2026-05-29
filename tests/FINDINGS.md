@@ -77,6 +77,25 @@ but the harness should make this limitation visible.
 | `src/config.rs` antibody vs renamed `src/settings/config.rs` run | allowed | gap-found: path variants bypass exact file matching |
 | `bash -lc cargo test` antibody vs `cargo test` run | allowed | gap-found: reordered or normalized command surfaces bypass exact tool matching |
 
+v0.1.1 resolution (Cluster 3, partial):
+
+- `permission_denied` vs `PermissionDenied`: **closed.** before: allowed. after:
+  both normalize to the same identifier (case-fold + separator/camelCase split),
+  so the antibody matches and refuses. Fixtures:
+  `surface_variant_normalization_closes_reachable_variants_and_defers_semantic_ones`,
+  `case_and_separator_variants_of_tool_and_error_match`.
+- `src/config.rs` vs `src/settings/config.rs`: **deferred to v0.2.** This is a
+  file rename, not a surface variant path canonicalization can reach, so it
+  stays allowed under deterministic matching. Reclassified as a v0.2 sqlite-vec
+  similarity item, not a v0.1.1 gap. Path canonicalization that normalization
+  *can* reach (`./`, `..`, duplicate and backslash separators) is closed and
+  proven by `canonicalized_file_paths_match`.
+- `bash -lc cargo test` vs `cargo test`: **deferred to v0.2.** Recognizing that
+  one command wraps the other needs command understanding, not whitespace or
+  argument normalization, so it stays allowed. Reclassified as a v0.2 item.
+  Whitespace and argument-order normalization that *is* reachable is closed and
+  proven by `command_whitespace_and_argument_order_are_normalized`.
+
 ## category 3: expiry edge cases
 
 Expected behavior: expiry should be deterministic, expired records should not

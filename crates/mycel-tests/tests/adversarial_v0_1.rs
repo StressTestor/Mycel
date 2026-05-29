@@ -142,8 +142,15 @@ fn false_positive_bait_demotes_broad_refuse_and_preserves_and_matching() {
     );
 }
 
+// v0.1.1 (Cluster 3, surface-variant normalization, partial): a deterministic
+// normalization pass runs before matching. It case-folds tool and error fields
+// (splitting separators and camelCase), canonicalizes file paths, and collapses
+// whitespace / sorts arguments in command patterns. This closes the variants
+// normalization can reach. Variants that need semantic similarity stay a
+// documented v0.2 sqlite-vec item and are asserted here as still-allowed so the
+// boundary is explicit.
 #[test]
-fn false_negative_bait_exposes_surface_variant_under_matching() {
+fn surface_variant_normalization_closes_reachable_variants_and_defers_semantic_ones() {
     let store = store();
     insert(
         &store,
@@ -173,13 +180,19 @@ fn false_negative_bait_exposes_surface_variant_under_matching() {
         ),
     );
 
+    // Closed gap: `permission_denied` and `PermissionDenied` normalize to the
+    // same identifier, so the case/separator variant now matches and refuses.
     assert_eq!(
         outcome(
             &store,
             &run(Some("PermissionDenied"), None, None, Some("shell"))
         ),
-        EvaluationOutcome::Allow
+        EvaluationOutcome::Refuse
     );
+    // Deferred to v0.2 (semantic similarity): `src/config.rs` moving to
+    // `src/settings/config.rs` is a rename, not a surface variant that path
+    // canonicalization can reach, so it stays allowed under deterministic
+    // matching.
     assert_eq!(
         outcome(
             &store,
@@ -192,6 +205,9 @@ fn false_negative_bait_exposes_surface_variant_under_matching() {
         ),
         EvaluationOutcome::Allow
     );
+    // Deferred to v0.2 (semantic similarity): `bash -lc cargo test` wraps
+    // `cargo test`; recognizing the wrapper needs command understanding, not
+    // whitespace/argument normalization, so it stays allowed.
     assert_eq!(
         outcome(&store, &run(None, None, None, Some("cargo test"))),
         EvaluationOutcome::Allow
@@ -528,5 +544,78 @@ fn sentinel_block_with_empty_tool_name_is_rejected_not_normalized() {
     assert_eq!(
         candidates[0].antibody.signature.tool_pattern.as_deref(),
         Some("shell")
+    );
+}
+
+// --- v0.1.1 hardening fixtures: Cluster 3, surface-variant normalization ---
+
+#[test]
+fn case_and_separator_variants_of_tool_and_error_match() {
+    let store = store();
+    insert(
+        &store,
+        antibody(
+            signature(Some("disk_full"), None, None, Some("apply_patch")),
+            Severity::Refuse,
+            RefusalMode::Hard,
+            "case and separator normalization",
+        ),
+    );
+    // Upper-/camel-cased tool and error fields normalize to the antibody's form.
+    assert_eq!(
+        outcome(
+            &store,
+            &run(Some("DiskFull"), None, None, Some("Apply_Patch"))
+        ),
+        EvaluationOutcome::Refuse
+    );
+}
+
+#[test]
+fn canonicalized_file_paths_match() {
+    let store = store();
+    insert(
+        &store,
+        antibody(
+            signature(None, Some("src/config.rs"), None, Some("apply_patch")),
+            Severity::Refuse,
+            RefusalMode::Hard,
+            "path canonicalization",
+        ),
+    );
+    // A `./` prefix and a `..` round-trip canonicalize to the stored path.
+    assert_eq!(
+        outcome(
+            &store,
+            &run(
+                None,
+                Some("./src/foo/../config.rs"),
+                None,
+                Some("apply_patch")
+            )
+        ),
+        EvaluationOutcome::Refuse
+    );
+}
+
+#[test]
+fn command_whitespace_and_argument_order_are_normalized() {
+    let store = store();
+    insert(
+        &store,
+        antibody(
+            signature(None, None, None, Some("cargo test --all --release")),
+            Severity::Warn,
+            RefusalMode::Soft,
+            "argument order normalization",
+        ),
+    );
+    // Collapsed whitespace and reordered arguments match the same command.
+    assert_eq!(
+        outcome(
+            &store,
+            &run(None, None, None, Some("cargo   test  --release --all"))
+        ),
+        EvaluationOutcome::Warn
     );
 }

@@ -72,14 +72,14 @@ pub struct Signature {
 
 impl Signature {
     /// Number of signature fields that are populated with a non-empty value.
-    /// An empty or whitespace-only string counts as unpopulated (a wildcard),
-    /// the same as `None`.
+    /// A field that is empty, whitespace-only, or normalizes to an empty value
+    /// counts as unpopulated (a wildcard), the same as `None`.
     pub fn populated_field_count(&self) -> usize {
         [
-            is_populated(&self.error_class),
-            is_populated(&self.file_pattern),
-            is_populated(&self.agent_role),
-            is_populated(&self.tool_pattern),
+            normalized_field(&self.error_class, FieldKind::Identifier).is_some(),
+            normalized_field(&self.file_pattern, FieldKind::Path).is_some(),
+            normalized_field(&self.agent_role, FieldKind::Identifier).is_some(),
+            normalized_field(&self.tool_pattern, FieldKind::Tool).is_some(),
         ]
         .into_iter()
         .filter(|populated| *populated)
@@ -92,10 +92,10 @@ impl Signature {
 
     fn matches(&self, run: &ProposedRun) -> bool {
         self.scope == run.scope
-            && field_matches(&self.error_class, &run.error_class)
-            && field_matches(&self.file_pattern, &run.file_path)
-            && field_matches(&self.agent_role, &run.agent_role)
-            && field_matches(&self.tool_pattern, &run.tool_name)
+            && field_matches(&self.error_class, &run.error_class, FieldKind::Identifier)
+            && field_matches(&self.file_pattern, &run.file_path, FieldKind::Path)
+            && field_matches(&self.agent_role, &run.agent_role, FieldKind::Identifier)
+            && field_matches(&self.tool_pattern, &run.tool_name, FieldKind::Tool)
     }
 }
 
@@ -1218,10 +1218,118 @@ fn collect_rows<T>(rows: impl Iterator<Item = rusqlite::Result<T>>) -> rusqlite:
     Ok(items)
 }
 
-fn is_populated(value: &Option<String>) -> bool {
+/// Field categories for the deterministic normalization pass. Each signature
+/// field is matched against its proposed-run counterpart after normalization.
+#[derive(Clone, Copy)]
+enum FieldKind {
+    /// Free identifiers: error classes, agent roles, and single-token tool
+    /// names. Case-folded and split on separators and camelCase boundaries.
+    Identifier,
+    /// Filesystem paths. Lexically canonicalized (separators, `.`, `..`) but
+    /// not case-folded, since v0.1 targets POSIX paths.
+    Path,
+    /// Tool patterns. A single token is treated as an identifier; a
+    /// whitespace-separated command is case-folded, whitespace-collapsed, and
+    /// its tokens are sorted so argument order does not matter.
+    Tool,
+}
+
+/// Deterministic surface-variant normalization applied before matching. This is
+/// intentionally never fuzzy or semantic: variants that need similarity (a
+/// renamed file path, a wrapper command) are a documented v0.2 sqlite-vec item,
+/// not something this pass tries to bridge.
+fn normalize_value(value: &str, kind: FieldKind) -> String {
+    match kind {
+        FieldKind::Identifier => normalize_identifier(value),
+        FieldKind::Path => normalize_path(value),
+        FieldKind::Tool => normalize_tool(value),
+    }
+}
+
+/// Case-folds and splits on separators and camelCase boundaries, rejoining with
+/// a single underscore. `permission_denied`, `PermissionDenied`, and
+/// `permissionDenied` all normalize to `permission_denied`.
+fn normalize_identifier(value: &str) -> String {
+    let mut words: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut prev_was_lower_or_digit = false;
+    for ch in value.chars() {
+        if ch.is_alphanumeric() {
+            if prev_was_lower_or_digit && ch.is_uppercase() && !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+            current.extend(ch.to_lowercase());
+            prev_was_lower_or_digit = ch.is_lowercase() || ch.is_numeric();
+        } else {
+            if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+            prev_was_lower_or_digit = false;
+        }
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words.join("_")
+}
+
+/// Lexically canonicalizes a path: normalizes separators and resolves `.` and
+/// `..` segments without touching the filesystem. `./src/foo/../config.rs` and
+/// `src/config.rs` normalize to the same value; `src/config.rs` and
+/// `src/settings/config.rs` do not (that rename is a v0.2 similarity case).
+fn normalize_path(value: &str) -> String {
+    let replaced = value.replace('\\', "/");
+    let is_absolute = replaced.starts_with('/');
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in replaced.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                if matches!(segments.last(), Some(&last) if last != "..") {
+                    segments.pop();
+                } else if !is_absolute {
+                    segments.push("..");
+                }
+            }
+            other => segments.push(other),
+        }
+    }
+    let joined = segments.join("/");
+    if is_absolute {
+        format!("/{joined}")
+    } else {
+        joined
+    }
+}
+
+/// Normalizes a command pattern: case-folds, collapses whitespace, and sorts
+/// tokens so argument order does not matter. Does not understand wrapper
+/// commands (`bash -lc cargo test` does not normalize to `cargo test`); that is
+/// a v0.2 similarity case.
+fn normalize_command(value: &str) -> String {
+    let mut tokens: Vec<String> = value
+        .split_whitespace()
+        .map(|token| token.to_lowercase())
+        .collect();
+    tokens.sort();
+    tokens.join(" ")
+}
+
+fn normalize_tool(value: &str) -> String {
+    if value.split_whitespace().nth(1).is_some() {
+        normalize_command(value)
+    } else {
+        normalize_identifier(value)
+    }
+}
+
+/// Returns the normalized value of a signature or run field, or `None` when the
+/// field is absent or normalizes to empty (an unpopulated wildcard).
+fn normalized_field(value: &Option<String>, kind: FieldKind) -> Option<String> {
     value
         .as_deref()
-        .is_some_and(|value| !value.trim().is_empty())
+        .map(|value| normalize_value(value, kind))
+        .filter(|value| !value.is_empty())
 }
 
 /// Applies the v0.1.1 signature specificity rule and returns the severity and
@@ -1251,9 +1359,13 @@ fn enforce_specificity(
     }
 }
 
-fn field_matches(signature_value: &Option<String>, run_value: &Option<String>) -> bool {
-    match signature_value {
-        Some(expected) => run_value.as_ref() == Some(expected),
+fn field_matches(
+    signature_value: &Option<String>,
+    run_value: &Option<String>,
+    kind: FieldKind,
+) -> bool {
+    match normalized_field(signature_value, kind) {
+        Some(expected) => normalized_field(run_value, kind) == Some(expected),
         None => true,
     }
 }
