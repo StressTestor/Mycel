@@ -15,6 +15,7 @@ pub mod projection;
 pub mod promptpressure;
 pub mod sclerotia;
 pub mod selfspec;
+pub mod spore;
 
 pub use decay::{DecayEngine, DecayReport};
 pub use projection::{render_compost_md, render_substrate_md, run_maintenance, MaintenanceReport};
@@ -29,6 +30,10 @@ pub use sclerotia::{
 pub use selfspec::{
     dedupe_specs, ExecutabilityGap, InheritedContext, SelfSpec, SpecStore, SpecValidationError,
     TaskIdentity,
+};
+pub use spore::{
+    classify_adjacent_work, dedupe_spores, export_spore, AdjacentWorkNotice, GerminationCandidate,
+    InteropShape, Spore, SporeExport, SporeKind, SporeStore, SporeValidationError,
 };
 
 pub const CORE_CRATE_NAME: &str = "mycel-core";
@@ -1741,6 +1746,15 @@ const FULL_SCHEMA_SQL: &str = "
         created_at  INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_sclerotia_signature ON sclerotia(signature);
+    CREATE TABLE IF NOT EXISTS spores (
+        id          TEXT    PRIMARY KEY NOT NULL,
+        signature   TEXT    NOT NULL,
+        kind        TEXT    NOT NULL,
+        record_json TEXT    NOT NULL,
+        created_at  INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_spores_signature ON spores(signature);
+    CREATE INDEX IF NOT EXISTS idx_spores_kind ON spores(kind);
     PRAGMA user_version = 4;
 ";
 
