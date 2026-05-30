@@ -13,12 +13,16 @@ use uuid::Uuid;
 pub mod decay;
 pub mod projection;
 pub mod promptpressure;
+pub mod selfspec;
 
 pub use decay::{DecayEngine, DecayReport};
 pub use projection::{render_compost_md, render_substrate_md, run_maintenance, MaintenanceReport};
 pub use promptpressure::{
     PromptPressureImport, PromptPressureRecord, PromptPressureTier, TTL_PROBABLE, TTL_SPECULATIVE,
     TTL_VERIFIED,
+};
+pub use selfspec::{
+    dedupe_specs, InheritedContext, SelfSpec, SpecStore, SpecValidationError, TaskIdentity,
 };
 
 pub const CORE_CRATE_NAME: &str = "mycel-core";
@@ -45,6 +49,8 @@ pub enum MycelError {
     InvalidAuditPath(PathBuf),
     #[error("at least one signature field must be populated")]
     EmptySignature,
+    #[error("invalid spec: {0}")]
+    InvalidSpec(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1715,6 +1721,13 @@ const FULL_SCHEMA_SQL: &str = "
         payload TEXT    NOT NULL,
         ts      INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS specs (
+        id          TEXT    PRIMARY KEY NOT NULL,
+        signature   TEXT    NOT NULL,
+        spec_json   TEXT    NOT NULL,
+        created_at  INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_specs_signature ON specs(signature);
     PRAGMA user_version = 4;
 ";
 
