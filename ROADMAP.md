@@ -154,6 +154,8 @@ load-bearing assumptions:
 
 ## v0.4: sclerotia
 
+**state: shipped 2026-05-30.** `Sclerotium` dormant-work records built on the shared `TaskIdentity` primitive (blocker, attempted paths, next command, typed wake conditions, confidence-tagged inherited context); a closed, deterministically-evaluable `WakeCondition` vocabulary (time/file-exists/file-absent/dependency-resolved/signal-raised/manual) over a caller-supplied `WakeWorld`; `SclerotiumStore` persistence (additive `sclerotia` table, schema stays v4); and pure, antibody-gated, manual-confirm-only `evaluate_resume` (`NotWakeable`/`BlockedByAntibody`/`ReadyForManualResume`) that never auto-executes. metrics met: 36 wake-condition fixtures (≥30) with no mislabels, 14 records serialize/restore (≥10), every record references a canonical `TaskIdentity` signature, and resume is antibody-gated. independently reviewed (6-lens adversarial workflow): SPEC PASS / QUALITY APPROVED, no confirmed defects. **confidence: directional.**
+
 scope:
 
 - dormant work records built on self-spec schema.
