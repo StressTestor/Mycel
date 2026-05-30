@@ -118,6 +118,8 @@ load-bearing assumptions:
 
 ## v0.3: self-spec on death
 
+**state: shipped 2026-05-30.** shared `TaskIdentity` primitive (canonical signature, reused by v0.4/v0.5), `SelfSpec` schema with `validate()` (all-gaps-collected) and `dedupe_specs`, `SpecStore` persistence, plus an `is_executable()` self-sufficiency bar. manual death-spec path only — no auto-spawn. metrics met: 37 validation fixtures (≥30), 15 near-duplicate specs collapsed (≥15), every spec carries preconditions/success-criteria/inherited-context/refusal-risks, and a blind-reviewer pass found 11/12 specs executable without the transcript (≥10, see `docs/v0.3-blind-review-evidence.md`). **confidence: directional** (handoff quality proven on a small corpus by start-cold judgment, not execute-to-green).
+
 scope:
 
 - next-agent spec schema.
