@@ -308,7 +308,11 @@ fn generate_sentinel_jsonl(attacks: &[AttackFixture]) -> String {
         let timestamp = format!("2026-05-30T11:{:02}:00Z", i);
         let line = format!(
             r#"{{"timestamp":"{}","tool_name":"{}","action":"{}","reason":"{}","matched_rule":"{}","mode":"enforce"}}"#,
-            timestamp, attack.tool_name, attack.sentinel_action, attack.sentinel_reason, attack.matched_rule
+            timestamp,
+            attack.tool_name,
+            attack.sentinel_action,
+            attack.sentinel_reason,
+            attack.matched_rule
         );
         lines.push(line);
     }
@@ -373,9 +377,19 @@ fn shadow_run_naive_ingestion_shows_false_positive_explosion() {
     let fp_rate = false_positives as f64 / legit.len() as f64;
 
     eprintln!("\n=== SHADOW RUN: HARDENED INGESTION ===");
-    eprintln!("attacks caught: {}/{} ({:.1}%)", attack_caught, attacks.len(), attack_coverage * 100.0);
+    eprintln!(
+        "attacks caught: {}/{} ({:.1}%)",
+        attack_caught,
+        attacks.len(),
+        attack_coverage * 100.0
+    );
     eprintln!("attacks missed: {}", attack_missed);
-    eprintln!("false positives: {}/{} ({:.1}%)", false_positives, legit.len(), fp_rate * 100.0);
+    eprintln!(
+        "false positives: {}/{} ({:.1}%)",
+        false_positives,
+        legit.len(),
+        fp_rate * 100.0
+    );
     eprintln!("true negatives: {}", true_negatives);
     eprintln!("======================================\n");
 
@@ -538,7 +552,9 @@ fn shadow_run_curated_antibodies_show_better_precision() {
             expires_at: None,
             hit_count: 0,
         };
-        store.insert_antibody(&antibody).expect("insert curated antibody");
+        store
+            .insert_antibody(&antibody)
+            .expect("insert curated antibody");
     }
 
     let attacks = attack_fixtures();
@@ -575,8 +591,18 @@ fn shadow_run_curated_antibodies_show_better_precision() {
     let fp_rate = false_positives as f64 / legit.len() as f64;
 
     eprintln!("\n=== SHADOW RUN: CURATED ANTIBODIES ===");
-    eprintln!("attacks caught: {}/{} ({:.1}%)", attack_caught, attacks.len(), attack_coverage * 100.0);
-    eprintln!("false positives: {}/{} ({:.1}%)", false_positives, legit.len(), fp_rate * 100.0);
+    eprintln!(
+        "attacks caught: {}/{} ({:.1}%)",
+        attack_caught,
+        attacks.len(),
+        attack_coverage * 100.0
+    );
+    eprintln!(
+        "false positives: {}/{} ({:.1}%)",
+        false_positives,
+        legit.len(),
+        fp_rate * 100.0
+    );
     eprintln!("======================================\n");
 
     assert!(

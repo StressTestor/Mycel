@@ -495,8 +495,7 @@ impl AntibodyStore {
                 self.conn
                     .execute_batch("ALTER TABLE antibodies ADD COLUMN command_pattern TEXT;")?;
             }
-            self.conn
-                .execute_batch("PRAGMA user_version = 3;")?;
+            self.conn.execute_batch("PRAGMA user_version = 3;")?;
         }
         Ok(())
     }
@@ -586,7 +585,7 @@ impl SubstrateRuntime {
         }
 
         let line = format!("{}\n", serde_json::to_string(&event)?);
-        if self.should_rotate(line.as_bytes().len() as u64)? {
+        if self.should_rotate(line.len() as u64)? {
             self.rotate_audit_log()?;
         }
 
@@ -931,6 +930,7 @@ fn seed_v0_1_eval_fixtures(now: DateTime<Utc>) -> Vec<EvaluationFixture> {
     fixtures
 }
 
+#[allow(clippy::too_many_arguments)]
 fn push_repeated_fixture(
     fixtures: &mut Vec<EvaluationFixture>,
     prefix: &str,
