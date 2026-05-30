@@ -1,0 +1,22 @@
+{"description": "Refactor the projection renderer for clarity.", "origin": "note:scan-000", "confidence": "directional"}
+{"description": "Add a --json flag to mycel maintain", "origin": "note:scan-001"}
+{"description": "Cache the antibody corpus between evaluations", "origin": "note:scan-002"}
+{"description": "Add a dry-run flag to the decay engine", "origin": "note:scan-003", "confidence": "directional"}
+{"description": "Surface decay counts in the CLI output", "origin": "note:scan-004"}
+{"description": "Add retry logic to the JSONL loader", "origin": "note:scan-005"}
+{"description": "Document the audit_log event vocabulary", "origin": "note:scan-006", "confidence": "directional"}
+{"description": "Add a schema-version assertion test", "origin": "note:scan-007"}
+{"description": "Split the monolithic lib.rs into modules", "origin": "note:scan-008"}
+{"description": "Add property tests for canonicalize", "origin": "note:scan-009", "confidence": "directional"}
+{"description": "Expose a count() on SpecStore", "origin": "note:scan-010"}
+{"description": "Add a --since filter to list-runs", "origin": "note:scan-011"}
+{"description": "Compress the distilled_summary further", "origin": "note:scan-012", "confidence": "directional"}
+{"description": "Add a wake condition for git-branch-merged", "origin": "note:scan-013"}
+{"description": "Tag spores with a discovery timestamp", "origin": "note:scan-014"}
+{"description": "Add an export format for the kin layer", "origin": "note:scan-015", "confidence": "directional"}
+{"description": "Validate the next_command is non-destructive", "origin": "note:scan-016"}
+{"description": "Add a maintenance dry-run mode", "origin": "note:scan-017"}
+{"description": "Index the audit_log by event type", "origin": "note:scan-018", "confidence": "directional"}
+{"description": "Add a CLI command to classify notices", "origin": "note:scan-019"}
+{"description": "Write a migration test for version five", "origin": "note:scan-020"}
+{"description": "Add a confidence-decay-over-time rule", "origin": "note:scan-021", "confidence": "directional"}
