@@ -107,6 +107,13 @@ Volva-shedding uses Sentinel as the gate substrate. it stays post-v1, but the in
   `file_pattern` uses glob matching, and `command_pattern` uses substring matching.
 - substrate mutations append JSONL audit events immediately and debounce
   `SUBSTRATE.md` projection regeneration by 500ms.
+- ttl-tiered decay maintenance: solid records are retained, directional records
+  are distilled to a gist, vibes records decay to a tombstone, and `no_compost`
+  records are preserved regardless of tier.
+- handoff specs (self-spec) and dormant-work records (sclerotia) share one
+  `TaskIdentity` signature; dormant records become wakeable only when all typed
+  wake conditions are met, and resume only through antibody-gated, manual-confirm
+  evaluation — never auto-execution.
 
 Schema-driven adapters should reduce cross-language coupling. **confidence: directional. load-bearing.**
 
@@ -122,9 +129,13 @@ current tables:
 | `sentinel_audit_events` | ingested Sentinel JSONL `AuditEvent` records, preserving stable fields as typed columns and unstable fields as metadata |
 | `runs` | v0.2 substrate run records: kind, status, summary, confidence, TTL (`expires_at`), preservation flag (`no_compost`), decay state (`retained`/`distilled`/`decayed`), and `distilled_summary` gist |
 | `audit_log` | append-only structured event log; entries include `event` type (e.g. `decay`, `promptpressure_import`, `maintenance`) and a JSON payload |
+| `specs` | v0.3 self-spec handoff records stored as JSON with an indexed `signature` column |
+| `sclerotia` | v0.4 dormant-work records (blocker, attempted paths, next command, typed wake conditions) stored as JSON with an indexed `signature` column |
 
 SQLite `PRAGMA user_version` is the migration marker. version `4` creates the
-`runs` and `audit_log` tables in addition to the v3 schema.
+`runs` and `audit_log` tables in addition to the v3 schema. The `specs` (v0.3) and
+`sclerotia` (v0.4) tables are added additively to the same schema build, so they do
+not bump `user_version` past 4.
 
 Sentinel `matched_rule` parsing populates signature fields:
 - `deny.paths: X` or `allow.paths: X` → `file_pattern = X`
