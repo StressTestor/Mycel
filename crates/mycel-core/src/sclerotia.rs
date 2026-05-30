@@ -307,30 +307,55 @@ pub fn evaluate_resume(
         return Ok(ResumeDecision::NotWakeable);
     }
 
-    // Map next_command to a ProposedRun. First token is treated as tool_name.
-    let tool_name = s
-        .next_command
-        .split_whitespace()
-        .next()
-        .unwrap_or(&s.next_command)
-        .to_string();
-
-    let run = ProposedRun {
-        error_class: None,
-        file_path: None,
-        agent_role: None,
-        tool_name: Some(tool_name),
-        command: Some(s.next_command.clone()),
-        scope: SignatureScope::Project,
-    };
-
-    let evaluation = store.evaluate_run(&run, now)?;
-
-    if evaluation.outcome == EvaluationOutcome::Refuse {
-        Ok(ResumeDecision::BlockedByAntibody)
-    } else {
-        Ok(ResumeDecision::ReadyForManualResume)
+    // A compound command (e.g. `cd /tmp && rm -rf x`) hides its dangerous tool
+    // behind a leading benign one. Split on shell separators and evaluate EACH
+    // sub-command's leading token as a tool_name, so a `tool_pattern` antibody
+    // cannot be evaded by chaining. The full command is carried on every run so
+    // `command_pattern` (substring) antibodies still match the whole line.
+    for tool_name in resume_tool_names(&s.next_command) {
+        let run = ProposedRun {
+            error_class: None,
+            file_path: None,
+            agent_role: None,
+            tool_name: Some(tool_name),
+            command: Some(s.next_command.clone()),
+            scope: SignatureScope::Project,
+        };
+        if store.evaluate_run(&run, now)?.outcome == EvaluationOutcome::Refuse {
+            return Ok(ResumeDecision::BlockedByAntibody);
+        }
     }
+
+    Ok(ResumeDecision::ReadyForManualResume)
+}
+
+/// Extract the candidate tool names from a (possibly compound) command line.
+///
+/// Splits on shell control operators (`&&`, `||`, `;`, `|`) and returns the
+/// leading whitespace-separated token of each non-empty segment, deduplicated in
+/// first-seen order. A command with no recognised tool token falls back to the
+/// whole trimmed command so the antibody evaluator still sees something.
+pub(crate) fn resume_tool_names(command: &str) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for segment in command.split(['&', '|', ';']) {
+        let segment = segment.trim();
+        if segment.is_empty() {
+            continue;
+        }
+        if let Some(token) = segment.split_whitespace().next() {
+            let token = token.to_string();
+            if !names.contains(&token) {
+                names.push(token);
+            }
+        }
+    }
+    if names.is_empty() {
+        let trimmed = command.trim();
+        if !trimmed.is_empty() {
+            names.push(trimmed.to_string());
+        }
+    }
+    names
 }
 
 // ---------------------------------------------------------------------------
@@ -825,5 +850,43 @@ mod tests {
         let d3 = evaluate_resume(&s3, &world, &store, Utc::now()).unwrap();
         assert_eq!(d3, ResumeDecision::ReadyForManualResume);
         // ReadyForManualResume means a human must still confirm — no command ran.
+    }
+
+    #[test]
+    fn resume_tool_names_splits_compound_commands() {
+        assert_eq!(resume_tool_names("rm -rf /tmp/x"), vec!["rm"]);
+        assert_eq!(
+            resume_tool_names("cd /tmp && rm -rf x"),
+            vec!["cd", "rm"],
+            "every sub-command's leading token must be extracted"
+        );
+        assert_eq!(
+            resume_tool_names("cat f | grep x ; rm y"),
+            vec!["cat", "grep", "rm"]
+        );
+        // empty / separator-only input falls back to nothing meaningful.
+        assert!(resume_tool_names("   ").is_empty());
+        // a command with no separator and no whitespace is its own token.
+        assert_eq!(resume_tool_names("status"), vec!["status"]);
+    }
+
+    #[test]
+    fn evaluate_resume_blocks_compound_command_hiding_rm() {
+        // Regression: a refusing antibody on tool `rm` must NOT be evadable by
+        // chaining `rm` behind a benign leading command. Before the fix,
+        // tool_name was only the first token (`cd`), so the gate was bypassed.
+        let store = refusing_store(); // refuses tool_pattern "rm"
+        let mut s = wakeable_sclerotium("Clean up via a chained command");
+        s.next_command = "cd /tmp && rm -rf x".to_string();
+        let world = WakeWorld {
+            now: 1000,
+            ..Default::default()
+        };
+        let decision = evaluate_resume(&s, &world, &store, Utc::now()).expect("evaluate_resume");
+        assert_eq!(
+            decision,
+            ResumeDecision::BlockedByAntibody,
+            "compound command hiding `rm` behind `cd` must still be blocked"
+        );
     }
 }
