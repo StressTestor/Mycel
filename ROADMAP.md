@@ -189,6 +189,8 @@ load-bearing assumptions:
 
 ## v0.5: spore-based discovery
 
+**state: shipped 2026-05-30.** typed `Spore` manifest built on the shared `TaskIdentity` primitive, with `CompletedWork`/`AdjacentWork` kinds; `classify_adjacent_work` turns raw notices into typed candidate records; a dedup-on-write local catalog (`SporeStore`, additive `spores` table, schema stays v4) keyed on `(kind, signature)`; and inert interop export to the loss-matrix shapes — `MycelNative` lossless, `Hermes`/`OpenClaw`/`AgentSkills` lossy and declaring their dropped ecology fields with no `confidence` leakage. germination is candidate-only (`germinated` always false); nothing launches an agent. metrics met: 26 spores catalogued (≥25), 22 adjacent-work notices classified (≥20), 16 repeated spores deduped (≥15), 10 spores exported to the loss-matrix (≥10), zero germinations. independently reviewed (5-lens adversarial workflow): SPEC PASS / QUALITY APPROVED, no confirmed defects. **confidence: directional.**
+
 scope:
 
 - typed spore manifest.
