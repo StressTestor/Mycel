@@ -115,8 +115,14 @@ pub(crate) fn distill(summary: &str) -> String {
     if collapsed.len() <= DISTILL_MAX_CHARS {
         return collapsed;
     }
-    let truncated = &collapsed[..DISTILL_MAX_CHARS];
-    let cut = truncated.rfind(' ').unwrap_or(DISTILL_MAX_CHARS);
+    // Step back to the largest char boundary <= DISTILL_MAX_CHARS so a
+    // multibyte char straddling the limit never causes a mid-char slice panic.
+    let mut boundary = DISTILL_MAX_CHARS;
+    while boundary > 0 && !collapsed.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    let truncated = &collapsed[..boundary];
+    let cut = truncated.rfind(' ').unwrap_or(boundary);
     let mut result = collapsed[..cut].trim_end().to_string();
     result.push('…');
     result
@@ -191,6 +197,18 @@ mod tests {
     fn distill_collapses_whitespace() {
         let messy = "  hello   world  ";
         assert_eq!(distill(messy), "hello world");
+    }
+
+    #[test]
+    fn distill_does_not_panic_on_multibyte_char_at_boundary() {
+        // A multibyte char (é = 2 bytes) straddling byte index 80 must not
+        // cause a mid-char slice panic. Reachable via PromptPressure import of
+        // a non-ASCII summary that decays under the Directional tier.
+        let s = format!("{}é tail words here", "a".repeat(79));
+        let result = distill(&s); // must not panic
+        assert!(result.ends_with('…'));
+        // Result is still valid UTF-8 and shorter than the (long) input.
+        assert!(result.len() < s.len());
     }
 
     // ── migration test ───────────────────────────────────────────────────────
