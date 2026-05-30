@@ -169,6 +169,13 @@ the most permissive outcome still demands manual confirmation; all six lenses re
 
 ### open questions / gotchas
 - decay policy for stale dormant records is deferred (parallel-work item).
+- **compound-command hardening (closed):** `evaluate_resume` originally derived the antibody
+  `tool_name` from only the first token of `next_command`, so a chained command like
+  `cd /tmp && rm -rf x` evaluated as tool `cd` and slipped a `tool_pattern: "rm"` antibody.
+  Fixed in `01c842b`: `resume_tool_names` now splits on shell separators (`&` `|` `;`) and the
+  gate evaluates EVERY sub-command's leading token, blocking if any refuses (the full command
+  is still carried so `command_pattern` substring antibodies match too). Regression tests:
+  `resume_tool_names_splits_compound_commands`, `evaluate_resume_blocks_compound_command_hiding_rm`.
 - whether dormant state stays useful at scale without the transcript is proven on a small
   corpus only. confidence: **directional**.
 
@@ -236,7 +243,13 @@ module or its dependencies.
    no germination (v0.5) — each has an explicit asserting test.
 4. **Known cosmetic debt.** the `confidence → &str` helper is duplicated across five modules
    (macro-private `as_str`). Recommend hoisting one `pub fn label(self)` on `Confidence`.
-5. **Process note.** two long-running v0.4 implementation subagents hit socket timeouts on this
+5. **Cross-mechanism payoff is demonstrated, not just asserted.** `crates/mycel-tests/tests/cross_mechanism.rs`
+   (`shared_task_identity_threads_through_spec_sclerotium_and_spore`) writes a self-spec, a
+   sclerotium, and a spore — authored from three differently-cased/spaced descriptions — into one
+   database, then retrieves each by the single shared `TaskIdentity` signature via
+   `SpecStore`/`SclerotiumStore`/`SporeStore::get_by_signature` (the latter two added in `9f3b8e2`).
+   This is the end-to-end proof that the shared primitive actually cross-references the mechanisms.
+6. **Process note.** two long-running v0.4 implementation subagents hit socket timeouts on this
    repo; that work was completed in the main loop instead. No code was lost (incremental commits).
 
 nothing in v0.6+ was touched, per scope.
