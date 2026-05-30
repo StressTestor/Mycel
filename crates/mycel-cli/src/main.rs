@@ -1,15 +1,15 @@
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, io::BufRead, io::BufReader, path::PathBuf};
 
 use anyhow::Result;
 use chrono::Utc;
 use clap::{Parser, Subcommand};
-use mycel_core::{ProposedRun, SignatureScope};
+use mycel_core::{Db, PromptPressureRecord, ProposedRun, SignatureScope};
 use mycel_mcp::McpTools;
 use serde_json::json;
 
 #[derive(Debug, Parser)]
 #[command(name = "mycel")]
-#[command(about = "local Mycel v0.1 harness")]
+#[command(about = "local Mycel harness")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -37,6 +37,26 @@ enum Command {
     ListAntibodies {
         #[arg(long)]
         db: Option<PathBuf>,
+    },
+    /// Apply decay, regenerate SUBSTRATE.md and COMPOST.md, and append a maintenance audit event.
+    Maintain {
+        #[arg(long)]
+        db: PathBuf,
+        #[arg(long)]
+        workspace: PathBuf,
+        /// Unix timestamp for the maintenance cycle. Defaults to now.
+        #[arg(long)]
+        now: Option<i64>,
+    },
+    /// Import PromptPressure JSONL records into the run substrate.
+    ImportPromptpressure {
+        #[arg(long)]
+        db: PathBuf,
+        #[arg(long)]
+        jsonl: PathBuf,
+        /// Unix timestamp for the import. Defaults to now.
+        #[arg(long)]
+        now: Option<i64>,
     },
 }
 
@@ -82,6 +102,44 @@ fn main() -> Result<()> {
             println!(
                 "{}",
                 serde_json::to_string_pretty(&tools.list_antibodies()?)?
+            );
+        }
+        Command::Maintain { db, workspace, now } => {
+            let now_ts = now.unwrap_or_else(|| Utc::now().timestamp());
+            let substrate_db = Db::open(&db)?;
+            let report = mycel_core::run_maintenance(&substrate_db, &workspace, now_ts)?;
+            let decay = &report.decay;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "retained": decay.retained.len(),
+                    "distilled": decay.distilled.len(),
+                    "decayed": decay.decayed.len(),
+                    "preserved": decay.preserved.len(),
+                    "skipped_live": decay.skipped_live.len(),
+                    "substrate_path": report.substrate_path,
+                    "compost_path": report.compost_path,
+                }))?
+            );
+        }
+        Command::ImportPromptpressure { db, jsonl, now } => {
+            let now_ts = now.unwrap_or_else(|| Utc::now().timestamp());
+            let substrate_db = Db::open(&db)?;
+            let file = File::open(jsonl)?;
+            let mut records: Vec<PromptPressureRecord> = Vec::new();
+            for line in BufReader::new(file).lines() {
+                let line = line?;
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let record: PromptPressureRecord = serde_json::from_str(&line)?;
+                records.push(record);
+            }
+            let ids = mycel_core::PromptPressureImport::new(&substrate_db)
+                .import_batch(&records, now_ts)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({ "imported": ids.len() }))?
             );
         }
     }

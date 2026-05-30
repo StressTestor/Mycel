@@ -946,6 +946,7 @@ dependencies = [
  "mycel-mcp",
  "predicates",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

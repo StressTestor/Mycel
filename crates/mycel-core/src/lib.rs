@@ -11,9 +11,11 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub mod decay;
+pub mod projection;
 pub mod promptpressure;
 
 pub use decay::{DecayEngine, DecayReport};
+pub use projection::{render_compost_md, render_substrate_md, run_maintenance, MaintenanceReport};
 pub use promptpressure::{
     PromptPressureImport, PromptPressureRecord, PromptPressureTier, TTL_PROBABLE, TTL_SPECULATIVE,
     TTL_VERIFIED,

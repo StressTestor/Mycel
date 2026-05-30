@@ -120,10 +120,11 @@ current tables:
 | --- | --- |
 | `antibodies` | v0.1 fail-pattern immunity records, including signature fields, source, severity, confidence, refusal mode, remediation, examples, expiry, and hit count |
 | `sentinel_audit_events` | ingested Sentinel JSONL `AuditEvent` records, preserving stable fields as typed columns and unstable fields as metadata |
+| `runs` | v0.2 substrate run records: kind, status, summary, confidence, TTL (`expires_at`), preservation flag (`no_compost`), decay state (`retained`/`distilled`/`decayed`), and `distilled_summary` gist |
+| `audit_log` | append-only structured event log; entries include `event` type (e.g. `decay`, `promptpressure_import`, `maintenance`) and a JSON payload |
 
-SQLite `PRAGMA user_version` is the migration marker. version `3` creates the
-`antibodies` table with `command_pattern` column, indexes antibody `tool_pattern`
-and `scope`, and indexes Sentinel `matched_rule` for source-event lineage queries.
+SQLite `PRAGMA user_version` is the migration marker. version `4` creates the
+`runs` and `audit_log` tables in addition to the v3 schema.
 
 Sentinel `matched_rule` parsing populates signature fields:
 - `deny.paths: X` or `allow.paths: X` → `file_pattern = X`
@@ -142,6 +143,16 @@ and schedules `SUBSTRATE.md` regeneration for 500ms after the latest mutation.
 `SUBSTRATE.md` carries a generated-file header that says it is projection-only
 and not an input surface. audit logs rotate from `name.jsonl` to `name.1.jsonl`
 when the configured size limit would be exceeded by the next event.
+
+`mycel maintain` runs a full decay cycle and regenerates two workspace files:
+
+| file | content |
+| --- | --- |
+| `SUBSTRATE.md` | live / retained / preserved runs (active substrate) |
+| `COMPOST.md` | distilled runs (gist kept) + decayed runs (tombstone only) |
+
+both files are deterministic projections (stable sort by `(created_at, id)`, no generation
+timestamp in body). see ADR 0011.
 
 ## eval harness
 
@@ -191,8 +202,13 @@ current useful commands:
 cargo build --workspace
 cargo test --workspace
 cargo fmt -p mycel-core -p mycel-mcp -p mycel-cli -p mycel-tests
-cargo clippy --workspace -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 mycel harness
+mycel ingest --jsonl <path>
+mycel evaluate --tool-name <name>
+mycel list-antibodies
+mycel import-promptpressure --db <path> --jsonl <path> [--now <ts>]
+mycel maintain --db <path> --workspace <dir> [--now <ts>]
 git status --short
 git log --oneline
 ```
