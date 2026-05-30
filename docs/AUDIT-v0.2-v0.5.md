@@ -35,7 +35,7 @@ v0.4 `sclerotia`, v0.5 `spores`) is added to `FULL_SCHEMA_SQL` as idempotent
 | v0.2 decay-pruned context | `77111e6` engine+fixtures · `2edc64b` ADRs 0008/0009+plan · `3ca9e96` PromptPressure import · `8f7cc61` projections+maintenance · `c163ccc` distill multibyte fix · `cf64321` roadmap shipped |
 | v0.3 self-spec on death | `b6997fa` schema/validation/dedupe · `674e9de` executability bar+corpus · `a48fd7e` roadmap shipped + blind-review evidence |
 | v0.4 sclerotia | `ae1f5a9` core module · `eb799ba` fixtures+harness · `50ba99d` ADRs 0015/0016+architecture · `44413e7` roadmap shipped |
-| v0.5 spore-based discovery | `e959b98` core module · `babe120` fixtures+harness · `122d48f` ADRs 0017/0018+architecture · `9c66c66` roadmap shipped |
+| v0.5 spore-based discovery | `e959b98` core module · `babe120` fixtures+harness · `122d48f` ADRs 0017/0018+architecture · `9bbccac` roadmap shipped |
 
 ADRs: `docs/adr/0008-time-injection.md` … `0018-spore-catalog-and-export.md`.
 
