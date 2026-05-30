@@ -51,7 +51,10 @@ fn sentinel_jsonl_ingestion_normalizes_ten_events_to_candidates() {
         Some("shell")
     );
     assert_eq!(first.antibody.signature.error_class, None);
-    assert_eq!(first.antibody.signature.file_pattern, None);
+    assert_eq!(
+        first.antibody.signature.file_pattern.as_deref(),
+        Some("~/.ssh/*")
+    );
     assert_eq!(first.antibody.signature.agent_role, None);
     assert_eq!(first.antibody.signature.scope, SignatureScope::Project);
 }

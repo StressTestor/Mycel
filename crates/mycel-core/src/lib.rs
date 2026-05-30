@@ -5,6 +5,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
+use regex::Regex;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -55,8 +56,8 @@ pub struct Signature {
     pub error_class: Option<String>,
     pub file_pattern: Option<String>,
     pub agent_role: Option<String>,
-    /// Sentinel-derived antibodies populate only `tool_pattern` in v0.1.
     pub tool_pattern: Option<String>,
+    pub command_pattern: Option<String>,
     pub scope: SignatureScope,
 }
 
@@ -66,14 +67,16 @@ impl Signature {
             || self.file_pattern.is_some()
             || self.agent_role.is_some()
             || self.tool_pattern.is_some()
+            || self.command_pattern.is_some()
     }
 
     fn matches(&self, run: &ProposedRun) -> bool {
         self.scope == run.scope
             && field_matches(&self.error_class, &run.error_class)
-            && field_matches(&self.file_pattern, &run.file_path)
+            && glob_field_matches(&self.file_pattern, &run.file_path)
             && field_matches(&self.agent_role, &run.agent_role)
             && field_matches(&self.tool_pattern, &run.tool_name)
+            && command_matches(&self.command_pattern, &run.command)
     }
 }
 
@@ -83,6 +86,7 @@ pub struct ProposedRun {
     pub file_path: Option<String>,
     pub agent_role: Option<String>,
     pub tool_name: Option<String>,
+    pub command: Option<String>,
     pub scope: SignatureScope,
 }
 
@@ -250,16 +254,17 @@ impl AntibodyStore {
         validate_signature(&antibody.signature)?;
         self.conn.execute(
             "INSERT INTO antibodies (
-                id, error_class, file_pattern, agent_role, tool_pattern, scope,
+                id, error_class, file_pattern, agent_role, tool_pattern, command_pattern, scope,
                 source, severity, confidence, refusal_mode, remediation,
                 examples_json, created_at, expires_at, hit_count
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![
                 antibody.id.to_string(),
                 antibody.signature.error_class,
                 antibody.signature.file_pattern,
                 antibody.signature.agent_role,
                 antibody.signature.tool_pattern,
+                antibody.signature.command_pattern,
                 antibody.signature.scope.as_str(),
                 antibody.source.as_str(),
                 antibody.severity.as_str(),
@@ -280,7 +285,7 @@ impl AntibodyStore {
             .conn
             .query_row(
                 "SELECT
-                    id, error_class, file_pattern, agent_role, tool_pattern, scope,
+                    id, error_class, file_pattern, agent_role, tool_pattern, command_pattern, scope,
                     source, severity, confidence, refusal_mode, remediation,
                     examples_json, created_at, expires_at, hit_count
                 FROM antibodies
@@ -294,7 +299,7 @@ impl AntibodyStore {
     pub fn list_antibodies(&self) -> Result<Vec<Antibody>> {
         let mut stmt = self.conn.prepare(
             "SELECT
-                id, error_class, file_pattern, agent_role, tool_pattern, scope,
+                id, error_class, file_pattern, agent_role, tool_pattern, command_pattern, scope,
                 source, severity, confidence, refusal_mode, remediation,
                 examples_json, created_at, expires_at, hit_count
             FROM antibodies
@@ -312,16 +317,17 @@ impl AntibodyStore {
                 file_pattern = ?3,
                 agent_role = ?4,
                 tool_pattern = ?5,
-                scope = ?6,
-                source = ?7,
-                severity = ?8,
-                confidence = ?9,
-                refusal_mode = ?10,
-                remediation = ?11,
-                examples_json = ?12,
-                created_at = ?13,
-                expires_at = ?14,
-                hit_count = ?15
+                command_pattern = ?6,
+                scope = ?7,
+                source = ?8,
+                severity = ?9,
+                confidence = ?10,
+                refusal_mode = ?11,
+                remediation = ?12,
+                examples_json = ?13,
+                created_at = ?14,
+                expires_at = ?15,
+                hit_count = ?16
             WHERE id = ?1",
             params![
                 antibody.id.to_string(),
@@ -329,6 +335,7 @@ impl AntibodyStore {
                 antibody.signature.file_pattern,
                 antibody.signature.agent_role,
                 antibody.signature.tool_pattern,
+                antibody.signature.command_pattern,
                 antibody.signature.scope.as_str(),
                 antibody.source.as_str(),
                 antibody.severity.as_str(),
@@ -442,6 +449,7 @@ impl AntibodyStore {
                 file_pattern TEXT,
                 agent_role TEXT,
                 tool_pattern TEXT,
+                command_pattern TEXT,
                 scope TEXT NOT NULL,
                 source TEXT NOT NULL,
                 severity TEXT NOT NULL,
@@ -469,8 +477,27 @@ impl AntibodyStore {
             );
             CREATE INDEX IF NOT EXISTS idx_sentinel_audit_events_matched_rule
                 ON sentinel_audit_events(matched_rule);
-            PRAGMA user_version = 2;",
+            PRAGMA user_version = 3;",
         )?;
+        let version: u32 = self
+            .conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version < 3 {
+            let has_command_pattern: bool = self
+                .conn
+                .prepare("PRAGMA table_info(antibodies)")?
+                .query_map([], |row| {
+                    let name: String = row.get(1)?;
+                    Ok(name == "command_pattern")
+                })?
+                .any(|r| r.unwrap_or(false));
+            if !has_command_pattern {
+                self.conn
+                    .execute_batch("ALTER TABLE antibodies ADD COLUMN command_pattern TEXT;")?;
+            }
+            self.conn
+                .execute_batch("PRAGMA user_version = 3;")?;
+        }
         Ok(())
     }
 
@@ -824,6 +851,7 @@ fn harness_antibody(
             file_pattern: None,
             agent_role: None,
             tool_pattern: tool_pattern.map(str::to_string),
+            command_pattern: None,
             scope: SignatureScope::Project,
         },
         source: AntibodySource::Manual,
@@ -933,6 +961,7 @@ fn harness_run(tool_name: &str, error_class: Option<&str>) -> ProposedRun {
         file_path: None,
         agent_role: None,
         tool_name: Some(tool_name.to_string()),
+        command: None,
         scope: SignatureScope::Project,
     }
 }
@@ -1033,6 +1062,9 @@ impl SentinelAuditEvent {
             .take(1)
             .collect::<Vec<_>>();
 
+        let (parsed_error_class, parsed_file_pattern, parsed_command_pattern) =
+            parse_matched_rule(self.matched_rule.as_deref());
+
         SentinelAntibodyCandidate {
             source: SentinelSource {
                 event_id: self.id,
@@ -1048,10 +1080,11 @@ impl SentinelAuditEvent {
             antibody: Antibody {
                 id: Uuid::new_v4(),
                 signature: Signature {
-                    error_class: None,
-                    file_pattern: None,
+                    error_class: parsed_error_class,
+                    file_pattern: parsed_file_pattern,
                     agent_role: None,
                     tool_pattern: Some(self.tool_name),
+                    command_pattern: parsed_command_pattern,
                     scope: SignatureScope::Project,
                 },
                 source: AntibodySource::SentinelBlock,
@@ -1068,17 +1101,35 @@ impl SentinelAuditEvent {
     }
 }
 
+fn parse_matched_rule(
+    matched_rule: Option<&str>,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let Some(rule) = matched_rule else {
+        return (None, None, None);
+    };
+    let Some((prefix, value)) = rule.split_once(": ") else {
+        return (None, None, None);
+    };
+    let value = value.to_string();
+    match prefix {
+        "deny.paths" | "allow.paths" => (None, Some(value), None),
+        "deny.commands" | "allow.commands" | "warn.commands" => (None, None, Some(value)),
+        "deny.secrets" | "warn.secrets" => (Some(value), None, None),
+        _ => (None, None, None),
+    }
+}
+
 fn antibody_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Antibody> {
     let id: String = row.get(0)?;
-    let scope: String = row.get(5)?;
-    let source: String = row.get(6)?;
-    let severity: String = row.get(7)?;
-    let confidence: String = row.get(8)?;
-    let refusal_mode: String = row.get(9)?;
-    let examples_json: String = row.get(11)?;
-    let created_at: String = row.get(12)?;
-    let expires_at: Option<String> = row.get(13)?;
-    let hit_count: u32 = row.get(14)?;
+    let scope: String = row.get(6)?;
+    let source: String = row.get(7)?;
+    let severity: String = row.get(8)?;
+    let confidence: String = row.get(9)?;
+    let refusal_mode: String = row.get(10)?;
+    let examples_json: String = row.get(12)?;
+    let created_at: String = row.get(13)?;
+    let expires_at: Option<String> = row.get(14)?;
+    let hit_count: u32 = row.get(15)?;
 
     Ok(Antibody {
         id: parse_uuid(&id)?,
@@ -1087,13 +1138,14 @@ fn antibody_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Antibody> {
             file_pattern: row.get(2)?,
             agent_role: row.get(3)?,
             tool_pattern: row.get(4)?,
+            command_pattern: row.get(5)?,
             scope: SignatureScope::parse(&scope)?,
         },
         source: AntibodySource::parse(&source)?,
         severity: Severity::parse(&severity)?,
         confidence: Confidence::parse(&confidence)?,
         refusal_mode: RefusalMode::parse(&refusal_mode)?,
-        remediation: row.get(10)?,
+        remediation: row.get(11)?,
         examples: parse_examples(&examples_json)?,
         created_at: parse_datetime(&created_at)?,
         expires_at: parse_optional_datetime(expires_at)?,
@@ -1137,6 +1189,80 @@ fn field_matches(signature_value: &Option<String>, run_value: &Option<String>) -
         Some(expected) => run_value.as_ref() == Some(expected),
         None => true,
     }
+}
+
+fn glob_field_matches(signature_value: &Option<String>, run_value: &Option<String>) -> bool {
+    match signature_value {
+        Some(pattern) => match run_value {
+            Some(value) => glob_matches(pattern, value),
+            None => false,
+        },
+        None => true,
+    }
+}
+
+fn command_matches(signature_value: &Option<String>, run_value: &Option<String>) -> bool {
+    match signature_value {
+        Some(pattern) => match run_value {
+            Some(value) => value.contains(pattern.as_str()),
+            None => false,
+        },
+        None => true,
+    }
+}
+
+fn glob_matches(pattern: &str, value: &str) -> bool {
+    if !pattern.contains('*') && !pattern.contains('?') {
+        return value == pattern;
+    }
+    let regex_str = glob_to_regex(pattern);
+    match Regex::new(&regex_str) {
+        Ok(re) => re.is_match(value),
+        Err(_) => value == pattern,
+    }
+}
+
+fn glob_to_regex(pattern: &str) -> String {
+    let mut regex = String::from("^");
+    let chars: Vec<char> = pattern.chars().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        match chars[i] {
+            '*' => {
+                if i + 1 < chars.len() && chars[i + 1] == '*' {
+                    regex.push_str(".*");
+                    i += 2;
+                    if i < chars.len() && chars[i] == '/' {
+                        i += 1;
+                    }
+                } else {
+                    regex.push_str("[^/]*");
+                    i += 1;
+                }
+            }
+            '?' => {
+                regex.push_str("[^/]");
+                i += 1;
+            }
+            '.' => {
+                regex.push_str("\\.");
+                i += 1;
+            }
+            '(' | ')' | '[' | ']' | '{' | '}' | '+' | '^' | '$' | '|' | '\\' => {
+                regex.push('\\');
+                regex.push(chars[i]);
+                i += 1;
+            }
+            c => {
+                regex.push(c);
+                i += 1;
+            }
+        }
+    }
+
+    regex.push('$');
+    regex
 }
 
 fn parse_uuid(value: &str) -> rusqlite::Result<Uuid> {
@@ -1195,14 +1321,15 @@ fn render_substrate_projection(antibodies: &[Antibody]) -> String {
         return output;
     }
 
-    output.push_str("| id | scope | tool | severity | refusal mode | remediation |\n");
-    output.push_str("| --- | --- | --- | --- | --- | --- |\n");
+    output.push_str("| id | scope | tool | command | severity | refusal mode | remediation |\n");
+    output.push_str("| --- | --- | --- | --- | --- | --- | --- |\n");
     for antibody in antibodies {
         output.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {} |\n",
+            "| {} | {} | {} | {} | {} | {} | {} |\n",
             antibody.id,
             antibody.signature.scope.as_str(),
             projection_value(&antibody.signature.tool_pattern),
+            projection_value(&antibody.signature.command_pattern),
             antibody.severity.as_str(),
             antibody.refusal_mode.as_str(),
             escape_projection_cell(&antibody.remediation),

@@ -41,6 +41,7 @@ fn antibody_round_trips_through_sqlite() {
         file_pattern: Some("crates/mycel-core/src/lib.rs".to_string()),
         agent_role: Some("builder".to_string()),
         tool_pattern: Some("cargo".to_string()),
+        command_pattern: None,
         scope: SignatureScope::Project,
     });
     saved.expires_at = Some(Utc::now() + Duration::days(7));
@@ -62,6 +63,7 @@ fn antibody_can_be_updated_and_deleted() {
         file_pattern: None,
         agent_role: None,
         tool_pattern: Some("shell".to_string()),
+        command_pattern: None,
         scope: SignatureScope::Project,
     });
     store.insert_antibody(&saved).expect("insert antibody");
@@ -94,6 +96,7 @@ fn populated_signature_fields_are_and_matched_and_empty_fields_are_wildcards() {
         file_pattern: None,
         agent_role: None,
         tool_pattern: Some("cargo".to_string()),
+        command_pattern: None,
         scope: SignatureScope::Project,
     });
     let narrow = antibody(Signature {
@@ -101,6 +104,7 @@ fn populated_signature_fields_are_and_matched_and_empty_fields_are_wildcards() {
         file_pattern: Some("crates/mycel-core/src/lib.rs".to_string()),
         agent_role: Some("builder".to_string()),
         tool_pattern: Some("cargo".to_string()),
+        command_pattern: None,
         scope: SignatureScope::Project,
     });
     let other_tool = antibody(Signature {
@@ -108,6 +112,7 @@ fn populated_signature_fields_are_and_matched_and_empty_fields_are_wildcards() {
         file_pattern: None,
         agent_role: None,
         tool_pattern: Some("git".to_string()),
+        command_pattern: None,
         scope: SignatureScope::Project,
     });
     store.insert_antibody(&broad).expect("insert broad");
@@ -120,6 +125,7 @@ fn populated_signature_fields_are_and_matched_and_empty_fields_are_wildcards() {
             file_path: Some("crates/mycel-core/src/lib.rs".to_string()),
             agent_role: Some("builder".to_string()),
             tool_name: Some("cargo".to_string()),
+            command: None,
             scope: SignatureScope::Project,
         })
         .expect("matching antibodies");
@@ -138,6 +144,7 @@ fn empty_signatures_are_rejected() {
         file_pattern: None,
         agent_role: None,
         tool_pattern: None,
+        command_pattern: None,
         scope: SignatureScope::Project,
     });
 

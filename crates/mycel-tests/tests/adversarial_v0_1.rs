@@ -46,6 +46,7 @@ fn signature(
         file_pattern: file_pattern.map(str::to_string),
         agent_role: agent_role.map(str::to_string),
         tool_pattern: tool_pattern.map(str::to_string),
+        command_pattern: None,
         scope: SignatureScope::Project,
     }
 }
@@ -61,6 +62,7 @@ fn run(
         file_path: file_path.map(str::to_string),
         agent_role: agent_role.map(str::to_string),
         tool_name: tool_name.map(str::to_string),
+        command: None,
         scope: SignatureScope::Project,
     }
 }

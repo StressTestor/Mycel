@@ -25,6 +25,7 @@ fn antibody(
             file_pattern: None,
             agent_role: None,
             tool_pattern: tool_pattern.map(str::to_string),
+            command_pattern: None,
             scope: SignatureScope::Project,
         },
         source: AntibodySource::Manual,
@@ -45,6 +46,7 @@ fn run(tool_name: &str, error_class: Option<&str>) -> ProposedRun {
         file_path: None,
         agent_role: None,
         tool_name: Some(tool_name.to_string()),
+        command: None,
         scope: SignatureScope::Project,
     }
 }

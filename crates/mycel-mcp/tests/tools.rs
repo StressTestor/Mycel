@@ -26,9 +26,10 @@ fn mcp_tools_expose_ingest_evaluate_and_list_antibodies() {
         .evaluate(
             &ProposedRun {
                 error_class: None,
-                file_path: None,
+                file_path: Some("~/.ssh/id_rsa".to_string()),
                 agent_role: None,
                 tool_name: Some("shell".to_string()),
+                command: None,
                 scope: SignatureScope::Project,
             },
             now,

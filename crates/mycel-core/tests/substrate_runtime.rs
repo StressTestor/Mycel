@@ -13,6 +13,7 @@ fn antibody(tool: &str, remediation: &str) -> Antibody {
             file_pattern: None,
             agent_role: None,
             tool_pattern: Some(tool.to_string()),
+            command_pattern: None,
             scope: SignatureScope::Project,
         },
         source: AntibodySource::Manual,

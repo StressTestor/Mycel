@@ -103,7 +103,8 @@ Volva-shedding uses Sentinel as the gate substrate. it stays post-v1, but the in
 - generated human-readable workspace projections.
 - always-on runtime defense through shared Sentinel gates.
 - deterministic antibody evaluation: populated signature fields are AND matches,
-  empty signature fields are wildcards, and expired antibodies do not gate runs.
+  empty signature fields are wildcards, expired antibodies do not gate runs,
+  `file_pattern` uses glob matching, and `command_pattern` uses substring matching.
 - substrate mutations append JSONL audit events immediately and debounce
   `SUBSTRATE.md` projection regeneration by 500ms.
 
@@ -120,9 +121,17 @@ current tables:
 | `antibodies` | v0.1 fail-pattern immunity records, including signature fields, source, severity, confidence, refusal mode, remediation, examples, expiry, and hit count |
 | `sentinel_audit_events` | ingested Sentinel JSONL `AuditEvent` records, preserving stable fields as typed columns and unstable fields as metadata |
 
-SQLite `PRAGMA user_version` is the migration marker. version `2` creates the
-`antibodies` table, indexes antibody `tool_pattern` and `scope`, and indexes
-Sentinel `matched_rule` for source-event lineage queries.
+SQLite `PRAGMA user_version` is the migration marker. version `3` creates the
+`antibodies` table with `command_pattern` column, indexes antibody `tool_pattern`
+and `scope`, and indexes Sentinel `matched_rule` for source-event lineage queries.
+
+Sentinel `matched_rule` parsing populates signature fields:
+- `deny.paths: X` or `allow.paths: X` → `file_pattern = X`
+- `deny.commands: X` or `allow.commands: X` → `command_pattern = X`
+- `deny.secrets: X` → `error_class = X`
+
+Signature matching uses glob patterns for `file_pattern` (supports `*`, `**`, `?`)
+and substring matching for `command_pattern`.
 
 ## projections and audit
 
@@ -190,4 +199,4 @@ implementation commands do not exist yet.
 
 ## last updated
 
-2026-05-28
+2026-05-30

@@ -70,6 +70,7 @@ fn main() -> Result<()> {
                     file_path: None,
                     agent_role: None,
                     tool_name: Some(tool_name),
+                    command: None,
                     scope: parse_scope(&scope),
                 },
                 Utc::now(),

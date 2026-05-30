@@ -53,6 +53,32 @@ load-bearing assumptions:
 - antibody signatures can be specific enough to catch repeats without blocking too much adjacent work. **confidence: directional. load-bearing.**
 - refusal, warning, and allow outcomes are enough for v0.1 policy. **confidence: directional. load-bearing.**
 
+## v0.1.1: sentinel integration hardening
+
+scope:
+
+- glob matching on `file_pattern` (supports `*`, `**`, `?`).
+- `command_pattern` signature field with substring matching.
+- Sentinel `matched_rule` parsing to populate correct signature fields.
+- schema migration to version 3.
+
+success metrics:
+
+- hardened Sentinel ingestion achieves under 30 percent false positive rate on legitimate tool calls.
+- curated antibodies with glob and command patterns achieve at least 60 percent attack coverage.
+- all v0.1 tests continue to pass.
+
+rollback or pivot:
+
+- if glob matching introduces unexpected false positives on legitimate paths, revert to exact matching and defer glob support to v0.2.
+
+size: **s**. the matching logic is narrow and the schema migration is additive.
+
+load-bearing assumptions:
+
+- glob patterns from Sentinel rules are specific enough to avoid over-matching. **confidence: solid. shadow-run verified 2026-05-30.**
+- substring matching on commands catches attack patterns without blocking legitimate shell usage. **confidence: solid. shadow-run verified 2026-05-30.**
+
 ## v0.2: decay-pruned context
 
 scope:
