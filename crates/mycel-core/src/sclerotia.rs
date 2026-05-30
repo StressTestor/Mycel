@@ -253,6 +253,21 @@ impl<'a> SclerotiumStore<'a> {
         Ok(records)
     }
 
+    /// Return all dormant records sharing a task signature, ordered by
+    /// `(created_at, id)`. Enables cross-mechanism lookup by the shared
+    /// `TaskIdentity` signature (ADR 0012).
+    pub fn get_by_signature(&self, signature: &str) -> crate::Result<Vec<Sclerotium>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT record_json FROM sclerotia WHERE signature = ?1 ORDER BY created_at, id",
+        )?;
+        let rows = stmt.query_map(params![signature], |row| row.get::<_, String>(0))?;
+        let mut records = Vec::new();
+        for row in rows {
+            records.push(serde_json::from_str(&row?).map_err(crate::to_sql_error)?);
+        }
+        Ok(records)
+    }
+
     /// Return all sclerotia that are currently wakeable in the given world.
     ///
     /// Deserializes each record and filters by `is_wakeable(world)`.

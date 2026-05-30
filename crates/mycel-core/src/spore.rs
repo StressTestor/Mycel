@@ -403,6 +403,21 @@ impl<'a> SporeStore<'a> {
         Ok(spores)
     }
 
+    /// Return all catalogued spores sharing a task signature, ordered by
+    /// `(created_at, id)`. Enables cross-mechanism lookup by the shared
+    /// `TaskIdentity` signature (ADR 0012).
+    pub fn get_by_signature(&self, signature: &str) -> crate::Result<Vec<Spore>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT record_json FROM spores WHERE signature = ?1 ORDER BY created_at, id",
+        )?;
+        let rows = stmt.query_map(params![signature], |row| row.get::<_, String>(0))?;
+        let mut spores = Vec::new();
+        for row in rows {
+            spores.push(serde_json::from_str(&row?).map_err(crate::to_sql_error)?);
+        }
+        Ok(spores)
+    }
+
     /// Count catalogued spores.
     pub fn count(&self) -> crate::Result<usize> {
         let n: i64 = self
