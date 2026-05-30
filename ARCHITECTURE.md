@@ -114,6 +114,10 @@ Volva-shedding uses Sentinel as the gate substrate. it stays post-v1, but the in
   `TaskIdentity` signature; dormant records become wakeable only when all typed
   wake conditions are met, and resume only through antibody-gated, manual-confirm
   evaluation — never auto-execution.
+- work-discovery spores (completed-work / adjacent-work) reuse the same
+  `TaskIdentity` signature, are catalogued dedup-on-write, and export to the
+  interop loss-matrix shapes as inert metadata that declares its dropped ecology
+  fields; v0.5 produces germination candidates only and never launches an agent.
 
 Schema-driven adapters should reduce cross-language coupling. **confidence: directional. load-bearing.**
 
@@ -131,11 +135,12 @@ current tables:
 | `audit_log` | append-only structured event log; entries include `event` type (e.g. `decay`, `promptpressure_import`, `maintenance`) and a JSON payload |
 | `specs` | v0.3 self-spec handoff records stored as JSON with an indexed `signature` column |
 | `sclerotia` | v0.4 dormant-work records (blocker, attempted paths, next command, typed wake conditions) stored as JSON with an indexed `signature` column |
+| `spores` | v0.5 work-discovery manifests (completed-work / adjacent-work) stored as JSON with indexed `signature` and `kind` columns |
 
 SQLite `PRAGMA user_version` is the migration marker. version `4` creates the
-`runs` and `audit_log` tables in addition to the v3 schema. The `specs` (v0.3) and
-`sclerotia` (v0.4) tables are added additively to the same schema build, so they do
-not bump `user_version` past 4.
+`runs` and `audit_log` tables in addition to the v3 schema. The `specs` (v0.3),
+`sclerotia` (v0.4), and `spores` (v0.5) tables are added additively to the same schema
+build, so they do not bump `user_version` past 4.
 
 Sentinel `matched_rule` parsing populates signature fields:
 - `deny.paths: X` or `allow.paths: X` → `file_pattern = X`
