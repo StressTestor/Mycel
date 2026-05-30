@@ -10,6 +10,10 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub mod decay;
+
+pub use decay::{DecayEngine, DecayReport};
+
 pub const CORE_CRATE_NAME: &str = "mycel-core";
 
 pub type Result<T> = std::result::Result<T, MycelError>;
@@ -477,7 +481,24 @@ impl AntibodyStore {
             );
             CREATE INDEX IF NOT EXISTS idx_sentinel_audit_events_matched_rule
                 ON sentinel_audit_events(matched_rule);
-            PRAGMA user_version = 3;",
+            CREATE TABLE IF NOT EXISTS runs (
+                id TEXT PRIMARY KEY NOT NULL,
+                kind TEXT NOT NULL,
+                status TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                confidence TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                -- expires_at: absolute unix timestamp when this record's ttl expires; NULL means no ttl.
+                expires_at INTEGER,
+                -- no_compost: 0/1 boolean. when 1, maintenance preserves this record regardless of confidence/ttl.
+                no_compost INTEGER NOT NULL DEFAULT 0,
+                -- decay_state: NULL = live/unprocessed; 'retained'|'distilled'|'decayed' after a maintenance pass.
+                decay_state TEXT,
+                -- decayed_at: unix timestamp when a maintenance pass acted on this record; NULL otherwise.
+                decayed_at INTEGER,
+                -- distilled_summary: compressed gist set when a record is distilled; NULL otherwise.
+                distilled_summary TEXT
+            );",
         )?;
         let version: u32 = self
             .conn
@@ -496,6 +517,30 @@ impl AntibodyStore {
                     .execute_batch("ALTER TABLE antibodies ADD COLUMN command_pattern TEXT;")?;
             }
             self.conn.execute_batch("PRAGMA user_version = 3;")?;
+        }
+        if version < 4 {
+            // v3 -> v4: add decay columns to runs table.
+            // The runs table is brand-new in v4, created with all columns above via CREATE TABLE IF
+            // NOT EXISTS. On a fresh DB the table already has the columns, so these ALTERs are
+            // skipped. On a pre-release DB that had runs without decay columns, they would be added.
+            let has_expires_at: bool = self
+                .conn
+                .prepare("PRAGMA table_info(runs)")?
+                .query_map([], |row| {
+                    let name: String = row.get(1)?;
+                    Ok(name == "expires_at")
+                })?
+                .any(|r| r.unwrap_or(false));
+            if !has_expires_at {
+                self.conn.execute_batch(
+                    "ALTER TABLE runs ADD COLUMN expires_at INTEGER;
+                     ALTER TABLE runs ADD COLUMN no_compost INTEGER NOT NULL DEFAULT 0;
+                     ALTER TABLE runs ADD COLUMN decay_state TEXT;
+                     ALTER TABLE runs ADD COLUMN decayed_at INTEGER;
+                     ALTER TABLE runs ADD COLUMN distilled_summary TEXT;",
+                )?;
+            }
+            self.conn.execute_batch("PRAGMA user_version = 4;")?;
         }
         Ok(())
     }
@@ -1285,7 +1330,9 @@ fn parse_optional_datetime(value: Option<String>) -> rusqlite::Result<Option<Dat
     value.as_deref().map(parse_datetime).transpose()
 }
 
-fn to_sql_error(error: impl std::error::Error + Send + Sync + 'static) -> rusqlite::Error {
+pub(crate) fn to_sql_error(
+    error: impl std::error::Error + Send + Sync + 'static,
+) -> rusqlite::Error {
     rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(error))
 }
 
@@ -1450,5 +1497,448 @@ impl SentinelAction {
             Self::Warn => RefusalMode::Soft,
             Self::Allow => RefusalMode::LogOnly,
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Substrate: runs table (v0.2 decay-pruned context)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunKind {
+    // canonical variants (spec v0.2)
+    Observation,
+    Mutation,
+    // kept for schema compat / migration
+    Task,
+    Eval,
+    Maintenance,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunStatus {
+    // canonical variants (spec v0.2)
+    Applied,
+    Reverted,
+    // kept for schema compat / migration
+    Running,
+    Done,
+    Failed,
+}
+
+/// Typed representation of the `decay_state` column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DecayState {
+    Retained,
+    Distilled,
+    Decayed,
+}
+
+impl DecayState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Retained => "retained",
+            Self::Distilled => "distilled",
+            Self::Decayed => "decayed",
+        }
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "retained" => Some(Self::Retained),
+            "distilled" => Some(Self::Distilled),
+            "decayed" => Some(Self::Decayed),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Run {
+    pub id: String,
+    pub kind: RunKind,
+    pub status: RunStatus,
+    pub summary: String,
+    pub confidence: Confidence,
+    pub created_at: i64,
+    /// Absolute unix timestamp when the record's ttl expires. None = no ttl.
+    pub expires_at: Option<i64>,
+    /// When true, maintenance preserves this record 100% regardless of confidence/ttl.
+    pub no_compost: bool,
+    /// None = live/unprocessed; Some("retained"|"distilled"|"decayed") after a maintenance pass.
+    pub decay_state: Option<String>,
+    /// Unix timestamp when a maintenance pass acted on this record. None otherwise.
+    pub decayed_at: Option<i64>,
+    /// Compressed gist set when a record is distilled. None otherwise.
+    pub distilled_summary: Option<String>,
+}
+
+impl RunKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Observation => "observation",
+            Self::Mutation => "mutation",
+            Self::Task => "task",
+            Self::Eval => "eval",
+            Self::Maintenance => "maintenance",
+        }
+    }
+
+    pub fn parse_sql(value: &str) -> rusqlite::Result<Self> {
+        match value {
+            "observation" => Ok(Self::Observation),
+            "mutation" => Ok(Self::Mutation),
+            "task" => Ok(Self::Task),
+            "eval" => Ok(Self::Eval),
+            "maintenance" => Ok(Self::Maintenance),
+            _ => Err(to_sql_error(MycelError::UnknownEnum {
+                field: "kind",
+                value: value.to_string(),
+            })),
+        }
+    }
+}
+
+impl RunStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Applied => "applied",
+            Self::Reverted => "reverted",
+            Self::Running => "running",
+            Self::Done => "done",
+            Self::Failed => "failed",
+        }
+    }
+
+    pub fn parse_sql(value: &str) -> rusqlite::Result<Self> {
+        match value {
+            "applied" => Ok(Self::Applied),
+            "reverted" => Ok(Self::Reverted),
+            "running" => Ok(Self::Running),
+            "done" => Ok(Self::Done),
+            "failed" => Ok(Self::Failed),
+            _ => Err(to_sql_error(MycelError::UnknownEnum {
+                field: "status",
+                value: value.to_string(),
+            })),
+        }
+    }
+}
+
+/// Shared database handle. Runs migrations on open. All substrate types borrow from it.
+pub struct Db {
+    pub(crate) conn: Connection,
+}
+
+impl Db {
+    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        let conn = Connection::open(path)?;
+        let db = Self { conn };
+        db.run_migrations()?;
+        Ok(db)
+    }
+
+    pub fn open_in_memory() -> Result<Self> {
+        let conn = Connection::open_in_memory()?;
+        let db = Self { conn };
+        db.run_migrations()?;
+        Ok(db)
+    }
+
+    fn run_migrations(&self) -> Result<()> {
+        self.conn.execute_batch(FULL_SCHEMA_SQL)?;
+        Ok(())
+    }
+}
+
+/// SQL for the full schema (antibodies + sentinel + runs + audit_log), idempotent.
+const FULL_SCHEMA_SQL: &str = "
+    CREATE TABLE IF NOT EXISTS antibodies (
+        id TEXT PRIMARY KEY NOT NULL,
+        error_class TEXT,
+        file_pattern TEXT,
+        agent_role TEXT,
+        tool_pattern TEXT,
+        command_pattern TEXT,
+        scope TEXT NOT NULL,
+        source TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        confidence TEXT NOT NULL,
+        refusal_mode TEXT NOT NULL,
+        remediation TEXT NOT NULL,
+        examples_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT,
+        hit_count INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_antibodies_tool_pattern ON antibodies(tool_pattern);
+    CREATE INDEX IF NOT EXISTS idx_antibodies_scope ON antibodies(scope);
+    CREATE TABLE IF NOT EXISTS sentinel_audit_events (
+        id TEXT PRIMARY KEY NOT NULL,
+        timestamp TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        action TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        reason TEXT,
+        matched_rule TEXT,
+        raw_json TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_sentinel_audit_events_matched_rule
+        ON sentinel_audit_events(matched_rule);
+    CREATE TABLE IF NOT EXISTS runs (
+        id              TEXT    PRIMARY KEY NOT NULL,
+        kind            TEXT    NOT NULL,
+        status          TEXT    NOT NULL,
+        summary         TEXT    NOT NULL,
+        confidence      TEXT    NOT NULL,
+        created_at      INTEGER NOT NULL,
+        expires_at      INTEGER,
+        no_compost      INTEGER NOT NULL DEFAULT 0,
+        decay_state     TEXT,
+        decayed_at      INTEGER,
+        distilled_summary TEXT
+    );
+    CREATE TABLE IF NOT EXISTS audit_log (
+        id      TEXT    PRIMARY KEY NOT NULL,
+        event   TEXT    NOT NULL,
+        payload TEXT    NOT NULL,
+        ts      INTEGER NOT NULL
+    );
+    PRAGMA user_version = 4;
+";
+
+/// Borrow-based access layer for the `runs` table.
+pub struct Substrate<'a> {
+    conn: &'a Connection,
+}
+
+impl<'a> Substrate<'a> {
+    /// Create a substrate view over a shared `Db`.
+    pub fn new(db: &'a Db) -> Self {
+        Self { conn: &db.conn }
+    }
+
+    /// Insert a run with default decay values (expires_at NULL, no_compost false).
+    /// `created_at` is set to the current unix timestamp.
+    pub fn insert(
+        &self,
+        kind: RunKind,
+        status: RunStatus,
+        summary: &str,
+        confidence: Confidence,
+    ) -> Result<String> {
+        self.insert_with_decay(kind, status, summary, confidence, None, false)
+    }
+
+    /// Insert a run with explicit TTL and preservation flag.
+    /// `created_at` is auto-set to current unix timestamp.
+    pub fn insert_with_decay(
+        &self,
+        kind: RunKind,
+        status: RunStatus,
+        summary: &str,
+        confidence: Confidence,
+        expires_at: Option<i64>,
+        no_compost: bool,
+    ) -> Result<String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now_ts = unix_now();
+        self.conn.execute(
+            "INSERT INTO runs (
+                id, kind, status, summary, confidence, created_at,
+                expires_at, no_compost, decay_state, decayed_at, distilled_summary
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, NULL, NULL)",
+            params![
+                id,
+                kind.as_str(),
+                status.as_str(),
+                summary,
+                confidence.as_str(),
+                now_ts,
+                expires_at,
+                no_compost as i64,
+            ],
+        )?;
+        Ok(id)
+    }
+
+    pub fn get(&self, id: &str) -> Result<Option<Run>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT id, kind, status, summary, confidence, created_at,
+                        expires_at, no_compost, decay_state, decayed_at, distilled_summary
+                 FROM runs WHERE id = ?1",
+                params![id],
+                row_to_run,
+            )
+            .optional()?)
+    }
+
+    pub fn list(&self) -> Result<Vec<Run>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, status, summary, confidence, created_at,
+                    expires_at, no_compost, decay_state, decayed_at, distilled_summary
+             FROM runs ORDER BY created_at, id",
+        )?;
+        let rows = stmt.query_map([], row_to_run)?;
+        let mut runs = Vec::new();
+        for row in rows {
+            runs.push(row?);
+        }
+        Ok(runs)
+    }
+}
+
+/// Append-only audit log backed by the `audit_log` table.
+pub struct AuditLog<'a> {
+    conn: &'a Connection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditEntry {
+    pub id: String,
+    pub event: String,
+    pub payload: serde_json::Value,
+    pub ts: i64,
+}
+
+impl<'a> AuditLog<'a> {
+    pub fn new(db: &'a Db) -> Self {
+        Self { conn: &db.conn }
+    }
+
+    /// Append an event with a serializable payload; returns the new entry id.
+    pub fn append<T: Serialize>(&self, event: &str, payload: &T) -> Result<String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let payload_json = serde_json::to_string(payload)?;
+        let ts = unix_now();
+        self.conn.execute(
+            "INSERT INTO audit_log (id, event, payload, ts) VALUES (?1, ?2, ?3, ?4)",
+            params![id, event, payload_json, ts],
+        )?;
+        Ok(id)
+    }
+
+    /// Return all audit entries ordered by ts.
+    pub fn list(&self) -> Result<Vec<AuditEntry>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, event, payload, ts FROM audit_log ORDER BY ts, id")?;
+        let rows = stmt.query_map([], |row| {
+            let id: String = row.get(0)?;
+            let event: String = row.get(1)?;
+            let payload_str: String = row.get(2)?;
+            let ts: i64 = row.get(3)?;
+            Ok((id, event, payload_str, ts))
+        })?;
+        let mut entries = Vec::new();
+        for row in rows {
+            let (id, event, payload_str, ts) = row?;
+            let payload: serde_json::Value =
+                serde_json::from_str(&payload_str).map_err(to_sql_error)?;
+            entries.push(AuditEntry {
+                id,
+                event,
+                payload,
+                ts,
+            });
+        }
+        Ok(entries)
+    }
+}
+
+fn unix_now() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+
+fn row_to_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
+    let kind: String = row.get(1)?;
+    let status: String = row.get(2)?;
+    let confidence: String = row.get(4)?;
+    let no_compost_int: i64 = row.get(7)?;
+    Ok(Run {
+        id: row.get(0)?,
+        kind: RunKind::parse_sql(&kind)?,
+        status: RunStatus::parse_sql(&status)?,
+        summary: row.get(3)?,
+        confidence: Confidence::parse(&confidence)?,
+        created_at: row.get(5)?,
+        expires_at: row.get(6)?,
+        no_compost: no_compost_int != 0,
+        decay_state: row.get(8)?,
+        decayed_at: row.get(9)?,
+        distilled_summary: row.get(10)?,
+    })
+}
+
+#[cfg(test)]
+mod substrate_tests {
+    use super::*;
+
+    #[test]
+    fn insert_with_decay_round_trips_fields() {
+        let db = Db::open_in_memory().expect("open in-memory db");
+        let substrate = Substrate::new(&db);
+        let expires = unix_now() + 3600;
+
+        let id = substrate
+            .insert_with_decay(
+                RunKind::Observation,
+                RunStatus::Applied,
+                "test summary",
+                Confidence::Solid,
+                Some(expires),
+                true,
+            )
+            .expect("insert_with_decay");
+
+        let run = substrate.get(&id).expect("get").expect("run exists");
+        assert_eq!(run.id, id);
+        assert_eq!(run.kind, RunKind::Observation);
+        assert_eq!(run.status, RunStatus::Applied);
+        assert_eq!(run.summary, "test summary");
+        assert_eq!(run.confidence, Confidence::Solid);
+        assert_eq!(run.expires_at, Some(expires));
+        assert!(run.no_compost, "no_compost should be true");
+        assert!(run.decay_state.is_none(), "decay_state should be None");
+        assert!(run.decayed_at.is_none(), "decayed_at should be None");
+        assert!(
+            run.distilled_summary.is_none(),
+            "distilled_summary should be None"
+        );
+    }
+
+    #[test]
+    fn insert_defaults_decay_fields_to_none() {
+        let db = Db::open_in_memory().expect("open in-memory db");
+        let substrate = Substrate::new(&db);
+
+        let id = substrate
+            .insert(
+                RunKind::Eval,
+                RunStatus::Done,
+                "default summary",
+                Confidence::Directional,
+            )
+            .expect("insert");
+
+        let run = substrate.get(&id).expect("get").expect("run exists");
+        assert_eq!(run.expires_at, None, "expires_at should be None");
+        assert!(!run.no_compost, "no_compost should be false");
+        assert!(run.decay_state.is_none(), "decay_state should be None");
+        assert!(run.decayed_at.is_none(), "decayed_at should be None");
+        assert!(
+            run.distilled_summary.is_none(),
+            "distilled_summary should be None"
+        );
     }
 }

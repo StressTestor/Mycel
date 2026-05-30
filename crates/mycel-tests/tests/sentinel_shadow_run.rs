@@ -14,6 +14,7 @@ fn store() -> AntibodyStore {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct AttackFixture {
     name: &'static str,
     tool_name: &'static str,
