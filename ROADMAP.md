@@ -81,6 +81,8 @@ load-bearing assumptions:
 
 ## v0.2: decay-pruned context
 
+**state: shipped 2026-05-30.** ttl-tiered `DecayEngine` (solid→retained, directional→distilled, vibes→decayed, no_compost preserved) over schema v4 `runs`; PromptPressure tier import with label fidelity recorded in the audit log; deterministic `SUBSTRATE.md` + `COMPOST.md` projections and a `maintain` cycle. metrics met: 46 ttl fixtures (≥40), 8/8 no-compost preserved (100%), 14 distilled (≥10), 11 decayed (≥10), 24 PromptPressure records imported (≥20). distill hardened against multibyte-boundary panic. **confidence: solid.**
+
 scope:
 
 - scheduled ttl-tiered context maintenance.
