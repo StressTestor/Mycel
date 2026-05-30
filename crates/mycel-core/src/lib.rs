@@ -22,7 +22,8 @@ pub use promptpressure::{
     TTL_VERIFIED,
 };
 pub use selfspec::{
-    dedupe_specs, InheritedContext, SelfSpec, SpecStore, SpecValidationError, TaskIdentity,
+    dedupe_specs, ExecutabilityGap, InheritedContext, SelfSpec, SpecStore, SpecValidationError,
+    TaskIdentity,
 };
 
 pub const CORE_CRATE_NAME: &str = "mycel-core";

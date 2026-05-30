@@ -149,6 +149,148 @@ impl SelfSpec {
 }
 
 // ---------------------------------------------------------------------------
+// Executability bar
+// ---------------------------------------------------------------------------
+
+/// Gaps that block transcript-free execution of a spec. A spec is *executable*
+/// iff `executability_gaps()` returns an empty vec.
+///
+/// ## Rules (applied independently — multiple gaps may be present)
+///
+/// | variant | condition |
+/// | --- | --- |
+/// | `FailsValidation` | `self.validate().is_err()` |
+/// | `NoPrecondition` | `self.preconditions.is_empty()` |
+/// | `NoActionableSuccessCriterion` | no `success_criteria` entry is concrete (see below) |
+/// | `NoSourcedContext` | no `inherited_context` item has `!source.trim().is_empty()` |
+/// | `NoRefusalRisk` | `self.refusal_risks.is_empty()` |
+///
+/// ## Concreteness heuristic (deterministic)
+///
+/// A success-criterion string is **concrete** iff ALL of the following hold:
+/// 1. `trimmed.chars().count() >= 12` (minimum meaningful length)
+/// 2. It contains at least one **concreteness signal**:
+///    - an ASCII digit (`'0'`–`'9'`), OR
+///    - a literal `/` character, OR
+///    - a literal backtick `` ` ``, OR
+///    - the substring `.rs`, OR
+///    - (case-insensitive) one of the verb keywords: `pass`, `passes`, `return`,
+///      `returns`, `exit`, `commit`, `render`, `insert`, `write`, `emit`, `match`,
+///      `matches`, `equal`, `equals`, `assert`, `print`, `prints`, `contains`
+///
+/// The rule is intentionally mechanical: a criterion that references a file path
+/// (`crates/mycel-cli/src/main.rs`), an exit code, a backtick-quoted command, or
+/// a concrete verb will always pass; a vague phrase like "make it better" will
+/// always fail.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutabilityGap {
+    /// `validate()` returned errors — a fresh agent cannot trust the spec is well-formed.
+    FailsValidation,
+    /// No preconditions — a fresh agent cannot know the required starting state.
+    NoPrecondition,
+    /// No success criterion is concrete — a fresh agent cannot determine when the task is done.
+    NoActionableSuccessCriterion,
+    /// No `inherited_context` item has a non-empty `source` — a fresh agent has no
+    /// verifiable facts to anchor its reasoning.
+    NoSourcedContext,
+    /// No refusal risks — a fresh agent cannot know which guardrails apply.
+    NoRefusalRisk,
+}
+
+/// Keyword list for the concreteness heuristic. All lowercase; matched
+/// case-insensitively via `.to_lowercase().contains(keyword)`.
+const CONCRETE_VERB_KEYWORDS: &[&str] = &[
+    "pass", "passes", "return", "returns", "exit", "commit", "render", "insert", "write", "emit",
+    "match", "matches", "equal", "equals", "assert", "print", "prints", "contains",
+];
+
+impl SelfSpec {
+    /// Return all executability gaps. Empty vec means the spec is self-sufficient
+    /// enough to act on without the originating transcript.
+    pub fn executability_gaps(&self) -> Vec<ExecutabilityGap> {
+        let mut gaps = Vec::new();
+
+        // FailsValidation: validate() itself returned errors.
+        if self.validate().is_err() {
+            gaps.push(ExecutabilityGap::FailsValidation);
+        }
+
+        // NoPrecondition: no preconditions at all.
+        if self.preconditions.is_empty() {
+            gaps.push(ExecutabilityGap::NoPrecondition);
+        }
+
+        // NoRefusalRisk: no refusal risks at all.
+        if self.refusal_risks.is_empty() {
+            gaps.push(ExecutabilityGap::NoRefusalRisk);
+        }
+
+        // NoSourcedContext: no inherited_context item has a non-empty source.
+        let has_sourced = self
+            .inherited_context
+            .iter()
+            .any(|ctx| !ctx.source.trim().is_empty());
+        if !has_sourced {
+            gaps.push(ExecutabilityGap::NoSourcedContext);
+        }
+
+        // NoActionableSuccessCriterion: no criterion is concrete.
+        let has_concrete = self
+            .success_criteria
+            .iter()
+            .any(|c| Self::is_concrete_criterion(c));
+        if !has_concrete {
+            gaps.push(ExecutabilityGap::NoActionableSuccessCriterion);
+        }
+
+        gaps
+    }
+
+    /// `true` iff `gaps.is_empty()`.
+    pub fn is_executable(&self) -> bool {
+        self.executability_gaps().is_empty()
+    }
+
+    /// Deterministic concreteness test for a single success criterion.
+    ///
+    /// Returns `true` iff:
+    /// - `trimmed.chars().count() >= 12`, AND
+    /// - the string contains at least one concreteness signal:
+    ///   an ASCII digit, `/`, backtick, `.rs`, or a CONCRETE_VERB_KEYWORD
+    ///   (case-insensitive substring match).
+    fn is_concrete_criterion(criterion: &str) -> bool {
+        let trimmed = criterion.trim();
+        if trimmed.chars().count() < 12 {
+            return false;
+        }
+        // Signal 1: ASCII digit.
+        if trimmed.chars().any(|c| c.is_ascii_digit()) {
+            return true;
+        }
+        // Signal 2: forward slash.
+        if trimmed.contains('/') {
+            return true;
+        }
+        // Signal 3: backtick.
+        if trimmed.contains('`') {
+            return true;
+        }
+        // Signal 4: the substring ".rs".
+        if trimmed.contains(".rs") {
+            return true;
+        }
+        // Signal 5: verb keyword (case-insensitive).
+        let lower = trimmed.to_lowercase();
+        for keyword in CONCRETE_VERB_KEYWORDS {
+            if lower.contains(keyword) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Dedupe
 // ---------------------------------------------------------------------------
 
@@ -481,6 +623,114 @@ mod tests {
         assert_eq!(all.len(), 2);
         assert_eq!(all[0], a);
         assert_eq!(all[1], b);
+    }
+
+    // ── executability gaps ────────────────────────────────────────────────────
+
+    /// Build a rich, fully executable spec for use in gap tests.
+    fn executable_spec() -> SelfSpec {
+        SelfSpec {
+            task: TaskIdentity::new("Add --json flag to mycel maintain"),
+            preconditions: vec![
+                "branch feat/json-flag checked out from main".to_string(),
+                "crates/mycel-cli/src/main.rs exists and compiles".to_string(),
+            ],
+            success_criteria: vec![
+                "`cargo test -p mycel-cli` passes with exit code 0".to_string(),
+                "crates/mycel-cli/src/main.rs contains a --json flag in the maintain subcommand"
+                    .to_string(),
+            ],
+            inherited_context: vec![
+                InheritedContext {
+                    claim: "maintain subcommand already exists and is wired to the router"
+                        .to_string(),
+                    confidence: Confidence::Solid,
+                    source: "run:abc-001".to_string(),
+                },
+                InheritedContext {
+                    claim: "clap v4 is the arg parser in use".to_string(),
+                    confidence: Confidence::Directional,
+                    source: "spec:add-json-flag-to-mycel-maintain".to_string(),
+                },
+            ],
+            refusal_risks: vec!["do not bump the CLI major version in this PR".to_string()],
+        }
+    }
+
+    #[test]
+    fn executable_spec_has_no_gaps() {
+        let spec = executable_spec();
+        assert!(spec.validate().is_ok(), "spec must be valid first");
+        let gaps = spec.executability_gaps();
+        assert!(gaps.is_empty(), "expected no gaps, got: {:?}", gaps);
+        assert!(spec.is_executable());
+    }
+
+    #[test]
+    fn vague_criterion_yields_no_actionable_success_criterion_gap() {
+        let mut spec = executable_spec();
+        // Replace all criteria with a vague phrase: no digit, no slash, no backtick,
+        // no .rs, no verb keyword. Length >= 12 but no concreteness signal.
+        spec.success_criteria = vec!["make it better".to_string()];
+        let gaps = spec.executability_gaps();
+        assert!(
+            gaps.contains(&ExecutabilityGap::NoActionableSuccessCriterion),
+            "expected NoActionableSuccessCriterion gap, got: {:?}",
+            gaps
+        );
+    }
+
+    #[test]
+    fn empty_preconditions_yields_no_precondition_gap() {
+        let mut spec = executable_spec();
+        spec.preconditions.clear();
+        let gaps = spec.executability_gaps();
+        assert!(
+            gaps.contains(&ExecutabilityGap::NoPrecondition),
+            "expected NoPrecondition gap, got: {:?}",
+            gaps
+        );
+    }
+
+    #[test]
+    fn failing_validate_yields_fails_validation_gap() {
+        let mut spec = executable_spec();
+        // Clear description to trigger EmptyDescription from validate().
+        spec.task.description = String::new();
+        let gaps = spec.executability_gaps();
+        assert!(
+            gaps.contains(&ExecutabilityGap::FailsValidation),
+            "expected FailsValidation gap, got: {:?}",
+            gaps
+        );
+    }
+
+    #[test]
+    fn is_concrete_criterion_digit_signal() {
+        assert!(SelfSpec::is_concrete_criterion(
+            "`cargo test` passes with exit code 0"
+        ));
+    }
+
+    #[test]
+    fn is_concrete_criterion_slash_signal() {
+        assert!(SelfSpec::is_concrete_criterion(
+            "crates/mycel-cli/src/main.rs compiles"
+        ));
+    }
+
+    #[test]
+    fn is_concrete_criterion_too_short_fails() {
+        // Under 12 chars — fails regardless of signals.
+        assert!(!SelfSpec::is_concrete_criterion("pass"));
+    }
+
+    #[test]
+    fn is_concrete_criterion_vague_long_phrase_fails() {
+        // Long but no concreteness signal.
+        assert!(!SelfSpec::is_concrete_criterion(
+            "the implementation looks good to reviewers"
+        ));
     }
 
     #[test]
