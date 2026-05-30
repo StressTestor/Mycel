@@ -190,10 +190,14 @@ current useful commands:
 ```sh
 cargo build --workspace
 cargo test --workspace
+cargo fmt -p mycel-core -p mycel-mcp -p mycel-cli -p mycel-tests
+cargo clippy --workspace -- -D warnings
 mycel harness
 git status --short
 git log --oneline
 ```
+
+note: `cargo fmt --all` walks into `crates/sentinel-guard/` (submodule) and reformats code we don't own. always scope fmt to the four mycel crates.
 
 implementation commands do not exist yet.
 
