@@ -13,6 +13,7 @@ use uuid::Uuid;
 pub mod decay;
 pub mod projection;
 pub mod promptpressure;
+pub mod sclerotia;
 pub mod selfspec;
 
 pub use decay::{DecayEngine, DecayReport};
@@ -20,6 +21,10 @@ pub use projection::{render_compost_md, render_substrate_md, run_maintenance, Ma
 pub use promptpressure::{
     PromptPressureImport, PromptPressureRecord, PromptPressureTier, TTL_PROBABLE, TTL_SPECULATIVE,
     TTL_VERIFIED,
+};
+pub use sclerotia::{
+    evaluate_resume, ResumeDecision, Sclerotium, SclerotiumStore, SclerotiumValidationError,
+    WakeCondition, WakeWorld,
 };
 pub use selfspec::{
     dedupe_specs, ExecutabilityGap, InheritedContext, SelfSpec, SpecStore, SpecValidationError,
@@ -1729,6 +1734,13 @@ const FULL_SCHEMA_SQL: &str = "
         created_at  INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_specs_signature ON specs(signature);
+    CREATE TABLE IF NOT EXISTS sclerotia (
+        id          TEXT    PRIMARY KEY NOT NULL,
+        signature   TEXT    NOT NULL,
+        record_json TEXT    NOT NULL,
+        created_at  INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_sclerotia_signature ON sclerotia(signature);
     PRAGMA user_version = 4;
 ";
 
