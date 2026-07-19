@@ -63,6 +63,25 @@ command = "$HOME/.mycel/bin/mycel-gate"
 timeout = 10
 fail_mode = "closed"
 
+# --- immunity learning loop (observe -> ingest) -----------------------------
+# every failed/blocked tool call is captured to the substrate audit log, so
+# the substrate learns from what goes wrong. observation-only (never blocks,
+# always exits 0). candidates stay INERT until you promote them with
+# `mycel-substrate antibody-add`, so nothing auto-activates.
+[[hooks]]
+event = "PostToolUseFailure"
+matcher = ""
+command = "$HOME/.mycel/bin/mycel-observe"
+timeout = 10
+
+# at session end, fold the captured failures into antibody candidates.
+# ingest records the events and surfaces candidates; it never activates them.
+[[hooks]]
+event = "SessionEnd"
+matcher = ""
+command = "$HOME/.mycel/bin/mycel-substrate ingest --db $HOME/.mycel/substrate/mycel.db --jsonl $HOME/.mycel/substrate/audit.jsonl"
+timeout = 30
+
 # --- optional second guard: ghost/sentinel ----------------------------------
 # uncomment if ghost is installed (cargo install ghost-guard).
 # [[hooks]]

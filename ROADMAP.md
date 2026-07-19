@@ -2,6 +2,12 @@
 
 confidence key: **solid** means verified or strongly supported. **directional** means the shape is likely right, but details may change. **vibes** means a useful hypothesis, not a fact.
 
+## status (2026-07-19)
+
+- **v0.1 fail-pattern immunity: SHIPPED** in the rust core (mycel-core, 124 tests) and wired into the [harness](docs/specs/2026-07-19-mycel-harness-graft-design.md) as the fail-closed `mycel-gate`.
+- **v0.1.1 sentinel integration / m2 learning loop: SHIPPED** — the harness now feeds its own failures back into the substrate ([m2 spec](docs/specs/2026-07-19-m2-antibody-ingestion.md)): `mycel-observe` captures block/failure events, `mycel-substrate ingest` surfaces candidates, promotion activates them, the gate blocks next time. Proven by `tests/e2e/immunity-loop.sh`.
+- v0.2+ (decay-pruned context, self-spec, sclerotia, spores, kin-sharing, spawning): not started; the substrate-ecology roadmap below.
+
 ## roadmap stance
 
 v0.1 ships fail-pattern immunity first. it also drafts the self-spec schema and makes the interop decision early.
