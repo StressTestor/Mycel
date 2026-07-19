@@ -236,11 +236,19 @@ function resolveInputPath(input: string, cwd: string): string {
   return isAbsolute(input) ? input : resolve(cwd, input);
 }
 
+// De-moonshot: Mycel is local-first. Doctor reports these plainly so users can
+// see there is no update fetch and no telemetry, rather than inferring it.
+function formatDeMoonshotStatus(): string[] {
+  return ['update checks: disabled (mycel)', 'telemetry: removed'];
+}
+
 function formatSuccess(results: readonly CheckResult[]): string {
   return [
     'Mycel doctor',
     '',
     ...formatResults(results),
+    '',
+    ...formatDeMoonshotStatus(),
     '',
     'All checked config files are valid.',
     '',
@@ -252,6 +260,8 @@ function formatFailure(results: readonly CheckResult[], issueCount: number): str
     `Mycel doctor found ${String(issueCount)} ${issueCount === 1 ? 'issue' : 'issues'}.`,
     '',
     ...formatResults(results),
+    '',
+    ...formatDeMoonshotStatus(),
     '',
   ].join('\n');
 }

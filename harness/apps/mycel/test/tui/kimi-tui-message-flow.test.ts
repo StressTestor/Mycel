@@ -13,7 +13,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ApprovalPanelComponent } from '#/tui/components/dialogs/approval-panel';
 import { EffortSelectorComponent } from '#/tui/components/dialogs/effort-selector';
-import { KIMI_CODE_PLUGIN_MARKETPLACE_URL } from '#/constant/app';
 import { MOON_SPINNER_FRAMES } from '#/tui/constant/rendering';
 import {
   AgentSwarmProgressComponent,
@@ -4248,8 +4247,11 @@ command = "vim"
     expect(session.activateSkill).not.toHaveBeenCalled();
   });
 
-  it('installs default marketplace entries through plain install', async () => {
+  it('installs marketplace entries from a configured marketplace URL', async () => {
     const originalFetch = globalThis.fetch;
+    // De-moonshot: Mycel ships no default marketplace CDN; a source must be
+    // configured explicitly.
+    process.env['KIMI_CODE_PLUGIN_MARKETPLACE_URL'] = 'https://example.test/marketplace.json';
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
       plugins: [
         {
@@ -4257,7 +4259,7 @@ command = "vim"
           tier: 'official',
           displayName: 'Kimi Datasource',
           description: 'Datasource plugin',
-          source: './official/kimi-datasource.zip',
+          source: 'https://code.kimi.com/kimi-code/plugins/official/kimi-datasource.zip',
         },
       ],
     }))));
@@ -4284,7 +4286,7 @@ command = "vim"
           'https://code.kimi.com/kimi-code/plugins/official/kimi-datasource.zip',
         );
       });
-      expect(globalThis.fetch).toHaveBeenCalledWith(KIMI_CODE_PLUGIN_MARKETPLACE_URL);
+      expect(globalThis.fetch).toHaveBeenCalledWith('https://example.test/marketplace.json');
     } finally {
       vi.stubGlobal('fetch', originalFetch);
     }

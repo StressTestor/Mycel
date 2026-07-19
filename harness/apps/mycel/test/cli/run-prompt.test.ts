@@ -273,9 +273,7 @@ describe('runPrompt', () => {
     expect(mocks.session.prompt).toHaveBeenCalledWith('say hello');
     expect(stdout.text()).toBe('• hello world\n\n');
     expect(stderr.text()).toBe('To resume this session: kimi -r ses_prompt\n');
-    expect(mocks.initializeTelemetry).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: 'ses_prompt' }),
-    );
+    expect(mocks.initializeTelemetry).not.toHaveBeenCalled();
     expect(mocks.shutdownTelemetry).toHaveBeenCalled();
     expect(mocks.harnessClose).toHaveBeenCalled();
   });
@@ -396,9 +394,7 @@ describe('runPrompt', () => {
       additionalDirs: undefined,
       drainAgentTasksOnStop: true,
     });
-    expect(mocks.initializeTelemetry).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'kimi-code/k2.5' }),
-    );
+    expect(mocks.initializeTelemetry).not.toHaveBeenCalled();
   });
 
   it('passes the CLI additional directory when creating a fresh prompt session', async () => {
@@ -444,7 +440,7 @@ describe('runPrompt', () => {
     expect(mocks.kimiHarnessConstructor).toHaveBeenCalledWith(
       expect.objectContaining({ homeDir: '/tmp/kimi-code-test-home' }),
     );
-    expect(mocks.harnessTrack).toHaveBeenCalledWith('first_launch');
+    expect(mocks.harnessTrack).not.toHaveBeenCalledWith('first_launch');
   });
 
   it('formats thinking and assistant output as transcript blocks', async () => {
@@ -657,9 +653,7 @@ describe('runPrompt', () => {
 
     expect(mocks.harnessResumeSession).toHaveBeenCalledWith({ id: 'ses_existing' });
     expect(mocks.session.setModel).toHaveBeenCalledWith('kimi-code/k2.5');
-    expect(mocks.initializeTelemetry).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'kimi-code/k2.5' }),
-    );
+    expect(mocks.initializeTelemetry).not.toHaveBeenCalled();
   });
 
   it('writes stream-json output as assistant JSONL with resume meta without transcript bullets', async () => {
@@ -867,9 +861,7 @@ describe('runPrompt', () => {
 
     expect(mocks.harnessResumeSession).toHaveBeenCalledWith({ id: 'ses_existing' });
     expect(mocks.harnessCreateSession).not.toHaveBeenCalled();
-    expect(mocks.initializeTelemetry).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'saved-model' }),
-    );
+    expect(mocks.initializeTelemetry).not.toHaveBeenCalled();
     expect(mocks.session.setPermission).toHaveBeenNthCalledWith(1, 'auto');
     expect(mocks.session.setPermission).toHaveBeenNthCalledWith(2, 'manual');
   });
@@ -911,9 +903,7 @@ describe('runPrompt', () => {
     expect(mocks.harnessListSessions).toHaveBeenCalledWith({ workDir: process.cwd() });
     expect(mocks.harnessResumeSession).toHaveBeenCalledWith({ id: 'ses_previous' });
     expect(mocks.harnessCreateSession).not.toHaveBeenCalled();
-    expect(mocks.initializeTelemetry).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'saved-model' }),
-    );
+    expect(mocks.initializeTelemetry).not.toHaveBeenCalled();
   });
 
   it('restores resumed session permission even when the turn fails', async () => {
@@ -1104,9 +1094,7 @@ describe('runPrompt', () => {
         stdout: { write: vi.fn(() => true) },
         stderr: { write: vi.fn(() => true) },
       }),
-    ).rejects.toThrow(
-      'No model configured. Run `kimi` and use /login to sign in, then retry; or set default_model in config.toml.',
-    );
+    ).rejects.toThrow(/default_model = "kimi-code\/k3"/);
 
     expect(mocks.harnessClose).toHaveBeenCalled();
   });

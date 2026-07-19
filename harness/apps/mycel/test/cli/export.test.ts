@@ -404,20 +404,7 @@ describe('kimi export', () => {
       '/tmp/kimi-export-home',
       expect.objectContaining({ onFirstLaunch: expect.any(Function) }),
     );
-    expect(mocks.initializeTelemetry).toHaveBeenCalledWith({
-      homeDir: '/tmp/kimi-export-home',
-      deviceId: 'device-1',
-      enabled: true,
-      appName: 'kimi-code-cli',
-      version: expect.any(String),
-      uiMode: 'shell',
-      model: 'k2',
-      sessionId: undefined,
-      getAccessToken: expect.any(Function),
-    });
-    expect(mocks.initializeTelemetry.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.harnessExportSession.mock.invocationCallOrder[0]!,
-    );
+    expect(mocks.initializeTelemetry).not.toHaveBeenCalled();
     expect(mocks.harnessExportSession).toHaveBeenCalledWith({
       id: 'ses_telemetry',
       outputPath: output,
@@ -459,11 +446,7 @@ describe('kimi export', () => {
       from: 'node',
     });
 
-    expect(mocks.initializeTelemetry).toHaveBeenCalledWith(
-      expect.objectContaining({
-        enabled: false,
-      }),
-    );
+    expect(mocks.initializeTelemetry).not.toHaveBeenCalled();
     expect(mocks.shutdownTelemetry).toHaveBeenCalledWith({ timeoutMs: 3000 });
   });
 
@@ -510,9 +493,6 @@ describe('kimi export', () => {
     expect(mocks.kimiHarnessConstructor).toHaveBeenCalledWith(
       expect.objectContaining({ homeDir: '/tmp/kimi-export-home' }),
     );
-    expect(mocks.harnessTrack).toHaveBeenCalledWith('first_launch');
-    expect(mocks.initializeTelemetry.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.harnessTrack.mock.invocationCallOrder[0]!,
-    );
+    expect(mocks.harnessTrack).not.toHaveBeenCalledWith('first_launch');
   });
 });

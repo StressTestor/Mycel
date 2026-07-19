@@ -407,7 +407,15 @@ export function requireConfiguredModel(...models: readonly (string | undefined)[
   const model = configuredModel(...models);
   if (model === undefined) {
     throw new Error(
-      'No model configured. Run `kimi` and use /login to sign in, then retry; or set default_model in config.toml.',
+      [
+        'No default_model configured.',
+        '',
+        'Set default_model in your config.toml, for example:',
+        '',
+        '  default_model = "kimi-code/k3"',
+        '',
+        'Or run `mycel` and use /login to sign in, then retry.',
+      ].join('\n'),
     );
   }
   return model;

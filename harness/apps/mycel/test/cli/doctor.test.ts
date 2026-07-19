@@ -101,6 +101,17 @@ describe('kimi doctor', () => {
     expect(out).toContain('built-in defaults will apply');
   });
 
+  it('reports update checks disabled and telemetry removed (de-moonshot)', async () => {
+    const { deps, stdout } = makeDeps();
+
+    const code = await handleDoctor(deps, {});
+
+    expect(code).toBe(0);
+    const out = stdout.join('');
+    expect(out).toContain('update checks: disabled (mycel)');
+    expect(out).toContain('telemetry: removed');
+  });
+
   it('checks only config.toml when the config target is selected', async () => {
     const { deps, stdout, stderr } = makeDeps();
 

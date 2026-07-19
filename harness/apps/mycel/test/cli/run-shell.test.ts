@@ -207,17 +207,7 @@ describe('runShell', () => {
       '/tmp/kimi-code-test-home',
       expect.any(Object),
     );
-    expect(mocks.initializeTelemetry).toHaveBeenCalledWith({
-      homeDir: '/tmp/kimi-code-test-home',
-      deviceId: 'device-1',
-      enabled: true,
-      appName: 'kimi-code-cli',
-      version: '1.2.3-test',
-      uiMode: 'shell',
-      model: 'k2',
-      sessionId: undefined,
-      getAccessToken: expect.any(Function),
-    });
+    expect(mocks.initializeTelemetry).not.toHaveBeenCalled();
     expect(mocks.setCrashPhase).toHaveBeenCalledWith('runtime');
 
     const [, harness, startupInput] = mocks.kimiTuiConstructor.mock.calls[0]!;
@@ -303,7 +293,7 @@ describe('runShell', () => {
       '/tmp/kimi-code-test-home',
       expect.objectContaining({ onFirstLaunch: expect.any(Function) }),
     );
-    expect(mocks.harnessTrack).toHaveBeenCalledWith('first_launch');
+    expect(mocks.harnessTrack).not.toHaveBeenCalledWith('first_launch');
   });
 
   it('registers first launch before harness construction can create the device id', async () => {
@@ -350,7 +340,7 @@ describe('runShell', () => {
     expect(mocks.kimiHarnessConstructor).toHaveBeenCalledWith(
       expect.objectContaining({ homeDir: '/tmp/kimi-code-test-home' }),
     );
-    expect(mocks.harnessTrack).toHaveBeenCalledWith('first_launch');
+    expect(mocks.harnessTrack).not.toHaveBeenCalledWith('first_launch');
   });
 
   it('binds startup_perf to the session captured before MCP metrics resolve', async () => {

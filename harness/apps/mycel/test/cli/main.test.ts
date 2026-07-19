@@ -411,10 +411,7 @@ describe('main entry command handling', () => {
       version: '0.0.1-alpha.2',
       uiMode: 'shell',
     }));
-    expect(mocks.handleUpgrade).toHaveBeenCalledWith('0.0.1-alpha.2', {
-      track: mocks.track,
-      logger: mocks.log,
-    });
+    expect(mocks.handleUpgrade).toHaveBeenCalledWith('0.0.1-alpha.2');
     expect(mocks.shutdownTelemetry).toHaveBeenCalledWith({ timeoutMs: 3000 });
     expect(mocks.harness.close).toHaveBeenCalledTimes(1);
   });

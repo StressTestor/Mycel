@@ -1,25 +1,19 @@
 /**
- * Tests for the CLI telemetry bootstrap helpers, focusing on the
- * `kimi web` / `kimi server run` host wiring added in `cli/telemetry.ts`.
+ * De-moonshot guard: telemetry is removed. These tests prove the CLI/server
+ * telemetry bootstraps never construct a network client (never call
+ * `initializeTelemetry`) and that no other call site in `src/` does either.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   initializeTelemetry: vi.fn(),
   createKimiDeviceId: vi.fn(() => 'device-123'),
-  resolveKimiHome: vi.fn(() => '/home/.kimi-code'),
-  resolveConfigPath: vi.fn(() => '/home/.kimi-code/config.toml'),
-  loadRuntimeConfigSafe: vi.fn(
-    (): {
-      config: { defaultModel?: string; telemetry?: boolean };
-      fileError: Error | undefined;
-    } => ({
-      config: { defaultModel: 'kimi-k2', telemetry: true },
-      fileError: undefined,
-    }),
-  ),
-  getCachedAccessToken: vi.fn(async () => 'tok'),
+  resolveKimiHome: vi.fn(() => '/home/.mycel'),
 }));
 
 vi.mock('@moonshot-ai/kimi-telemetry', () => ({
@@ -39,41 +33,15 @@ vi.mock('@moonshot-ai/kimi-code-sdk', async (importOriginal) => {
   return {
     ...actual,
     resolveKimiHome: mocks.resolveKimiHome,
-    resolveConfigPath: mocks.resolveConfigPath,
-    loadRuntimeConfigSafe: mocks.loadRuntimeConfigSafe,
-    KimiAuthFacade: vi.fn(function () {
-      return { getCachedAccessToken: mocks.getCachedAccessToken };
-    }),
   };
 });
 
-describe('initializeServerTelemetry', () => {
-  beforeEach(() => {
-    mocks.initializeTelemetry.mockClear();
-    mocks.loadRuntimeConfigSafe.mockClear();
-    mocks.loadRuntimeConfigSafe.mockReturnValue({
-      config: { defaultModel: 'kimi-k2', telemetry: true },
-      fileError: undefined,
-    });
-  });
-
-  it('configures the sink with ui_mode="web" and the CLI product identity', async () => {
+describe('telemetry is removed (no network client is ever constructed)', () => {
+  it('initializeServerTelemetry returns an inert client without initializing telemetry', async () => {
     const { initializeServerTelemetry } = await import('#/cli/telemetry');
     const client = initializeServerTelemetry({ version: '1.2.3' });
 
-    expect(mocks.initializeTelemetry).toHaveBeenCalledWith(
-      expect.objectContaining({
-        appName: 'kimi-code-cli',
-        version: '1.2.3',
-        uiMode: 'web',
-        model: 'kimi-k2',
-        enabled: true,
-        deviceId: 'device-123',
-        homeDir: '/home/.kimi-code',
-      }),
-    );
-    // The returned client wraps the module functions so core + the host share
-    // the same underlying client.
+    expect(mocks.initializeTelemetry).not.toHaveBeenCalled();
     expect(client).toEqual(
       expect.objectContaining({
         track: expect.any(Function),
@@ -81,31 +49,41 @@ describe('initializeServerTelemetry', () => {
         setContext: expect.any(Function),
       }),
     );
+    // Calling the client must not construct a sink.
+    client.track('anything', {});
+    expect(mocks.initializeTelemetry).not.toHaveBeenCalled();
   });
 
-  it('disables telemetry when config.toml sets telemetry = false', async () => {
-    mocks.loadRuntimeConfigSafe.mockReturnValue({
-      config: { defaultModel: 'kimi-k2', telemetry: false },
-      fileError: undefined,
-    });
-    const { initializeServerTelemetry } = await import('#/cli/telemetry');
-    initializeServerTelemetry({ version: '1.2.3' });
-
-    expect(mocks.initializeTelemetry).toHaveBeenCalledWith(
-      expect.objectContaining({ enabled: false }),
-    );
+  it('initializeCliTelemetry is a no-op and initializes no telemetry', async () => {
+    const { initializeCliTelemetry } = await import('#/cli/telemetry');
+    expect(() =>
+      initializeCliTelemetry({
+        harness: { track: vi.fn(), homeDir: '/home/.mycel' } as never,
+        bootstrap: { homeDir: '/home/.mycel', deviceId: 'd', firstLaunch: true },
+        config: { telemetry: true },
+        version: '1.2.3',
+        uiMode: 'shell',
+      }),
+    ).not.toThrow();
+    expect(mocks.initializeTelemetry).not.toHaveBeenCalled();
   });
 
-  it('degrades to enabled with no model when config is unreadable', async () => {
-    mocks.loadRuntimeConfigSafe.mockReturnValue({
-      config: {},
-      fileError: new Error('bad toml'),
-    });
-    const { initializeServerTelemetry } = await import('#/cli/telemetry');
-    initializeServerTelemetry({ version: '1.2.3' });
-
-    expect(mocks.initializeTelemetry).toHaveBeenCalledWith(
-      expect.objectContaining({ enabled: true, model: undefined }),
-    );
+  it('no source file constructs a telemetry sink via initializeTelemetry(', () => {
+    const srcDir = join(dirname(fileURLToPath(import.meta.url)), '../../src');
+    const hits: string[] = [];
+    const walk = (dir: string): void => {
+      for (const name of readdirSync(dir)) {
+        const p = join(dir, name);
+        if (statSync(p).isDirectory()) {
+          walk(p);
+          continue;
+        }
+        if (!p.endsWith('.ts')) continue;
+        const text = readFileSync(p, 'utf8');
+        if (/\binitializeTelemetry\s*\(/.test(text)) hits.push(p);
+      }
+    };
+    walk(srcDir);
+    expect(hits).toEqual([]);
   });
 });

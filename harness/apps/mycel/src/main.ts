@@ -111,7 +111,7 @@ export async function handleUpgradeCommand(version: string): Promise<void> {
       version,
       uiMode: CLI_UI_MODE,
     });
-    exitCode = await handleUpgrade(version, { track, logger: log });
+    exitCode = await handleUpgrade(version);
   } finally {
     await shutdownTelemetry({ timeoutMs: CLI_SHUTDOWN_TIMEOUT_MS }).catch(() => {});
     await harness.close().catch(() => {});

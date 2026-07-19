@@ -1,14 +1,11 @@
-import { readFile, stat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { gt, valid } from 'semver';
 
-import {
-  KIMI_CODE_PLUGIN_MARKETPLACE_URL,
-  KIMI_CODE_PLUGIN_MARKETPLACE_URL_ENV,
-} from '#/constant/app';
+import { KIMI_CODE_PLUGIN_MARKETPLACE_URL_ENV } from '#/constant/app';
 
 export const PLUGIN_MARKETPLACE_TIERS = ['official', 'curated'] as const;
 
@@ -77,21 +74,18 @@ export async function loadPluginMarketplace(
   options: LoadPluginMarketplaceOptions,
 ): Promise<PluginMarketplace> {
   const configuredSource = options.source ?? process.env[KIMI_CODE_PLUGIN_MARKETPLACE_URL_ENV];
-  const location = resolveMarketplaceLocation(
-    configuredSource ?? KIMI_CODE_PLUGIN_MARKETPLACE_URL,
-    options.workDir,
-  );
-  const fetchImpl = options.fetchImpl ?? fetch;
-  let raw: string;
-  try {
-    raw = await readMarketplaceText(location, fetchImpl);
-  } catch (error) {
-    const fallback =
-      configuredSource === undefined ? await getSourceCheckoutMarketplaceLocation() : undefined;
-    if (fallback === undefined) throw error;
-    raw = await readMarketplaceText(fallback, fetchImpl);
-    return withLatestVersions(parsePluginMarketplace(raw, fallback), fetchImpl);
+  if (configuredSource === undefined) {
+    // De-moonshot: Mycel ships no default marketplace CDN. The marketplace is
+    // opt-in and only works with an explicitly configured source.
+    throw new Error(
+      `marketplace: not configured. Set ${KIMI_CODE_PLUGIN_MARKETPLACE_URL_ENV} to a ` +
+        'marketplace URL or local path, or pass an explicit source. Mycel ships no ' +
+        'default marketplace.',
+    );
   }
+  const location = resolveMarketplaceLocation(configuredSource, options.workDir);
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const raw = await readMarketplaceText(location, fetchImpl);
   return withLatestVersions(parsePluginMarketplace(raw, location), fetchImpl);
 }
 
@@ -147,14 +141,6 @@ function resolveMarketplaceLocation(source: string, workDir: string): Marketplac
     return { raw: trimmed, kind: 'local', resolved: path };
   }
   return { raw: trimmed, kind: 'local', resolved: resolveLocalPath(trimmed, workDir) };
-}
-
-async function getSourceCheckoutMarketplaceLocation(): Promise<MarketplaceLocation | undefined> {
-  const sourceDir = dirname(fileURLToPath(import.meta.url));
-  const marketplacePath = resolve(sourceDir, '../../../../plugins/marketplace.json');
-  const info = await stat(marketplacePath).catch(() => undefined);
-  if (info?.isFile() !== true) return undefined;
-  return { raw: marketplacePath, kind: 'local', resolved: marketplacePath };
 }
 
 async function readMarketplaceText(

@@ -5,12 +5,11 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import {
-  KIMI_CODE_PLUGIN_MARKETPLACE_URL,
-  KIMI_CODE_PLUGIN_MARKETPLACE_URL_ENV,
-} from '#/constant/app';
+import { KIMI_CODE_PLUGIN_MARKETPLACE_URL_ENV } from '#/constant/app';
 import { computeUpdateStatus, loadPluginMarketplace } from '#/utils/plugin-marketplace';
 
+// Mycel ships no default marketplace CDN; a source must be configured explicitly.
+const EXPLICIT_MARKETPLACE_URL = 'https://example.com/kimi/plugins/marketplace.json';
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../../..');
 
 describe('computeUpdateStatus', () => {
@@ -161,7 +160,7 @@ describe('loadPluginMarketplace', () => {
     );
   });
 
-  it('loads the default CDN marketplace with injectable fetch', async () => {
+  it('loads an explicitly configured marketplace URL with injectable fetch', async () => {
     const fetchImpl = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -179,41 +178,35 @@ describe('loadPluginMarketplace', () => {
 
     const marketplace = await loadPluginMarketplace({
       workDir: '/tmp/work',
-      source: KIMI_CODE_PLUGIN_MARKETPLACE_URL,
+      source: EXPLICIT_MARKETPLACE_URL,
       fetchImpl,
     });
 
-    expect(fetchImpl).toHaveBeenCalledWith(KIMI_CODE_PLUGIN_MARKETPLACE_URL);
+    expect(fetchImpl).toHaveBeenCalledWith(EXPLICIT_MARKETPLACE_URL);
     expect(marketplace.plugins[0]).toEqual(
       expect.objectContaining({
         id: 'kimi-datasource',
         displayName: 'Kimi Datasource',
         source: new URL(
           './official/kimi-datasource.zip',
-          KIMI_CODE_PLUGIN_MARKETPLACE_URL,
+          EXPLICIT_MARKETPLACE_URL,
         ).toString(),
       }),
     );
   });
 
-  it('falls back to the source checkout marketplace when the default CDN cannot be fetched', async () => {
+  it('throws an actionable "not configured" error and never fetches when no source is set', async () => {
     const previous = process.env[KIMI_CODE_PLUGIN_MARKETPLACE_URL_ENV];
     delete process.env[KIMI_CODE_PLUGIN_MARKETPLACE_URL_ENV];
     const fetchImpl = vi.fn(async () => {
-      throw new Error('fetch failed');
+      throw new Error('should not be called');
     }) as unknown as typeof fetch;
 
     try {
-      const marketplace = await loadPluginMarketplace({ workDir: '/tmp/work', fetchImpl });
-
-      expect(fetchImpl).toHaveBeenCalledWith(KIMI_CODE_PLUGIN_MARKETPLACE_URL);
-      expect(marketplace.source).toBe(join(REPO_ROOT, 'plugins/marketplace.json'));
-      expect(marketplace.plugins).toContainEqual(
-        expect.objectContaining({
-          id: 'superpowers',
-          source: 'https://github.com/obra/superpowers',
-        }),
-      );
+      await expect(
+        loadPluginMarketplace({ workDir: '/tmp/work', fetchImpl }),
+      ).rejects.toThrow(/marketplace: not configured/i);
+      expect(fetchImpl).not.toHaveBeenCalled();
     } finally {
       if (previous === undefined) {
         delete process.env[KIMI_CODE_PLUGIN_MARKETPLACE_URL_ENV];
@@ -230,7 +223,7 @@ describe('loadPluginMarketplace', () => {
 
     await expect(loadPluginMarketplace({
       workDir: '/tmp/work',
-      source: KIMI_CODE_PLUGIN_MARKETPLACE_URL,
+      source: EXPLICIT_MARKETPLACE_URL,
       fetchImpl,
     })).rejects.toThrow(/fetch failed/);
   });

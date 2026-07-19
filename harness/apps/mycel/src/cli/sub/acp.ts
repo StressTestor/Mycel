@@ -63,12 +63,12 @@ export function registerAcpCommand(parent: Command): void {
       // stays empty.
       const mycelHome = process.env[MYCEL_HOME_ENV];
       const legacyHome = process.env[LEGACY_HOME_ENV];
-      const terminalAuthEnv =
-        mycelHome !== undefined && mycelHome.length > 0
-          ? { [MYCEL_HOME_ENV]: mycelHome }
-          : legacyHome !== undefined && legacyHome.length > 0
-            ? { [LEGACY_HOME_ENV]: legacyHome }
-            : undefined;
+      let terminalAuthEnv: Record<string, string> | undefined;
+      if (mycelHome !== undefined && mycelHome.length > 0) {
+        terminalAuthEnv = { [MYCEL_HOME_ENV]: mycelHome };
+      } else if (legacyHome !== undefined && legacyHome.length > 0) {
+        terminalAuthEnv = { [LEGACY_HOME_ENV]: legacyHome };
+      }
       // Legacy `_meta.terminal-auth` fallback for clients that don't yet
       // honor the first-class `type:'terminal'` (Zed without the
       // AcpBetaFeatureFlag, current JetBrains plugin, etc.). `command` is

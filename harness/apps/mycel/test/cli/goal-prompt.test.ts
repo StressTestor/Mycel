@@ -379,7 +379,7 @@ describe('runPrompt headless goal mode', () => {
         stderr,
         process: { once: () => {}, off: () => {}, exit: () => undefined as never },
       }),
-    ).rejects.toThrow('No model configured');
+    ).rejects.toThrow('default_model');
 
     expect(mocks.session.createGoal).not.toHaveBeenCalled();
   });
