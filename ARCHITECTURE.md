@@ -49,24 +49,39 @@ superseded-by-ADR: `docs/adr/0003-language-and-runtime.md`
 current structure:
 
 ```text
-mycel/
+Mycel/
   Cargo.toml
+  install.sh                 verbose fail-loud installer -> ~/.mycel
+  config/
+    mycel.config.toml.template
+    mcp.json.template
   crates/
     mycel-core/
-    mycel-mcp/
-    mycel-cli/
+    mycel-mcp/               McpTools lib + mycel-mcp-server bin (stdio JSON-RPC)
+    mycel-cli/               bin name: mycel-substrate
+    mycel-gate/              PreToolUse hook bin, fail-closed antibody gate
     mycel-tests/
     sentinel-guard/
+  harness/                   grafted kimi-code fork (TS), the agent body
+    apps/mycel/              bin name: mycel
+    packages/                agent-core, agent-core-v2, kosong, ...
   adapters/
     hermes/
     openclaw/
   schemas/
   examples/
   docs/
-    adr/
+    adr/                     0006 = harness adoption
+    specs/                   harness graft design
+    plans/
     schemas/
     open-questions.md
 ```
+
+The `harness/` tree is the kimi-code fork (MIT), grafted with full history and
+diverged from upstream (ADR-0006). It is the agent body; `crates/` is the
+substrate brain. They meet at two contracts: the `mycel-gate` hook (enforcement,
+fail-closed) and `mycel-mcp-server` over MCP (conversation).
 
 `crates/sentinel-guard` enters the workspace as a Git submodule pointed at
 `https://github.com/StressTestor/sentinel.git`. Mycel builds it as a workspace
@@ -78,10 +93,42 @@ publication path for non-Mycel users.
 | subsystem | role |
 | --- | --- |
 | `mycel-core` | substrate, antibodies, deterministic proposed-run evaluation, audit/projection runtime |
-| `mycel-mcp` | canonical tool surface for ingest, evaluate, list-antibodies, and harness metrics |
-| `mycel-cli` | local command surface that calls the MCP tool surface |
+| `mycel-mcp` | McpTools lib + `mycel-mcp-server` stdio MCP bin (evaluate_run, list_antibodies, propose_antibody - proposals are inert until promoted) |
+| `mycel-cli` | local command surface (bin `mycel-substrate`): ingest, evaluate, list-antibodies, antibody-add, maintain |
+| `mycel-gate` | `PreToolUse` hook bin: reads hook JSON on stdin, runs the evaluation engine, emits a fail-closed allow/deny. Never creates the substrate db (a deleted db reads as guard-disarmed -> block) |
 | `mycel-tests` | external black-box adversarial suite for v0.1 fail-pattern immunity |
 | `sentinel-guard` | always-on runtime defense and shared policy evaluator |
+| `harness/apps/mycel` | the agent body (bin `mycel`): TUI, sessions, subagents, providers, hooks |
+
+### gate data flow (fail-closed immunity)
+
+```text
+harness Bash tool call
+  -> PreToolUse hook (fail_mode = "closed")
+    -> mycel-gate  (stdin: {tool_name, tool_input.command})
+      -> AntibodyStore::evaluate_run  (SQLite substrate)
+        refuse -> {"hookSpecificOutput":{"permissionDecision":"deny", reason: remediation + source}} -> tool BLOCKED
+        warn   -> {"message": "..."} -> tool runs, model sees warning
+        allow  -> {} -> tool runs
+      gate crash / timeout / missing db / bad json -> nonzero exit -> BLOCKED
+```
+
+### env vars
+
+| var | meaning |
+| --- | --- |
+| `MYCEL_HOME` | mycel home dir (default `~/.mycel`). Legacy `KIMI_CODE_HOME` honored with a deprecation warning |
+| `MYCEL_INSTALL_DIR` | installer target (default `~/.mycel`) |
+| `MYCEL_NO_MODIFY_PATH` | skip the installer's shell-rc PATH edit |
+
+### gotchas
+
+| problem | cause | fix |
+| --- | --- | --- |
+| gate blocks everything after a db delete | by design: missing db = guard disarmed | re-run `install.sh` to re-init the substrate |
+| `mycel` not found after install | PATH rc line not sourced | restart shell or `export PATH="$HOME/.mycel/bin:$PATH"` |
+| harness build missing at launch | repo moved or drive unmounted | shim errors loudly with the fix; re-run `install.sh` |
+| fresh-HOME install fails at cargo | changing `HOME` unroots rustup | keep `RUSTUP_HOME`/`CARGO_HOME` pointed at the real dirs |
 
 Sentinel gates three scopes:
 

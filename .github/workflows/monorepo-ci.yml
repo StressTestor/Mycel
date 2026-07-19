@@ -21,6 +21,8 @@ jobs:
         run: cargo clippy --workspace --exclude sentinel-guard -- -D warnings
       - name: test
         run: cargo test --workspace
+      - name: gate contract e2e (deterministic, no model)
+        run: bash tests/e2e/gate-contract.sh
 
   body:
     name: ts harness (pnpm)
