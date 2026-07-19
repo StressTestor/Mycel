@@ -1,6 +1,6 @@
 # @moonshot-ai/kimi-code
 
-> The Starting Point for Next-Gen Agents
+> a personal agent harness built around substrate ecology
 
 [![npm](https://img.shields.io/npm/v/@moonshot-ai/kimi-code)](https://www.npmjs.com/package/@moonshot-ai/kimi-code) [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)  [![Docs](https://img.shields.io/badge/docs-online-blue)](https://moonshotai.github.io/kimi-code/en/)
 

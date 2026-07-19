@@ -2,7 +2,7 @@
 layout: home
 hero:
   name: Kimi Code CLI
-  text: The Starting Point for Next-Gen Agents
+  text: a personal agent harness built around substrate ecology
   actions:
     - theme: brand
       text: Get started
