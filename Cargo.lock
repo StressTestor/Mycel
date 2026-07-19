@@ -981,6 +981,10 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "mycel-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]
