@@ -130,9 +130,9 @@ describe('server-v2 /api/v1 skills', () => {
     return dir;
   }
 
-  /** Seed a project skill bundle at `<root>/.kimi-code/skills/<name>/SKILL.md`. */
+  /** Seed a project skill bundle at `<root>/.mycel/skills/<name>/SKILL.md`. */
   async function seedProjectSkill(root: string, name: string): Promise<void> {
-    const dir = join(root, '.kimi-code', 'skills', name);
+    const dir = join(root, '.mycel', 'skills', name);
     await mkdir(dir, { recursive: true });
     await writeFile(
       join(dir, 'SKILL.md'),

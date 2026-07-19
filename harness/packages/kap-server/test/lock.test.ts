@@ -233,8 +233,8 @@ describe('acquireLock — updatePort', () => {
 });
 
 describe('acquireLock — defaults', () => {
-  it('DEFAULT_LOCK_PATH points under the kimi-code home', () => {
-    expect(DEFAULT_LOCK_PATH).toMatch(/[/\\]\.kimi-code[/\\]server[/\\]lock$/);
+  it('DEFAULT_LOCK_PATH points under the mycel home', () => {
+    expect(DEFAULT_LOCK_PATH).toMatch(/[/\\].mycel[/\\]server[/\\]lock$/);
   });
 });
 
