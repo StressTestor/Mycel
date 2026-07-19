@@ -304,14 +304,14 @@ describe('handleWebCommand', () => {
           'http://127.0.0.1:58627/sessions/ses-1#token=tok-1',
         );
         const written = stripAnsi(stdoutSpy.mock.calls.map((call) => String(call[0])).join(''));
-        // Same ready banner as `kimi web`, plus the session deep link.
+        // Same ready banner as `mycel web`, plus the session deep link.
         expect(written).toContain('Mycel server ready');
         expect(written).toContain('http://127.0.0.1:58627/');
         expect(written).toContain('Token:    tok-1');
         expect(written).toContain('Session:  http://127.0.0.1:58627/sessions/ses-1#token=tok-1');
-        // Foreground servers stop with Ctrl+C, not `kimi server kill`.
+        // Foreground servers stop with Ctrl+C, not `mycel server kill`.
         expect(written).toContain('Stop:     Ctrl+C');
-        expect(written).not.toContain('kimi server kill');
+        expect(written).not.toContain('mycel server kill');
       } finally {
         stdoutSpy.mockRestore();
       }

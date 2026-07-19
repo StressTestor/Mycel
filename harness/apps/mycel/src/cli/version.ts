@@ -56,7 +56,7 @@ export function createKimiCodeHostIdentity(version = getVersion()): KimiHostIden
 }
 
 /**
- * Product User-Agent (`kimi-code-cli/<version>`) for ad-hoc outbound fetches
+ * Product User-Agent (`mycel-cli/<version>`) for ad-hoc outbound fetches
  * that don't go through the provider pipeline (registry / catalog imports).
  */
 export function createKimiCodeUserAgent(version = getVersion()): string {

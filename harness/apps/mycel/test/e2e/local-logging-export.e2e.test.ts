@@ -109,7 +109,7 @@ async function runKimiExport(args: string[]): Promise<void> {
       },
     },
     exit: (code: number): never => {
-      throw new Error(`kimi export exited ${code}: ${stderr.join('')}`);
+      throw new Error(`mycel export exited ${code}: ${stderr.join('')}`);
     },
   });
   await program.parseAsync(['node', 'kimi', 'export', ...args]);

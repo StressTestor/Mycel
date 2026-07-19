@@ -191,7 +191,7 @@ describe('runShell', () => {
     expect(mocks.kimiHarnessConstructor).toHaveBeenCalledWith(
       expect.objectContaining({
         identity: expect.objectContaining({
-          userAgentProduct: 'kimi-code-cli',
+          userAgentProduct: 'mycel-cli',
           version: '1.2.3-test',
         }),
         sessionStartedProperties: { yolo: true, auto: false, plan: true, afk: false },
@@ -672,7 +672,7 @@ describe('runShell', () => {
       expect(mocks.harnessTrack).not.toHaveBeenCalledWith('exit', expect.anything());
       expect(mocks.shutdownTelemetry).toHaveBeenCalledOnce();
       expect(stdout.text()).toBe(' Bye!\n');
-      expect(stderr.text()).toContain(' To resume this session: kimi -r ses-1');
+      expect(stderr.text()).toContain(' To resume this session: mycel -r ses-1');
     } finally {
       exitSpy.mockRestore();
       stdout.restore();
@@ -717,7 +717,7 @@ describe('runShell', () => {
         ExitCalled,
       );
 
-      expect(stderr.text()).toContain(' To resume this session: kimi -r ses-1');
+      expect(stderr.text()).toContain(' To resume this session: mycel -r ses-1');
       expect(stderr.text()).toContain('open ');
       expect(stderr.text()).toContain(openedUrl);
     } finally {
@@ -727,7 +727,7 @@ describe('runShell', () => {
     }
   });
 
-  it('surfaces an invalid target config as an error for kimi migrate, not silently', async () => {
+  it('surfaces an invalid target config as an error for mycel migrate, not silently', async () => {
     mocks.loadTuiConfig.mockResolvedValue({
       theme: 'dark',
       editorCommand: null,
@@ -738,7 +738,7 @@ describe('runShell', () => {
       new Error('Invalid configuration in ~/.kimi-code/config.toml'),
     );
 
-    // A broken config.toml must fail loudly — `kimi migrate` must not swallow
+    // A broken config.toml must fail loudly — `mycel migrate` must not swallow
     // it and proceed, or the user never learns their config is broken.
     await expect(
       runShell(

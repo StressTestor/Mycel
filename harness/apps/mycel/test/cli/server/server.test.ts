@@ -1,5 +1,5 @@
 /**
- * Tests for `kimi server run` and `kimi web` Commander wiring.
+ * Tests for `mycel server run` and `mycel web` Commander wiring.
  *
  * These tests don't actually start the server — they verify the parsed shape
  * (option flags, --open default) and that the `web` alias defers to the same
@@ -40,7 +40,7 @@ function makeProgram(): Command {
   return program;
 }
 
-describe('kimi server', () => {
+describe('mycel server', () => {
   it('registers the expected `server` subcommands while lifecycle commands are hidden', () => {
     const program = makeProgram();
     const server = program.commands.find((c) => c.name() === 'server');
@@ -86,7 +86,7 @@ describe('kimi server', () => {
     expect(longs).toContain('--json');
   });
 
-  it('the top-level `kimi web` alias is registered and defaults to opening the browser in the foreground', () => {
+  it('the top-level `mycel web` alias is registered and defaults to opening the browser in the foreground', () => {
     const program = makeProgram();
     const web = program.commands.find((c) => c.name() === 'web');
     expect(web).toBeDefined();
@@ -101,7 +101,7 @@ describe('kimi server', () => {
   });
 });
 
-describe('`kimi server` lifecycle exits with ESERVICE_UNSUPPORTED on unsupported platforms', () => {
+describe('`mycel server` lifecycle exits with ESERVICE_UNSUPPORTED on unsupported platforms', () => {
   it('the dispatcher returns a friendly error manager for unknown platforms', async () => {
     // darwin / linux / win32 have real backends (launchd / systemd / schtasks).
     // The remaining platforms fall through to the stub that throws
@@ -116,7 +116,7 @@ describe('`kimi server` lifecycle exits with ESERVICE_UNSUPPORTED on unsupported
   });
 });
 
-describe('`kimi server` lifecycle handles unavailable service managers', () => {
+describe('`mycel server` lifecycle handles unavailable service managers', () => {
   it('prints a friendly JSON error and exits 2', async () => {
     const { ServiceUnavailableError } = await import('@moonshot-ai/kap-server');
     const program = new Command('kimi').exitOverride();
@@ -171,7 +171,7 @@ describe('`kimi server` lifecycle handles unavailable service managers', () => {
   });
 });
 
-describe('`kimi server` lifecycle output', () => {
+describe('`mycel server` lifecycle output', () => {
   it('install passes --force/--port, prints the URL, and opens it when running', async () => {
     const program = new Command('kimi').exitOverride();
     const server = program.command('server');
@@ -285,7 +285,7 @@ describe('`kimi server` lifecycle output', () => {
   });
 });
 
-describe('`kimi server run` background start', () => {
+describe('`mycel server run` background start', () => {
   it('defaults the daemon log level to silent', async () => {
     const { handleRunCommand } = await import('#/cli/sub/server/run');
     let parsed: unknown;
@@ -371,7 +371,7 @@ describe('`kimi server run` background start', () => {
     const plain = stripAnsi(stdout);
     // A clear notice that a server was already running and options were ignored.
     expect(plain).toContain('A server is already running');
-    expect(plain).toContain('kimi server kill');
+    expect(plain).toContain('mycel server kill');
     // The banner uses the *actual* host (loopback), not the requested 0.0.0.0 —
     // so it shows a Local URL plus the "network disabled" hint, NOT real
     // Network addresses (which would be misleading since nothing binds them).
@@ -450,7 +450,7 @@ describe('`kimi server run` background start', () => {
     expect(plain).toContain('Logs:');
     expect(plain).toContain('off');
     expect(plain).toContain('Stop:');
-    expect(plain).toContain('kimi server kill');
+    expect(plain).toContain('mycel server kill');
     // Version sits on the title line; no separate Ready:/Version: rows and no
     // startup-time metric.
     expect(plain).not.toContain('Ready:');
@@ -600,7 +600,7 @@ describe('`kimi server run` background start', () => {
     // Red, impossible-to-miss danger notice.
     expect(plain).toContain('DANGER: authentication is DISABLED');
     expect(plain).toContain('--dangerous-bypass-auth');
-    expect(plain).toContain('kimi server kill');
+    expect(plain).toContain('mycel server kill');
     // The token is irrelevant when bypassed — neither printed nor carried in
     // any URL (so it cannot leak via copy/paste of the banner).
     expect(plain).not.toContain('tok');
@@ -645,7 +645,7 @@ describe('`kimi server run` background start', () => {
   });
 });
 
-describe('`kimi server run --foreground`', () => {
+describe('`mycel server run --foreground`', () => {
   it('runs the server in-process instead of spawning a background daemon', async () => {
     const { handleRunCommand } = await import('#/cli/sub/server/run');
     let foregroundOptions: unknown;
@@ -713,12 +713,12 @@ describe('`kimi server run --foreground`', () => {
     expect(plain).toContain('Mycel server ready');
     expect(plain).toContain('http://127.0.0.1:58627/');
     expect(openUrl).toHaveBeenCalledWith('http://127.0.0.1:58627');
-    // An attached-foreground server stops with Ctrl+C — `kimi server kill`
+    // An attached-foreground server stops with Ctrl+C — `mycel server kill`
     // from a second terminal would work, but the banner points at the obvious
     // one: the terminal the user is looking at.
     expect(plain).toContain('Stop:');
     expect(plain).toContain('Ctrl+C');
-    expect(plain).not.toContain('kimi server kill');
+    expect(plain).not.toContain('mycel server kill');
   });
 
   it('adapts the danger notice stop hint in attached-foreground mode', async () => {
@@ -748,11 +748,11 @@ describe('`kimi server run --foreground`', () => {
     const plain = stripAnsi(stdout);
     expect(plain).toContain('DANGER: authentication is DISABLED');
     expect(plain).toContain('press Ctrl+C');
-    expect(plain).not.toContain('kimi server kill');
+    expect(plain).not.toContain('mycel server kill');
   });
 });
 
-describe('`kimi server` does not register a legacy `daemon` command', () => {
+describe('`mycel server` does not register a legacy `daemon` command', () => {
   it('hard-deletes the old name', () => {
     const program = makeProgram();
     const daemon = program.commands.find((c) => c.name() === 'daemon');
@@ -1230,7 +1230,7 @@ describe('resolveDaemonProgram', () => {
   });
 
   it('returns execPath in SEA mode when argv[1] is a bare command name', async () => {
-    // Reproduces `kimi web` from the shell: argv[1] is the invoked command
+    // Reproduces `mycel web` from the shell: argv[1] is the invoked command
     // name (`kimi`), not a path. Resolving it against cwd produced `<cwd>/kimi`
     // and crashed the spawn with ENOENT.
     const { resolveDaemonProgram } = await import('#/cli/sub/server/daemon');
@@ -1453,7 +1453,7 @@ describe('createIdleShutdownHandler', () => {
   });
 });
 
-describe('kimi web / `server run` (shares `server run` call stack, background default)', () => {
+describe('mycel web / `server run` (shares `server run` call stack, background default)', () => {
   it('prints the ready banner and opens the browser by default', async () => {
     const { handleRunCommand } = await import('#/cli/sub/server/run');
     let stdout = '';
@@ -1515,7 +1515,7 @@ describe('kimi web / `server run` (shares `server run` call stack, background de
   });
 });
 
-describe('kimi web (foreground default)', () => {
+describe('mycel web (foreground default)', () => {
   it('runs in the foreground by default instead of spawning a daemon', async () => {
     const { handleRunCommand } = await import('#/cli/sub/server/run');
     let foregroundOptions: unknown;
@@ -1625,9 +1625,9 @@ describe('kimi web (foreground default)', () => {
     expect(plain).toContain('A server is already running');
     expect(openUrl).toHaveBeenCalledWith('http://127.0.0.1:58627/#token=tok');
     // The reused server is a daemon living in another process — the Stop hint
-    // stays `kimi server kill`, not Ctrl+C.
+    // stays `mycel server kill`, not Ctrl+C.
     expect(plain).toContain('Stop:');
-    expect(plain).toContain('kimi server kill');
+    expect(plain).toContain('mycel server kill');
     // No hostVersion recorded/attached → no version mismatch line.
     expect(plain).not.toContain('Server version mismatch');
   });
@@ -1722,7 +1722,7 @@ function makeKillDeps(overrides: Partial<KillCommandDeps> = {}): {
   return { deps, writes, signals, state, clock };
 }
 
-describe('`kimi server kill`', () => {
+describe('`mycel server kill`', () => {
   const liveLock = { pid: 1234, started_at: '2026-06-17T00:00:00.000Z', port: 58627 };
 
   it('prints "No running Mycel server." and sends no signal when no live lock exists', async () => {
@@ -1810,7 +1810,7 @@ describe('authHeaders', () => {
   });
 });
 
-describe('`kimi server kill` carries the bearer token', () => {
+describe('`mycel server kill` carries the bearer token', () => {
   const liveLock = { pid: 1234, started_at: '2026-06-17T00:00:00.000Z', port: 58627 };
 
   it('passes the resolved token to requestShutdown', async () => {
@@ -1902,7 +1902,7 @@ describe('accessUrlLines', () => {
   });
 });
 
-describe('`kimi web` / `server run --open` token fragment (M5.5)', () => {
+describe('`mycel web` / `server run --open` token fragment (M5.5)', () => {
   it('opens the Web UI URL with the token fragment when a token is resolvable', async () => {
     const { handleRunCommand } = await import('#/cli/sub/server/run');
     const openUrl = vi.fn();
@@ -1936,7 +1936,7 @@ describe('`kimi web` / `server run --open` token fragment (M5.5)', () => {
   });
 });
 
-describe('`kimi server rotate-token`', () => {
+describe('`mycel server rotate-token`', () => {
   let dir: string;
   let prevHome: string | undefined;
 

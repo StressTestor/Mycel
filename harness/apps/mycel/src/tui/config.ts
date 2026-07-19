@@ -2,7 +2,7 @@
  * Client-owned preferences.
  *
  * Agent/runtime settings live in core's `config.toml`; this file owns
- * kimi-code client preferences such as terminal UI and update behavior.
+ * mycel client preferences such as terminal UI and update behavior.
  */
 
 import { existsSync } from 'node:fs';

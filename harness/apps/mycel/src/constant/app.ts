@@ -5,7 +5,7 @@ export const CLI_COMMAND_NAME = 'mycel';
 export const PROCESS_NAME = 'mycel';
 
 // Used in telemetry app names and HTTP User-Agent headers.
-export const CLI_USER_AGENT_PRODUCT = 'kimi-code-cli';
+export const CLI_USER_AGENT_PRODUCT = 'mycel-cli';
 export const CLI_UI_MODE = 'shell';
 // Telemetry ui_mode for the `mycel web` / `mycel server run` host. Same product
 // as the CLI (CLI_USER_AGENT_PRODUCT); the surface is distinguished by ui_mode.
