@@ -49,7 +49,7 @@ describe('AgentProfileService.bind', () => {
     expect(svc.data().modelAlias).toBe(MOCK_MODEL);
     expect(svc.isRunnable()).toBe(true);
     expect(svc.getActiveToolNames()?.length).toBeGreaterThan(0);
-    expect(svc.getSystemPrompt()).toContain('Kimi Code CLI');
+    expect(svc.getSystemPrompt()).toContain('Mycel');
   });
 
   it('persists bind bootstrap records in the v1-compatible order', async () => {
@@ -96,7 +96,7 @@ describe('AgentProfileService.bind', () => {
       type: 'config.update',
       cwd: homeDir,
       profileName: DEFAULT_AGENT_PROFILE_NAME,
-      systemPrompt: expect.stringContaining('Kimi Code CLI'),
+      systemPrompt: expect.stringContaining('Mycel'),
     });
     expect(records[0]).not.toHaveProperty('modelAlias');
     expect(records[0]).not.toHaveProperty('thinkingEffort');
