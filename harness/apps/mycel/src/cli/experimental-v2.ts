@@ -1,5 +1,5 @@
 /**
- * Experimental agent-core-v2 engine gate for `kimi -p` (print mode).
+ * Experimental agent-core-v2 engine gate for `mycel -p` (print mode).
  *
  * When the master switch `KIMI_CODE_EXPERIMENTAL_FLAG` is truthy, print mode
  * routes to the native agent-core-v2 runner instead of the default v1
@@ -7,7 +7,7 @@
  * `cli/update/rollout.ts`) because the CLI must not depend on the core flag
  * registry. Unset / any non-truthy value keeps the v1 harness.
  *
- * Note: `kimi server run` always boots kap-server (the agent-core-v2 engine
+ * Note: `mycel server run` always boots kap-server (the agent-core-v2 engine
  * server) — it no longer consults this switch.
  */
 

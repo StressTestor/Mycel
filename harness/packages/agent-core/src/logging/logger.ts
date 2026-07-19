@@ -66,7 +66,7 @@ class RootLoggerImpl implements RootLogger {
       return makeNoopHandle(input.sessionId);
     }
     const sink = new RotatingFileSink({
-      path: join(input.sessionDir, 'logs', 'kimi-code.log'),
+      path: join(input.sessionDir, 'logs', 'mycel.log'),
       maxBytes: config.sessionMaxBytes,
       files: config.sessionFiles,
     });
@@ -441,5 +441,5 @@ export async function __resetRootLoggerForTest(): Promise<void> {
 }
 
 export function resolveGlobalLogPath(homeDir: string): string {
-  return join(homeDir, 'logs', 'kimi-code.log');
+  return join(homeDir, 'logs', 'mycel.log');
 }

@@ -69,7 +69,7 @@ import {
 import { openUrl } from '#/utils/open-url';
 import { currentTheme } from '#/tui/theme';
 import type { ColorToken } from '#/tui/theme';
-import { errorReportHintLine } from '../constant/feedback';
+import { errorReportHintLine } from '../constant/error-report';
 import { formatStepDebugTiming } from '#/utils/usage/debug-timing';
 import { nextTranscriptId } from '../utils/transcript-id';
 import type { BtwPanelController } from './btw-panel';
@@ -391,7 +391,7 @@ export class SessionEventHandler {
         ? 'Model hit max_tokens — tool call was truncated before it could run.'
         : 'Model hit max_tokens — no tool call was emitted.';
     const detail = this.isAnthropicSessionActive()
-      ? 'If this limit is wrong for your model, set `max_output_size` on the model alias in your kimi-code config.'
+      ? 'If this limit is wrong for your model, set `max_output_size` on the model alias in your mycel config.'
       : undefined;
     this.host.showNotice(title, detail);
   }

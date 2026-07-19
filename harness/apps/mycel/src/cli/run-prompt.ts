@@ -136,7 +136,7 @@ export async function runPrompt(
     },
     sessionStartedProperties: { yolo: false, plan: false, afk: true },
   });
-  log.info('kimi-code starting', {
+  log.info('mycel starting', {
     version,
     uiMode: PROMPT_UI_MODE,
     nodeVersion: process.version,
@@ -160,7 +160,7 @@ export async function runPrompt(
     // Bound cleanup so a wedged shutdown step (e.g. a SessionEnd hook, MCP
     // shutdown, or a connection blackholed by a restrictive firewall) cannot
     // keep a completed headless run alive forever. The cleanup keeps running in
-    // the background if it overruns; the caller (`kimi -p`) force-exits shortly
+    // the background if it overruns; the caller (`mycel -p`) force-exits shortly
     // after, so any straggling work is torn down with the process.
     await raceWithTimeout(pending, PROMPT_CLEANUP_TIMEOUT_MS);
   };
@@ -196,7 +196,7 @@ export async function runPrompt(
     });
     setCrashPhase('runtime');
 
-    // Headless goal mode: `kimi -p "/goal <objective>"`. The goal driver keeps
+    // Headless goal mode: `mycel -p "/goal <objective>"`. The goal driver keeps
     // the turn-run alive across continuation turns, so the normal prompt-turn
     // waiter blocks until the goal is terminal; we then emit a summary and set a
     // distinct exit code.
@@ -306,7 +306,7 @@ async function resolvePromptSession(
       stderr.write(
         `${chalk.hex('#E8A838')(
           `Session "${opts.session}" was created under a different directory.\n` +
-            `  cd "${target.workDir}" && kimi -r ${opts.session}`,
+            `  cd "${target.workDir}" && mycel -r ${opts.session}`,
         )}\n\n`,
       );
       throw new Error(
@@ -481,7 +481,7 @@ function runPromptTurn(
       : new PromptTranscriptWriter(stdout, stderr);
   let settled = false;
   let unsubscribe: (() => void) | undefined;
-  // A `kimi -p` run is not done just because the model ended a turn: an active
+  // A `mycel -p` run is not done just because the model ended a turn: an active
   // goal drives continuation turns on its own, and a scheduled cron task fires
   // later from an idle session — both trigger new turns after `end_turn`. While
   // either is pending, something must keep the event loop alive: the cron

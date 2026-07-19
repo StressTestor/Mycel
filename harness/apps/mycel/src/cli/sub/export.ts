@@ -1,5 +1,5 @@
 /**
- * `kimi export` sub-command.
+ * `mycel export` sub-command.
  *
  * CLI glue only: session lookup, previous-session confirmation, and output.
  * The actual ZIP/manifest export is owned by the SDK.
@@ -112,7 +112,7 @@ export function registerExportCommand(parent: Command, deps?: Partial<ExportDeps
     .option('-y, --yes', 'Skip previous-session confirmation.')
     .option(
       '--no-include-global-log',
-      'Skip bundling the active global diagnostic log (~/.kimi-code/logs/kimi-code.log, not rotated .1 files). By default the global log is included.',
+      'Skip bundling the active global diagnostic log (~/.mycel/logs/mycel.log, not rotated .1 files). By default the global log is included.',
     )
     .argument('[sessionId]', 'Session id to export. Defaults to the most recent session.')
     .action(

@@ -1,5 +1,5 @@
 /**
- * `kimi acp`
+ * `mycel acp`
  *
  * Verifies that the ACP sub-command is registered on the program and
  * that the action wires the harness into `@moonshot-ai/acp-adapter`'s
@@ -25,7 +25,7 @@ class ExitCalled extends Error {
   }
 }
 
-describe('kimi acp', () => {
+describe('mycel acp', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>;
   let stderrSpy: ReturnType<typeof vi.spyOn>;
 

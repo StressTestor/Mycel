@@ -82,7 +82,7 @@ export interface SessionOptions {
   readonly imageLimits?: ImageLimits;
   readonly additionalDirs?: readonly string[];
   /**
-   * Print-mode (`kimi -p`) only: hold the main turn open while background
+   * Print-mode (`mycel -p`) only: hold the main turn open while background
    * subagents (`kind === 'agent'`) are still running, idle-waiting until they
    * finish before the run exits. Set via the SDK `createSession` option.
    */
@@ -479,7 +479,7 @@ export class Session {
 
   /**
    * Wait for all still-running background tasks (across every agent) to reach a
-   * terminal state before a `kimi -p` (print) run exits.
+   * terminal state before a `mycel -p` (print) run exits.
    *
    * Only runs when the resolved print background mode is `'drain'` (see
    * `resolvePrintBackgroundMode`): `print_background_mode = "drain"`, or the
@@ -548,7 +548,7 @@ export class Session {
   }
 
   /**
-   * Resolve the effective print-mode (`kimi -p`) background-task policy.
+   * Resolve the effective print-mode (`mycel -p`) background-task policy.
    *
    * `background.print_background_mode` is authoritative when set. Otherwise we
    * fall back to the legacy `background.keep_alive_on_exit` mapping so existing
@@ -579,7 +579,7 @@ export class Session {
   }
 
   /**
-   * Decide what the `kimi -p` driver should do after the main agent's turn ends
+   * Decide what the `mycel -p` driver should do after the main agent's turn ends
    * with `reason === 'completed'`. Returns `'finish'` when the run may exit, or
    * `'continue'` when the driver must stay alive so a background-task completion
    * can `turn.steer` the main agent into a new turn.

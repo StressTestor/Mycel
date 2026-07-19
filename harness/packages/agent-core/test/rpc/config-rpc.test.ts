@@ -83,7 +83,7 @@ max_steps_per_turn = "nope"
     // and must leave the file untouched.
     const write = core.setKimiConfig({ thinking: { enabled: true } });
     await expect(write).rejects.toThrow(/fix it first/i);
-    await expect(write).rejects.toThrow(/kimi doctor/);
+    await expect(write).rejects.toThrow(/mycel doctor/);
     await expect(write).rejects.not.toThrow(/invalid_type/);
 
     const after = await readFile(path.join(home, 'config.toml'), 'utf-8');

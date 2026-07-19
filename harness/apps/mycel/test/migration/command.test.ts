@@ -1,5 +1,5 @@
 /**
- * `kimi migrate` — a bare, flagless subcommand that delegates to a host
+ * `mycel migrate` — a bare, flagless subcommand that delegates to a host
  * handler. The migration UI is the native pi-tui screen, covered separately
  * by `migration-screen.test.ts`.
  */

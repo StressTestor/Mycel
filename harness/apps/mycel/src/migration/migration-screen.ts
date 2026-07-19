@@ -56,7 +56,7 @@ export interface MigrationScreenOptions {
   readonly runMigration?: (input: RunMigrationInput) => Promise<MigrationReport>;
   /**
    * When true, the screen starts at the scope question and skips the
-   * now/later/never gate — used by the explicit `kimi migrate` command, where
+   * now/later/never gate — used by the explicit `mycel migrate` command, where
    * invoking the command is itself the decision to migrate.
    */
   readonly skipDecisionStep?: boolean;
@@ -100,7 +100,7 @@ export class MigrationScreenComponent extends Container implements Focusable {
     super();
     this.opts = opts;
     if (opts.skipDecisionStep === true) {
-      // Explicit `kimi migrate`: the now/later/never gate is meaningless, so
+      // Explicit `mycel migrate`: the now/later/never gate is meaningless, so
       // start at the scope question with the decision already fixed to 'now'.
       this.phase = 'ask2';
       this.choices.push('now');
@@ -288,9 +288,9 @@ export class MigrationScreenComponent extends Container implements Focusable {
         lines.push(chalk.hex(colors.text)(` Reason: ${this.migrationFailureReason}`));
       }
       lines.push('');
-      lines.push(chalk.hex(colors.text)(' You can retry later by running "kimi migrate".'));
+      lines.push(chalk.hex(colors.text)(' You can retry later by running "mycel migrate".'));
       lines.push('');
-      lines.push(chalk.hex(colors.textMuted)(' ⏎ continue to kimi-code'));
+      lines.push(chalk.hex(colors.textMuted)(' ⏎ continue to mycel'));
       lines.push(chalk.hex(colors.primary)('─'.repeat(width)));
       return lines.map((l) => truncateToWidth(l, width));
     }
@@ -423,7 +423,7 @@ export class MigrationScreenComponent extends Container implements Focusable {
       );
     }
     lines.push('');
-    lines.push(chalk.hex(colors.textMuted)(' ⏎ continue to kimi-code'));
+    lines.push(chalk.hex(colors.textMuted)(' ⏎ continue to mycel'));
     lines.push(chalk.hex(colors.primary)('─'.repeat(width)));
     return lines.map((l) => truncateToWidth(l, width));
   }
@@ -545,7 +545,7 @@ function summarizePlan(plan: MigrationPlan): string {
 function stepFor(phase: Phase, plan: MigrationPlan): StepDef {
   if (phase === 'ask1') {
     return {
-      title: 'Migrate this data to kimi-code?',
+      title: 'Migrate this data to mycel?',
       options: [
         { label: 'Migrate now', value: 'now' satisfies Prompt1Choice },
         { label: 'Ask me later', value: 'later' satisfies Prompt1Choice },

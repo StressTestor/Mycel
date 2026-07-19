@@ -333,13 +333,6 @@ export const BUILTIN_SLASH_COMMANDS = [
     availability: 'always',
   },
   {
-    name: 'feedback',
-    aliases: [],
-    description: 'Send feedback to make Kimi Code better',
-    priority: 60,
-    availability: 'always',
-  },
-  {
     name: 'undo',
     aliases: [],
     description: 'Withdraw the last prompt from the transcript',

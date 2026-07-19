@@ -22,6 +22,24 @@ describe('bootstrap path helpers', () => {
         else process.env['KIMI_CODE_HOME'] = prev;
       }
     });
+
+    it('prefers MYCEL_HOME over legacy KIMI_CODE_HOME', () => {
+      expect(resolveKimiHome(undefined, { MYCEL_HOME: '/m', KIMI_CODE_HOME: '/k' })).toBe('/m');
+    });
+
+    it('honors legacy KIMI_CODE_HOME when MYCEL_HOME is unset', () => {
+      expect(resolveKimiHome(undefined, { KIMI_CODE_HOME: '/k' })).toBe('/k');
+    });
+
+    it('defaults to ~/.mycel when neither env is set', () => {
+      expect(resolveKimiHome(undefined, {}, '/os')).toBe('/os/.mycel');
+    });
+
+    it('explicit homeDir still wins over both envs', () => {
+      expect(resolveKimiHome('/explicit', { MYCEL_HOME: '/m', KIMI_CODE_HOME: '/k' })).toBe(
+        '/explicit',
+      );
+    });
   });
 
   describe('resolveConfigPath', () => {

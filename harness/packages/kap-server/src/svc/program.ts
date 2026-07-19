@@ -35,7 +35,7 @@ export function resolveSupervisorProgram(
   execPath: string = process.execPath,
   isSea: boolean = detectSea(),
 ): string {
-  // In a SEA binary `argv[1]` is the invoked command name (e.g. `kimi`) or the
+  // In a SEA binary `argv[1]` is the invoked command name (e.g. `mycel`) or the
   // first user argument — never a script path — so the re-exec target is always
   // the binary itself. Resolving it against `cwd` would produce a bogus path
   // (e.g. `<cwd>/kimi`) and crash the spawn with ENOENT.

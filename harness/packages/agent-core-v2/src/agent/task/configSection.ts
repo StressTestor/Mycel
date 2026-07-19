@@ -8,7 +8,7 @@
  * `keepAliveOnExit` also
  * accepts the v1 env override `KIMI_CODE_BACKGROUND_KEEP_ALIVE_ON_EXIT`
  * (applied live by the config env overlay, never persisted). Also owns the
- * `kimi -p` print-mode background policy (`printBackgroundMode` /
+ * `mycel -p` print-mode background policy (`printBackgroundMode` /
  * `printWaitCeilingS` / `printMaxTurns`), resolved with v1 semantics by
  * `resolvePrintBackgroundMode`. Self-registered
  * at module load via `registerConfigSection`, so the `config` domain never
@@ -49,7 +49,7 @@ export function resolveAgentTaskConfig(config: IConfigService): AgentTaskConfig 
 }
 
 /**
- * Resolve the effective print-mode (`kimi -p`) background-task policy, mirroring
+ * Resolve the effective print-mode (`mycel -p`) background-task policy, mirroring
  * v1's `Session.resolvePrintBackgroundMode`: `printBackgroundMode` is
  * authoritative when set; otherwise fall back to the legacy `keepAliveOnExit`
  * mapping (`true` ⇒ `'drain'`, otherwise `'exit'`). The

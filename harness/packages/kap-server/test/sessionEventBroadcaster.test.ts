@@ -1040,7 +1040,7 @@ describe('SessionEventBroadcaster', () => {
 
   it('fans out the legacy background.task.* alias alongside native task.* for v1 clients', async () => {
     // v2 emits `task.started`/`task.terminated`; unchanged v1 consumers
-    // (kimi-code TUI / `kimi -p`, node-sdk) only understand
+    // (kimi-code TUI / `mycel -p`, node-sdk) only understand
     // `background.task.*`. The broadcaster must emit both spellings so web
     // (handles `task.*`, ignores the alias) and TUI (handles the alias, ignores
     // `task.*`) both work without consumer changes.

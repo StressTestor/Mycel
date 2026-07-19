@@ -13,7 +13,7 @@
  *   - translate a fired `CronTask` into a `steer(...)` call carrying a
  *     `CronJobOrigin`, plus the `cron_fired` telemetry event;
  *   - mirror every store mutation to `<sessionDir>/cron/<id>.json`
- *     (via {@link addTask} / {@link removeTasks}) so that `kimi resume`
+ *     (via {@link addTask} / {@link removeTasks}) so that `mycel resume`
  *     can call {@link loadFromDisk} to rehydrate previously-scheduled
  *     tasks. When no `sessionDir` is supplied (subagents, tests,
  *     ephemeral sessions) the manager stays purely in-memory.
@@ -77,7 +77,7 @@ const STALE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Point-in-time view of a scheduled cron task, exposed over RPC so host
- * applications (e.g. the `kimi -p` flow deciding whether pending work
+ * applications (e.g. the `mycel -p` flow deciding whether pending work
  * remains before exit) can enumerate scheduled tasks without going
  * through the model-facing CronList tool.
  */
@@ -143,7 +143,7 @@ export class CronManager {
    * `sessionDir` was supplied — the manager then behaves as pure
    * in-memory, matching pre-persistence semantics. When defined,
    * `addTask` / `removeTasks` schedule fire-and-forget writes so a
-   * later `kimi resume` can reload via {@link loadFromDisk}.
+   * later `mycel resume` can reload via {@link loadFromDisk}.
    */
   private readonly persistStore: PerIdJsonStore<CronTask> | undefined;
 
@@ -241,7 +241,7 @@ export class CronManager {
 
   /**
    * Persist the scheduler's `lastFiredAt` cursor for a recurring task
-   * so a `kimi resume` does not coalesce-replay an already-delivered
+   * so a `mycel resume` does not coalesce-replay an already-delivered
    * fire. Called by the scheduler's `onAdvanceCursor` callback after a
    * successful recurring fire.
    *
@@ -262,7 +262,7 @@ export class CronManager {
 
   /**
    * Rehydrate the in-memory store from `<sessionDir>/cron/` after
-   * `kimi resume`. No-op when persistence is not attached. Idempotent:
+   * `mycel resume`. No-op when persistence is not attached. Idempotent:
    * clears the in-memory map and re-inserts every record on disk.
    *
    * Tasks are inserted via {@link SessionCronStore.adopt} so the

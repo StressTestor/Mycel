@@ -1,5 +1,5 @@
 /**
- * `kimi login`
+ * `mycel login`
  *
  * Verifies that the login sub-command is registered on the program and
  * that the action drives `harness.auth.login`, prints the device code to
@@ -38,7 +38,7 @@ class ExitCalled extends Error {
   }
 }
 
-describe('kimi login', () => {
+describe('mycel login', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>;
   let stderrSpy: ReturnType<typeof vi.spyOn>;
 

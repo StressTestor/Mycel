@@ -419,7 +419,7 @@ export class SessionSubagentHost {
 
   /**
    * Hold the run open until the child agent's background tasks (background
-   * Bash, nested background agents) settle — the print-mode (`kimi -p`)
+   * Bash, nested background agents) settle — the print-mode (`mycel -p`)
    * drain semantics applied to subagent completion. Drained tasks get their
    * terminal notifications suppressed: without that, a task outliving the
    * child's final turn steers a fresh turn on the finished subagent

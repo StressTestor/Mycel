@@ -6,16 +6,16 @@ import { join } from 'node:path';
 import { resolveKimiHome } from '@moonshot-ai/agent-core-v2';
 
 
-export const KIMI_SERVER_LABEL = 'ai.moonshot.kimi-server';
+export const KIMI_SERVER_LABEL = 'ai.mycel.server';
 
 
 export const KIMI_SERVER_PLIST_FILENAME = `${KIMI_SERVER_LABEL}.plist`;
 
 
-export const KIMI_SERVER_SYSTEMD_UNIT = 'kimi-server.service';
+export const KIMI_SERVER_SYSTEMD_UNIT = 'mycel-server.service';
 
 
-export const KIMI_SERVER_TASK_NAME = 'KimiServer';
+export const KIMI_SERVER_TASK_NAME = 'MycelServer';
 
 
 export function launchAgentPlistPath(): string {

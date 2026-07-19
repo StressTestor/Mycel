@@ -1309,7 +1309,7 @@ describe('Session.createAgent', () => {
             `${workDir}/.github`,
             `${workDir}/.github/workflows`,
             `${workDir}/src`,
-            `${workDir}/.kimi-code`,
+            `${workDir}/.mycel`,
           ].includes(path)
         ) {
           return stat('dir');
@@ -1317,7 +1317,7 @@ describe('Session.createAgent', () => {
         if (
           [
             '/repo/AGENTS.md',
-            `${workDir}/.kimi-code/AGENTS.md`,
+            `${workDir}/.mycel/AGENTS.md`,
             `${workDir}/AGENTS.md`,
             `${workDir}/package.json`,
             `${workDir}/src/index.ts`,
@@ -1357,7 +1357,7 @@ describe('Session.createAgent', () => {
       },
       readText: vi.fn(async (path: string) => {
         if (path === '/repo/AGENTS.md') return 'root instructions';
-        if (path === `${workDir}/.kimi-code/AGENTS.md`) return 'brand instructions';
+        if (path === `${workDir}/.mycel/AGENTS.md`) return 'brand instructions';
         if (path === `${workDir}/AGENTS.md`) return 'leaf instructions';
         throw new Error(`ENOENT ${path}`);
       }),
@@ -1383,7 +1383,7 @@ describe('Session.createAgent', () => {
     expect(created.agent.config.systemPrompt).toContain('<!-- From: /repo/AGENTS.md -->');
     expect(created.agent.config.systemPrompt).toContain('root instructions');
     expect(created.agent.config.systemPrompt).toContain(
-      '<!-- From: /repo/packages/app/.kimi-code/AGENTS.md -->',
+      '<!-- From: /repo/packages/app/.mycel/AGENTS.md -->',
     );
     expect(created.agent.config.systemPrompt).toContain('brand instructions');
     expect(created.agent.config.systemPrompt).toContain(
@@ -1392,7 +1392,7 @@ describe('Session.createAgent', () => {
     expect(created.agent.config.systemPrompt).toContain('leaf instructions');
   });
 
-  it('uses the kimi home for global branded AGENTS.md files', async () => {
+  it('uses the mycel home for global branded AGENTS.md files', async () => {
     const realHome = '/real-home';
     const kimiHome = '/kimi-home';
     const workDir = '/repo/packages/app';
@@ -1404,7 +1404,7 @@ describe('Session.createAgent', () => {
         if (['/repo', '/repo/.git', '/repo/packages', workDir].includes(path)) {
           return stat('dir');
         }
-        if ([`${kimiHome}/AGENTS.md`, `${realHome}/.kimi-code/AGENTS.md`].includes(path)) {
+        if ([`${kimiHome}/AGENTS.md`, `${realHome}/.mycel/AGENTS.md`].includes(path)) {
           return stat('file');
         }
         throw new Error(`ENOENT ${path}`);
@@ -1415,7 +1415,7 @@ describe('Session.createAgent', () => {
       },
       readText: vi.fn(async (path: string) => {
         if (path === `${kimiHome}/AGENTS.md`) return 'kimi home instructions';
-        if (path === `${realHome}/.kimi-code/AGENTS.md`) return 'stale real-home instructions';
+        if (path === `${realHome}/.mycel/AGENTS.md`) return 'stale real-home instructions';
         throw new Error(`ENOENT ${path}`);
       }),
     });

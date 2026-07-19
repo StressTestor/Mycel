@@ -897,7 +897,7 @@ function resolvePendingInteraction(
  * byte-identical and `agentId`/`sessionId` are re-stamped so the alias flows
  * through the same dispatch / journal / agent-filter path as the native event.
  *
- * Exists so unchanged v1 consumers (kimi-code TUI / `kimi -p`, node-sdk) keep
+ * Exists so unchanged v1 consumers (kimi-code TUI / `mycel -p`, node-sdk) keep
  * working while v2-shaped consumers (kimi-web) keep the native event and ignore
  * the alias (registered as known, no handler). Remove once every consumer has
  * migrated to `task.*`.

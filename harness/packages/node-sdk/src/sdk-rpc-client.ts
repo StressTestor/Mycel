@@ -38,7 +38,7 @@ export interface SDKRpcClientOptions {
   readonly telemetry?: TelemetryClient;
   readonly onOAuthRefresh?: (outcome: OAuthRefreshOutcome) => void;
   /**
-   * Host UI mode (`'print'` for `kimi -p`, `'cli'` for the TUI, ...). Forwarded
+   * Host UI mode (`'print'` for `mycel -p`, `'cli'` for the TUI, ...). Forwarded
    * to the v1 core, which applies print-mode config defaults when it is
    * `'print'`.
    */

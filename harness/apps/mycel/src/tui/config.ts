@@ -2,7 +2,7 @@
  * Client-owned preferences.
  *
  * Agent/runtime settings live in core's `config.toml`; this file owns
- * kimi-code client preferences such as terminal UI and update behavior.
+ * mycel client preferences such as terminal UI and update behavior.
  */
 
 import { existsSync } from 'node:fs';
@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { getDataDir } from '#/utils/paths';
 
 export const INVALID_TUI_CONFIG_MESSAGE =
-  'Invalid TUI config in ~/.kimi-code/tui.toml; using defaults.';
+  'Invalid TUI config in ~/.mycel/tui.toml; using defaults.';
 
 export const TuiThemeSchema = z.string();
 
@@ -149,9 +149,9 @@ export function normalizeTuiConfig(config: TuiConfigFileShape): TuiConfig {
 }
 
 export function renderTuiConfig(config: TuiConfig): string {
-  return `# ~/.kimi-code/tui.toml
-# Client preferences for kimi-code.
-# Agent/runtime settings stay in ~/.kimi-code/config.toml.
+  return `# ~/.mycel/tui.toml
+# Client preferences for mycel.
+# Agent/runtime settings stay in ~/.mycel/config.toml.
 
 theme = "${escapeTomlBasicString(config.theme)}" # "auto" | "dark" | "light" | custom theme name
 disable_paste_burst = ${String(config.disablePasteBurst)} # true disables non-bracketed paste-burst fallback

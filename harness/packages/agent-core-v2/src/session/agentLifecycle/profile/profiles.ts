@@ -103,7 +103,7 @@ const DEFAULT_SUMMARY_POLICY = {
 
 registerAgentProfile({
   name: 'agent',
-  description: 'Default Kimi Code agent',
+  description: 'Default Mycel agent',
   tools: AGENT_TOOLS,
   systemPrompt: (context) => renderSystemPrompt('', context, AGENT_TOOLS),
 });

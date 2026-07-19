@@ -28,7 +28,7 @@ export async function resolveMcpJsonPaths(input: ResolveMcpJsonPathsInput): Prom
   return {
     user: join(resolveKimiHome(input.homeDir), 'mcp.json'),
     projectRoot: join(projectRoot, '.mcp.json'),
-    project: join(input.cwd, '.kimi-code', 'mcp.json'),
+    project: join(input.cwd, '.mycel', 'mcp.json'),
   };
 }
 
@@ -38,9 +38,9 @@ export interface LoadMcpServersInput {
 }
 
 /**
- * Load MCP server declarations from the user-global `~/.kimi-code/mcp.json`,
+ * Load MCP server declarations from the user-global `~/.mycel/mcp.json`,
  * the project-root `<project root>/.mcp.json`, and the project-local
- * `<cwd>/.kimi-code/mcp.json`. Entries in later files override earlier files
+ * `<cwd>/.mycel/mcp.json`. Entries in later files override earlier files
  * with the same key, so a repo can specialise or replace a shared definition,
  * and Kimi-specific project config wins over the Claude-compatible root file.
  *

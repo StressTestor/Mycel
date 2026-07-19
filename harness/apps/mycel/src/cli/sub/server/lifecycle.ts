@@ -1,5 +1,5 @@
 /**
- * `kimi server install/uninstall/start/stop/restart/status`.
+ * `mycel server install/uninstall/start/stop/restart/status`.
  *
  * The lifecycle calls into the platform service manager from
  * `@moonshot-ai/kap-server` (`src/svc/*`).

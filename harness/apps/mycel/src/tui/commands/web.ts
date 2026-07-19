@@ -25,7 +25,7 @@ const WEB_BACKGROUND_FLAG = '--background';
  * terminal in the foreground (`Ctrl+C` stops it), with the browser opened to
  * the active session. `/web --background` instead ensures the background
  * daemon is up, opens the browser, and releases the terminal — equivalent to
- * `kimi web --background`. A server that is already running is reused in both
+ * `mycel web --background`. A server that is already running is reused in both
  * modes. A confirmation step spells out the consequences and only proceeds
  * when the user presses Enter on Continue.
  */
@@ -107,7 +107,7 @@ export async function handleWebCommand(host: SlashCommandHost, args: string): Pr
   // this terminal in the foreground (the registered task runs after teardown,
   // where `process.exit` would normally happen). The deep link is opened from
   // the ready hook, once the server is actually listening, and the terminal
-  // shows the same ready banner as `kimi web` plus the session deep link.
+  // shows the same ready banner as `mycel web` plus the session deep link.
   host.setExitForegroundTask(async () => {
     const runOptions = { ...parseServerOptions({}), keepAlive: true };
     try {
@@ -145,12 +145,12 @@ function sessionLine(url: string): string {
 /**
  * Warn when the reused server was started by a different CLI version: it keeps
  * serving its own bundled web UI/API until restarted. Mirrors the banner hint
- * printed by `kimi web`.
+ * printed by `mycel web`.
  */
 function showServerVersionHint(host: SlashCommandHost, hostVersion: string | undefined): void {
   if (hostVersion === undefined || hostVersion === getVersion()) return;
   host.showStatus(
-    `Running server is version ${hostVersion}, this CLI is ${getVersion()} — restart with kimi server kill to pick up the new version.`,
+    `Running server is version ${hostVersion}, this CLI is ${getVersion()} — restart with mycel server kill to pick up the new version.`,
     'warning',
   );
 }
@@ -179,7 +179,7 @@ function openAndExit(
 /**
  * Build the deep-link URL the web UI recognises for a session. When a token is
  * known it rides in the `#token=` fragment (never sent to the server, so never
- * logged), so the browser authenticates on load just like `kimi web`.
+ * logged), so the browser authenticates on load just like `mycel web`.
  */
 export function webSessionUrl(origin: string, sessionId: string, token?: string): string {
   const base = `${origin.replace(/\/+$/, '')}/sessions/${encodeURIComponent(sessionId)}`;

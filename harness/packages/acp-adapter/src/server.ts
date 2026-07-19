@@ -157,7 +157,7 @@ export class AcpServer implements Agent {
     opts?: {
       agentInfo?: Implementation;
       /**
-       * Env vars to advertise in `authMethods[0].env` so the `kimi login`
+       * Env vars to advertise in `authMethods[0].env` so the `mycel login`
        * subprocess the client spawns (via `terminal-auth`) lands its
        * token under the same data root the ACP server uses. Intended for
        * sandboxed test setups (e.g. `{ KIMI_CODE_HOME: '/tmp/...' }`);
@@ -187,7 +187,7 @@ export class AcpServer implements Agent {
        * them to {@link Session.activateSkill} instead of forwarding the
        * raw slash text — matching the TUI's slash-command behavior so
        * skill activations don't fall back to model-driven Bash
-       * exploration of `~/.kimi-code/skills/`.
+       * exploration of `~/.mycel/skills/`.
        */
       slashCommands?: SlashCommandsResolver;
     },
@@ -560,7 +560,7 @@ export class AcpServer implements Agent {
    * Re-check whether the on-disk token is usable; does NOT trigger an
    * actual OAuth flow. The stdio JSON-RPC channel has no TTY to render
    * the device-code prompt — clients are expected to spawn
-   * `kimi login` themselves via the terminal-auth method advertised in
+   * `mycel login` themselves via the terminal-auth method advertised in
    * `initialize.authMethods` (`args:['login']`, see {@link TERMINAL_AUTH_METHOD})
    * and then re-invoke `authenticate('login')` to confirm the token
    * landed on disk. Mirrors kimi-cli `acp/server.py:374-398` semantics
@@ -994,7 +994,7 @@ export async function runAcpServer(
      */
     agentInfo?: Implementation;
     /**
-     * Env vars to forward to the `kimi login` subprocess clients spawn
+     * Env vars to forward to the `mycel login` subprocess clients spawn
      * via `terminal-auth`. See {@link AcpServer} ctor for the use case.
      */
     terminalAuthEnv?: Readonly<Record<string, string>>;

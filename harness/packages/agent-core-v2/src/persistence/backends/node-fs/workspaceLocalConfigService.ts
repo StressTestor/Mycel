@@ -2,7 +2,7 @@
  * `FileWorkspaceLocalConfigService` — node-fs backend for `IWorkspaceLocalConfigService`.
  *
  * Discovers project roots, parses and writes project-local
- * `.kimi-code/local.toml`, resolves additional directories with
+ * `.mycel/local.toml`, resolves additional directories with
  * v1-compatible OS-home expansion through `bootstrap`, and accesses the local
  * filesystem through `hostFs`. Bound at App scope.
  */
@@ -96,7 +96,7 @@ export class FileWorkspaceLocalConfigService implements IWorkspaceLocalConfigSer
   }
 
   private getWorkspaceLocalConfigPath(projectRoot: string): string {
-    return join(projectRoot, '.kimi-code', 'local.toml');
+    return join(projectRoot, '.mycel', 'local.toml');
   }
 
   private async findProjectRoot(workDir: string): Promise<string> {

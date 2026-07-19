@@ -1,5 +1,5 @@
 /**
- * `kimi provider` CLI unit tests. The handlers receive an injected `getHarness`
+ * `mycel provider` CLI unit tests. The handlers receive an injected `getHarness`
  * + capturing stdout/stderr, so we test the wiring end-to-end without booting
  * a real harness or hitting the network.
  */
@@ -225,7 +225,7 @@ const CATALOG_BODY = {
   },
 };
 
-describe('kimi provider add', () => {
+describe('mycel provider add', () => {
   it('imports providers and models from a custom registry, persisting source on each provider', async () => {
     const fetchMock = mockRegistryFetch();
     const { harness, current, setConfigCalls } = makeHarness({ providers: {} } as KimiConfig);
@@ -400,7 +400,7 @@ describe('kimi provider add', () => {
   });
 });
 
-describe('kimi provider remove', () => {
+describe('mycel provider remove', () => {
   it('removes a provider and reports success', async () => {
     const initial: KimiConfig = {
       providers: {
@@ -437,7 +437,7 @@ describe('kimi provider remove', () => {
   });
 });
 
-describe('kimi provider list', () => {
+describe('mycel provider list', () => {
   const config: KimiConfig = {
     providers: {
       kohub: {
@@ -554,7 +554,7 @@ describe('registerProviderCommand', () => {
     // Simulate the strict write path rejecting because config.toml is invalid.
     harness.removeProvider = async () => {
       throw new Error(
-        'Cannot change settings while config.toml is invalid — fix it first (run `kimi doctor` for details).',
+        'Cannot change settings while config.toml is invalid — fix it first (run `mycel doctor` for details).',
       );
     };
     const { deps, stderr, exitCodes } = makeDeps(harness);
@@ -572,7 +572,7 @@ describe('registerProviderCommand', () => {
   });
 });
 
-describe('kimi provider catalog list', () => {
+describe('mycel provider catalog list', () => {
   it('lists catalog providers with wire/model counts, sorted by id', async () => {
     mockRegistryFetch(CATALOG_BODY);
     const { harness } = makeHarness({ providers: {} } as KimiConfig);
@@ -652,7 +652,7 @@ describe('kimi provider catalog list', () => {
   });
 });
 
-describe('kimi provider catalog add', () => {
+describe('mycel provider catalog add', () => {
   it('imports a provider from the catalog without changing the default model', async () => {
     mockRegistryFetch(CATALOG_BODY);
     const initial: KimiConfig = {
@@ -733,7 +733,7 @@ describe('kimi provider catalog add', () => {
     expect(exitCodes).toEqual([1]);
     const err = stderr.join('');
     expect(err).toContain('"does-not-exist" is not in provider "anthropic"');
-    expect(err).toContain('kimi provider catalog list anthropic');
+    expect(err).toContain('mycel provider catalog list anthropic');
   });
 
   it('preserves an existing default_model when re-importing the same provider without --default-model', async () => {
@@ -807,7 +807,7 @@ describe('kimi provider catalog add', () => {
     // Regression test for codex P2 follow-up: previously the handler fell
     // back to `false` when `thinking.enabled` was unset, but
     // `resolveThinkingEffort` treats `thinking.enabled === false` as an
-    // explicit "off" request. A fresh `kimi provider catalog add
+    // explicit "off" request. A fresh `mycel provider catalog add
     // anthropic --default-model claude-opus-4-7` must NOT silently disable
     // thinking — it should leave `thinking.enabled` unset so the runtime
     // uses the per-model default.

@@ -10,7 +10,7 @@
  *
  * Lookup order (first hit wins):
  *   1. System `rg` on the execution-environment PATH (`rg --version`).
- *   2. Persistent cache at `<KIMI_CODE_HOME|~/.kimi-code>/bin/rg` — where a
+ *   2. Persistent cache at `<KIMI_CODE_HOME|~/.mycel>/bin/rg` — where a
  *      previously bootstrapped or manually dropped static binary lives. Only
  *      attempted when `allowCachedFallback` is set (Glob); Grep keeps its own
  *      pure-node fallback and opts out so its "rg missing → node fallback"
@@ -44,9 +44,12 @@ function rgBinaryName(): string {
 }
 
 function getShareDir(): string {
-  const override = process.env['KIMI_CODE_HOME'];
-  if (override !== undefined && override !== '') return override;
-  return join(homedir(), '.kimi-code');
+  // Precedence matches resolveKimiHome: MYCEL_HOME > legacy KIMI_CODE_HOME > ~/.mycel.
+  const mycelHome = process.env['MYCEL_HOME'];
+  if (mycelHome !== undefined && mycelHome !== '') return mycelHome;
+  const legacy = process.env['KIMI_CODE_HOME'];
+  if (legacy !== undefined && legacy !== '') return legacy;
+  return join(homedir(), '.mycel');
 }
 
 export function getShareBinRgPath(): string {

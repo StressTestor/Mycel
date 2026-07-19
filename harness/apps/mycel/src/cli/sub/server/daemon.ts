@@ -1,13 +1,13 @@
 /**
- * `kimi web` daemon orchestration — parent (spawner) side.
+ * `mycel web` daemon orchestration — parent (spawner) side.
  *
  * Ensures a single background server daemon exists for this device, then
  * returns its origin so the caller can open the web UI. The flow:
  *
- *   1. Read `~/.kimi-code/server/lock`. If it names a *live* daemon, reuse it
+ *   1. Read `~/.mycel/server/lock`. If it names a *live* daemon, reuse it
  *      (wait for it to be healthy) — never spawn a second one.
  *   2. Otherwise pick a free port (preferred port when available, else an
- *      OS-assigned one) and spawn `kimi server run --daemon` as a detached
+ *      OS-assigned one) and spawn `mycel server run --daemon` as a detached
  *      child whose stdio is redirected to the server log.
  *   3. Poll the lock until *some* live daemon (ours, or a concurrent racer's
  *      that won the lock) is healthy, then return its origin.
@@ -187,7 +187,7 @@ function detectSea(): boolean {
  * Absolute path to the CLI entry that should be re-execed to run the daemon.
  * Mirrors `resolveSupervisorProgram` in `packages/kap-server/src/svc/program.ts`:
  * when the CLI is a compiled single binary, `argv[1]` is the invoked command
- * name (e.g. `kimi`) or the first user argument — never a script path — so we
+ * name (e.g. `mycel`) or the first user argument — never a script path — so we
  * must re-exec `process.execPath` itself.
  */
 export function resolveDaemonProgram(
@@ -304,7 +304,7 @@ function sleep(ms: number): Promise<void> {
 /**
  * Return an already-live, healthy daemon's connection info, or `undefined`
  * when no reusable server holds the lock. Used by `ensureDaemon` (step 1) and
- * by foreground-mode `kimi web`, which opens the running server instead of
+ * by foreground-mode `mycel web`, which opens the running server instead of
  * failing to bind its port.
  */
 export async function findReusableDaemon(): Promise<EnsureDaemonResult | undefined> {

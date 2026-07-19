@@ -383,7 +383,7 @@ removed_flag = true
     await ensureConfigFile(configPath);
 
     const text = await readFile(configPath, 'utf-8');
-    expect(text).toContain('Runtime settings for Kimi Code.');
+    expect(text).toContain('Runtime settings for Mycel.');
     expect(text).not.toMatch(/^default_thinking =/m);
     expect(text).not.toMatch(/^default_model =/m);
 
@@ -910,7 +910,7 @@ max_steps_per_turn = "nope"
     } catch (error) {
       expect(error).toBeInstanceOf(KimiError);
       expect((error as KimiError).message).toContain('fix it first');
-      expect((error as KimiError).message).toContain('kimi doctor');
+      expect((error as KimiError).message).toContain('mycel doctor');
       expect((error as KimiError).message).not.toContain('invalid_type');
     }
 

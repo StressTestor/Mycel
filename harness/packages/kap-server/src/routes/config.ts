@@ -3,7 +3,7 @@
  *
  * Implements the v1 `/api/v1/config` wire contract on top of `agent-core-v2`'s
  * section-registry `IConfigService`:
- *   GET  /config   — global Kimi configuration, secrets redacted
+ *   GET  /config   — global Mycel configuration, secrets redacted
  *   POST /config   — update global configuration (merge semantics)
  *
  * **Wire fidelity**: reuses the local `protocol/rest-config` `configResponseSchema` /
@@ -62,7 +62,7 @@ export function registerConfigRoutes(app: ConfigRouteHost, core: Scope): void {
       method: 'GET',
       path: '/config',
       success: { data: configResponseSchema },
-      description: 'Get the global Kimi configuration (secrets redacted)',
+      description: 'Get the global Mycel configuration (secrets redacted)',
       tags: ['config'],
     },
     async (req, reply) => {
@@ -82,7 +82,7 @@ export function registerConfigRoutes(app: ConfigRouteHost, core: Scope): void {
       errors: {
         [ErrorCode.VALIDATION_FAILED]: {},
       },
-      description: 'Update the global Kimi configuration (merge semantics)',
+      description: 'Update the global Mycel configuration (merge semantics)',
       tags: ['config'],
     },
     async (req, reply) => {

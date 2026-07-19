@@ -1,5 +1,5 @@
 /**
- * Output rendering for `kimi -p` (print mode) — shared by the v1 driver
+ * Output rendering for `mycel -p` (print mode) — shared by the v1 driver
  * (`run-prompt.ts`) and the native v2 runner (`v2/run-v2-print.ts`).
  *
  * Both engines feed the same writer classes: v1 via the SDK `Event` stream, v2
@@ -383,7 +383,7 @@ export function writeExperimentalVersion(
     stdout.write(`${JSON.stringify(message)}\n`);
     return;
   }
-  stderr.write(`kimi version ${version}\n`);
+  stderr.write(`mycel version ${version}\n`);
 }
 
 export function writeResumeHint(
@@ -392,7 +392,7 @@ export function writeResumeHint(
   stdout: PromptOutput,
   stderr: PromptOutput,
 ): void {
-  const command = `kimi -r ${sessionId}`;
+  const command = `mycel -r ${sessionId}`;
   const content = `To resume this session: ${command}`;
   if (outputFormat === 'stream-json') {
     const message: PromptJsonResumeMetaMessage = {

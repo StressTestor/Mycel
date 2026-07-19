@@ -5,23 +5,23 @@ export const CLI_COMMAND_NAME = 'mycel';
 export const PROCESS_NAME = 'mycel';
 
 // Used in telemetry app names and HTTP User-Agent headers.
-export const CLI_USER_AGENT_PRODUCT = 'kimi-code-cli';
+export const CLI_USER_AGENT_PRODUCT = 'mycel-cli';
 export const CLI_UI_MODE = 'shell';
-// Telemetry ui_mode for the `kimi web` / `kimi server run` host. Same product
+// Telemetry ui_mode for the `mycel web` / `mycel server run` host. Same product
 // as the CLI (CLI_USER_AGENT_PRODUCT); the surface is distinguished by ui_mode.
 export const WEB_UI_MODE = 'web';
 
 // Give telemetry a short flush window without making CLI exit feel stuck.
 export const CLI_SHUTDOWN_TIMEOUT_MS = 3000;
 
-// Upper bound on headless (`kimi -p`) shutdown. A wedged cleanup step (e.g. a
+// Upper bound on headless (`mycel -p`) shutdown. A wedged cleanup step (e.g. a
 // SessionEnd hook, an MCP shutdown, or a connection blackholed by a restrictive
 // firewall) must not keep a completed run alive indefinitely — once this elapses
 // we stop waiting on cleanup and let the run return.
 export const PROMPT_CLEANUP_TIMEOUT_MS = 8000;
 
 // Grace after a headless run has fully completed (turn done, cleanup attempted)
-// before force-exiting. `kimi -p` otherwise relies on the event loop draining to
+// before force-exiting. `mycel -p` otherwise relies on the event loop draining to
 // exit; a stray ref'd handle (socket/timer/child) left over from the run would
 // wedge it. The guard timer is unref'd, so a healthy run still exits naturally
 // well before this fires.
@@ -67,15 +67,6 @@ export const OAUTH_PROVIDER_DISPLAY_NAME = 'Kimi Code';
 // notice. Derived from sdk's ErrorCodes so a future rename in core
 // auto-propagates instead of silently breaking the startup recovery path.
 export const OAUTH_LOGIN_REQUIRED_CODE = ErrorCodes.AUTH_LOGIN_REQUIRED;
-
-export const FEEDBACK_ISSUE_URL = 'https://github.com/MoonshotAI/kimi-code/issues';
-
-// Sent in the feedback `version` field so the backend can distinguish this
-// TypeScript client from clients that send a bare version.
-export const FEEDBACK_VERSION_PREFIX = 'kimi-code-';
-
-// Telemetry event name; keep stable for dashboard queries.
-export const FEEDBACK_TELEMETRY_EVENT = 'feedback_submitted';
 
 // CDN source of truth: all version checks and native install scripts pull from here.
 export const KIMI_CODE_CDN_BASE = 'https://code.kimi.com/kimi-code';

@@ -454,9 +454,12 @@ export function resolveKimiTokenStorageName(input: {
 }
 
 function defaultKimiHome(): string {
-  const override = process.env['KIMI_CODE_HOME'];
-  if (override !== undefined && override.length > 0) return override;
-  return join(homedir(), '.kimi-code');
+  // Precedence matches resolveKimiHome: MYCEL_HOME > legacy KIMI_CODE_HOME > ~/.mycel.
+  const mycelHome = process.env['MYCEL_HOME'];
+  if (mycelHome !== undefined && mycelHome.length > 0) return mycelHome;
+  const legacy = process.env['KIMI_CODE_HOME'];
+  if (legacy !== undefined && legacy.length > 0) return legacy;
+  return join(homedir(), '.mycel');
 }
 
 function managedUsageUrl(baseUrl: string | undefined): string {

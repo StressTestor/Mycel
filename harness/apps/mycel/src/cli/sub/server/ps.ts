@@ -1,9 +1,9 @@
 /**
- * `kimi server ps` — list clients currently connected to the running server.
+ * `mycel server ps` — list clients currently connected to the running server.
  *
  * Talks to the running server over HTTP (`GET /api/v1/connections`) using the
- * single-instance lock (`~/.kimi-code/server/lock`) to discover its origin —
- * the same way `kimi web` locates the daemon.
+ * single-instance lock (`~/.mycel/server/lock`) to discover its origin —
+ * the same way `mycel web` locates the daemon.
  */
 
 import chalk from 'chalk';
@@ -55,7 +55,7 @@ async function handlePsCommand(opts: { json?: boolean }): Promise<void> {
   const lock = getLiveLock();
   if (!lock) {
     throw new Error(
-      'No running Mycel server. Start one with `kimi server run` or `kimi web`.',
+      'No running Mycel server. Start one with `mycel server run` or `mycel web`.',
     );
   }
 

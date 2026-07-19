@@ -1,5 +1,5 @@
 /**
- * `kimi acp` sub-command.
+ * `mycel acp` sub-command.
  *
  * Starts the Agent Client Protocol (ACP) server over stdio so that
  * ACP-compatible clients (editors, IDEs, custom front-ends) can drive
@@ -74,7 +74,7 @@ export function registerAcpCommand(parent: Command): void {
       // AcpBetaFeatureFlag, current JetBrains plugin, etc.). `command` is
       // the absolute path to this very binary (`process.argv[1]`) so the
       // client can spawn it with `args:['login']` for the top-level
-      // `kimi login` subcommand — matches kimi-cli `acp/server.py:77-96`.
+      // `mycel login` subcommand — matches kimi-cli `acp/server.py:77-96`.
       const legacyCommand = process.argv[1];
       const builtinCommands: AvailableCommand[] = (ACP_BUILTIN_SLASH_COMMANDS as readonly AvailableCommand[]).map((cmd) => ({
         name: cmd.name,

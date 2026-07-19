@@ -5,7 +5,7 @@
  * Mirrors v1's `kimiRequestHeaders`: the host (CLI / server) builds the full
  * Kimi identity headers (`User-Agent` + `X-Msh-*`) through
  * `createKimiDefaultHeaders` and seeds them here. `ModelResolverService` merges
- * them per protocol — the full set for `kimi`, only the `User-Agent` for
+ * them per protocol — the full set for `mycel`, only the `User-Agent` for
  * third-party transports (so device identity never leaks to non-Kimi
  * endpoints). Defaults to empty so non-host contexts (tests, embedders) send
  * no extra headers.
