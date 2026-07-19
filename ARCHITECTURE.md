@@ -60,6 +60,7 @@ Mycel/
     mycel-mcp/               McpTools lib + mycel-mcp-server bin (stdio JSON-RPC)
     mycel-cli/               bin name: mycel-substrate
     mycel-gate/              PreToolUse hook bin, fail-closed antibody gate
+    mycel-observe/           PostToolUseFailure hook bin, captures failures (m2)
     mycel-tests/
     sentinel-guard/
   harness/                   grafted kimi-code fork (TS), the agent body
@@ -94,6 +95,7 @@ publication path for non-Mycel users.
 | --- | --- |
 | `mycel-core` | substrate, antibodies, deterministic proposed-run evaluation, audit/projection runtime |
 | `mycel-mcp` | McpTools lib + `mycel-mcp-server` stdio MCP bin (evaluate_run, list_antibodies, propose_antibody - proposals are inert until promoted) |
+| `mycel-observe` | `PostToolUseFailure` hook bin: appends each failed/blocked tool call to the substrate audit log as a `SentinelAuditEvent`. Observation-only, always exits 0. The capture half of the m2 learning loop |
 | `mycel-cli` | local command surface (bin `mycel-substrate`): ingest, evaluate, list-antibodies, antibody-add, maintain |
 | `mycel-gate` | `PreToolUse` hook bin: reads hook JSON on stdin, runs the evaluation engine, emits a fail-closed allow/deny. Never creates the substrate db (a deleted db reads as guard-disarmed -> block) |
 | `mycel-tests` | external black-box adversarial suite for v0.1 fail-pattern immunity |
@@ -112,6 +114,21 @@ harness Bash tool call
         allow  -> {} -> tool runs
       gate crash / timeout / missing db / bad json -> nonzero exit -> BLOCKED
 ```
+
+### immunity learning loop (m2)
+
+```text
+tool fails / is blocked
+  -> PostToolUseFailure hook -> mycel-observe
+       append SentinelAuditEvent -> ~/.mycel/substrate/audit.jsonl (observe)
+  -> SessionEnd hook -> mycel-substrate ingest
+       record events + surface antibody CANDIDATES (inert, never auto-active)
+  -> human review -> mycel-substrate antibody-add   (promote a candidate)
+  -> next matching tool call -> mycel-gate BLOCKS it
+```
+
+The substrate learns from what goes wrong; nothing auto-activates. Proven by
+`tests/e2e/immunity-loop.sh`.
 
 ### env vars
 

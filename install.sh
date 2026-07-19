@@ -40,8 +40,8 @@ _log "prerequisites ok: node $(node -v), pnpm $(pnpm --version), $CARGO_VER"
 
 # ---------- rust brain ----------
 STEP="cargo build"
-_log "building mycel-gate + mycel-substrate + mycel-mcp-server (release)"
-cargo build --release -p mycel-gate -p mycel-cli -p mycel-mcp --manifest-path "$REPO_ROOT/Cargo.toml"
+_log "building mycel-gate + mycel-substrate + mycel-mcp-server + mycel-observe (release)"
+cargo build --release -p mycel-gate -p mycel-cli -p mycel-mcp -p mycel-observe --manifest-path "$REPO_ROOT/Cargo.toml"
 
 # ---------- ts harness ----------
 STEP="harness install"
@@ -58,6 +58,7 @@ mkdir -p "$MYCEL_INSTALL_DIR/bin" "$MYCEL_INSTALL_DIR/substrate"
 install -m 0755 "$REPO_ROOT/target/release/mycel-gate" "$MYCEL_INSTALL_DIR/bin/mycel-gate"
 install -m 0755 "$REPO_ROOT/target/release/mycel-substrate"  "$MYCEL_INSTALL_DIR/bin/mycel-substrate"
 install -m 0755 "$REPO_ROOT/target/release/mycel-mcp-server" "$MYCEL_INSTALL_DIR/bin/mycel-mcp-server"
+install -m 0755 "$REPO_ROOT/target/release/mycel-observe"     "$MYCEL_INSTALL_DIR/bin/mycel-observe"
 
 NODE_BIN="$(command -v node)"
 cat > "$MYCEL_INSTALL_DIR/bin/mycel" <<SHIM
@@ -72,7 +73,7 @@ fi
 exec "$NODE_BIN" "\$ENTRY" "\$@"
 SHIM
 chmod +x "$MYCEL_INSTALL_DIR/bin/mycel"
-_log "installed mycel, mycel-gate, mycel-substrate, mycel-mcp-server to $MYCEL_INSTALL_DIR/bin"
+_log "installed mycel, mycel-gate, mycel-substrate, mycel-mcp-server, mycel-observe to $MYCEL_INSTALL_DIR/bin"
 
 STEP="config scaffold"
 if [ -f "$MYCEL_INSTALL_DIR/config.toml" ]; then
