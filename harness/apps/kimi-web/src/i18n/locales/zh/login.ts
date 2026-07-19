@@ -18,7 +18,7 @@ export default {
   retry: '重试',
   closeBtn: '关闭',
   errorTitle: '当前 daemon 暂不支持登录',
-  errorHint: '请升级 kimi-code 后重试',
+  errorHint: '请升级 mycel 后重试',
   pollErrorTitle: '与 daemon 的连接已断开',
-  pollErrorHint: '授权轮询连续失败，请检查 kimi-code 进程后重试',
+  pollErrorHint: '授权轮询连续失败，请检查 mycel 进程后重试',
 } as const;

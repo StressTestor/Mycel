@@ -23,7 +23,7 @@ export default {
   export: 'Export session',
   delete: 'Delete',
   removeWorkspace: 'Remove workspace',
-  brand: 'Kimi Code',
+  brand: 'Mycel',
   signedIn: 'Signed in',
   signOut: 'Sign out',
   notSignedIn: 'Not signed in',

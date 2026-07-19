@@ -1,5 +1,5 @@
 export default {
-  title: 'Welcome to Kimi Web',
+  title: 'Welcome to Mycel Web',
   subtitle: 'Pick a few preferences — you can change them anytime in Settings.',
   languageLabel: 'Language',
   start: 'Get started',
