@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/moonshot-ai/kimi-code/blob/main/apps/mycel/src/tui/theme/theme-schema.json",
+  "$id": "https://github.com/StressTestor/Mycel/blob/main/apps/mycel/src/tui/theme/theme-schema.json",
   "title": "Mycel Custom Theme",
   "description": "Schema for Mycel TUI custom theme definitions",
   "type": "object",
