@@ -20,6 +20,7 @@ import {
   segmentsFor,
 } from '../../lib/modelThinking';
 import BottomSheet from '../dialogs/BottomSheet.vue';
+import LanguageSwitcher from '../settings/LanguageSwitcher.vue';
 import { formatTokens } from '../../lib/formatTokens';
 import Button from '../ui/Button.vue';
 import Input from '../ui/Input.vue';
@@ -335,6 +336,13 @@ watch(
         ]"
         @update:model-value="onColorScheme"
       />
+    </div>
+
+    <div class="srow read-only pref">
+      <span class="srow-main">
+        <span class="srow-label">{{ t('sidebar.language') }}</span>
+      </span>
+      <LanguageSwitcher />
     </div>
 
     <div class="srow read-only pref">

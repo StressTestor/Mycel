@@ -1,16 +1,23 @@
 import { createI18n } from 'vue-i18n';
 import { messages } from './locales';
-import { safeSetString, STORAGE_KEYS } from '../lib/storage';
+import { safeGetString, safeSetString, STORAGE_KEYS } from '../lib/storage';
 
 export const availableLocales = [
   { code: 'en', label: 'English' },
+  { code: 'zh', label: '中文' },
 ] as const;
 
 export type LocaleCode = (typeof availableLocales)[number]['code'];
 
+function detect(): LocaleCode {
+  const stored = safeGetString(STORAGE_KEYS.locale);
+  if (stored === 'en' || stored === 'zh') return stored;
+  return globalThis.navigator?.language?.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+}
+
 export const i18n = createI18n({
   legacy: false,
-  locale: 'en',
+  locale: detect(),
   fallbackLocale: 'en',
   messages,
 });
