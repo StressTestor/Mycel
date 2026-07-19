@@ -23,7 +23,7 @@ export {
   showSettingsSelector,
 } from './config';
 export { handleSwarmCommand } from './swarm';
-export { handleFeedbackCommand, showMcpServers, showStatusReport, showUsage } from './info';
+export { showMcpServers, showStatusReport, showUsage } from './info';
 export { handlePluginsCommand } from './plugins';
 export { handleReloadCommand, handleReloadTuiCommand } from './reload';
 export { handleGoalCommand, parseGoalCommand } from './goal';
@@ -34,7 +34,6 @@ export { handleWebCommand } from './web';
 export {
   promptApiKey,
   promptCatalogProviderSelection,
-  promptFeedbackInput,
   promptLogoutProviderSelection,
   promptModelSelectionForCatalog,
   promptModelSelectionForOpenPlatform,

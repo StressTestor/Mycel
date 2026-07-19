@@ -69,7 +69,7 @@ import {
 import { openUrl } from '#/utils/open-url';
 import { currentTheme } from '#/tui/theme';
 import type { ColorToken } from '#/tui/theme';
-import { errorReportHintLine } from '../constant/feedback';
+import { errorReportHintLine } from '../constant/error-report';
 import { formatStepDebugTiming } from '#/utils/usage/debug-timing';
 import { nextTranscriptId } from '../utils/transcript-id';
 import type { BtwPanelController } from './btw-panel';

@@ -68,15 +68,6 @@ export const OAUTH_PROVIDER_DISPLAY_NAME = 'Kimi Code';
 // auto-propagates instead of silently breaking the startup recovery path.
 export const OAUTH_LOGIN_REQUIRED_CODE = ErrorCodes.AUTH_LOGIN_REQUIRED;
 
-export const FEEDBACK_ISSUE_URL = 'https://github.com/MoonshotAI/kimi-code/issues';
-
-// Sent in the feedback `version` field so the backend can distinguish this
-// TypeScript client from clients that send a bare version.
-export const FEEDBACK_VERSION_PREFIX = 'kimi-code-';
-
-// Telemetry event name; keep stable for dashboard queries.
-export const FEEDBACK_TELEMETRY_EVENT = 'feedback_submitted';
-
 // CDN source of truth: all version checks and native install scripts pull from here.
 export const KIMI_CODE_CDN_BASE = 'https://code.kimi.com/kimi-code';
 export const KIMI_CODE_CDN_LATEST_URL = `${KIMI_CODE_CDN_BASE}/latest`;
