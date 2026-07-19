@@ -1,0 +1,73 @@
+# mycel config
+# no default model is shipped on purpose. uncomment exactly one provider block
+# and one model block, then set default_model. mycel refuses to start without it
+# and tells you exactly what is missing.
+
+# default_model = "kimi-code/k3"
+default_permission_mode = "manual"
+telemetry = false
+
+# --- provider: kimi (subscription OAuth or API key) -------------------------
+# [providers."managed:kimi-code"]
+# type = "kimi"
+# base_url = "https://api.kimi.com/coding/v1"
+# api_key = ""
+#
+# [models."kimi-code/k3"]
+# provider = "managed:kimi-code"
+# model = "k3"
+# max_context_size = 1048576
+# capabilities = [ "thinking", "always_thinking", "image_in", "video_in", "tool_use" ]
+
+# --- provider: anthropic ----------------------------------------------------
+# [providers.anthropic]
+# type = "anthropic"
+# api_key = ""
+#
+# [models."anthropic/claude-sonnet-5"]
+# provider = "anthropic"
+# model = "claude-sonnet-5"
+# max_context_size = 200000
+# capabilities = [ "thinking", "image_in", "tool_use" ]
+
+# --- provider: local ollama (openai-compatible) -----------------------------
+# [providers.ollama]
+# type = "openai"
+# base_url = "http://localhost:11434/v1"
+# api_key = "ollama"
+#
+# [models."ollama/qwen3-coder"]
+# provider = "ollama"
+# model = "qwen3-coder"
+# max_context_size = 131072
+# capabilities = [ "tool_use" ]
+
+# --- provider: google gemini ------------------------------------------------
+# [providers.google]
+# type = "google-genai"
+# api_key = ""
+#
+# [models."google/gemini-3.1-pro"]
+# provider = "google"
+# model = "gemini-3.1-pro-preview"
+# max_context_size = 1048576
+# capabilities = [ "thinking", "image_in", "tool_use" ]
+
+# --- immunity gate (fail-closed) --------------------------------------------
+# blocks shell commands matching active antibodies in the substrate.
+# gate crashed, hung, or missing db = command BLOCKED. that is the point.
+[[hooks]]
+event = "PreToolUse"
+matcher = "Bash"
+command = "$HOME/.mycel/bin/mycel-gate"
+timeout = 10
+fail_mode = "closed"
+
+# --- optional second guard: ghost/sentinel ----------------------------------
+# uncomment if ghost is installed (cargo install ghost-guard).
+# [[hooks]]
+# event = "PreToolUse"
+# matcher = "Bash"
+# command = "$HOME/.cargo/bin/ghost hook --sentinel $HOME/.cargo/bin/sentinel"
+# timeout = 10
+# fail_mode = "closed"

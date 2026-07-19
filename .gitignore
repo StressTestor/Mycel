@@ -30,3 +30,6 @@ __pycache__/
 .env
 .env.*
 !.env.example
+harness/node_modules/
+harness/**/dist/
+harness/**/dist-web/

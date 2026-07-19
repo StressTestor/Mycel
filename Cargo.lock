@@ -946,6 +946,8 @@ dependencies = [
  "mycel-mcp",
  "predicates",
  "serde_json",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]
@@ -963,11 +965,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "mycel-gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "mycel-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "uuid",
+]
+
+[[package]]
 name = "mycel-mcp"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "mycel-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]
@@ -977,6 +995,8 @@ dependencies = [
  "chrono",
  "mycel-core",
  "mycel-mcp",
+ "serde",
+ "serde_json",
  "uuid",
 ]
 

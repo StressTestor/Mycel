@@ -6,6 +6,33 @@ mycel treats agent runs as living work units inside a local substrate. the first
 
 confidence key: **solid** means verified or strongly supported. **directional** means the shape is likely right, but details may change. **vibes** means a useful hypothesis, not a fact.
 
+## what it is now
+
+two halves in one repo.
+
+- `crates/` is the rust brain: substrate, antibodies, the evaluation engine, sentinel. this is where policy and memory live.
+- `harness/` is the agent body: a forked, de-vendored agent CLI (grafted from kimi-code, MIT, ADR-0006). it runs sessions, drives whatever model you configure, executes tools.
+
+they meet at one hard edge. every shell command the agent wants to run goes through `mycel-gate` as a fail-closed `PreToolUse` hook. a command that matches an active antibody is blocked with a remediation string. if the gate crashes, times out, or the substrate db is missing, the command is blocked, not allowed. a deleted db reads as a disarmed guard, not a fresh start.
+
+model-agnostic on purpose. no default model, no telemetry, no update pings, no marketplace phone-home. bring kimi, anthropic, a local ollama, gemini - config picks all of it.
+
+## install
+
+```sh
+bash install.sh
+```
+
+builds the rust binaries and the harness, installs `mycel` + `mycel-gate` + `mycel-substrate` + `mycel-mcp-server` into `~/.mycel/bin`, scaffolds a config, and verifies the gate before it calls itself done. every step is loud and every failure names the fix. then edit `~/.mycel/config.toml`, pick a provider, set `default_model`, and run `mycel`.
+
+seed the immunity gate:
+
+```sh
+mycel-substrate antibody-add --db ~/.mycel/substrate/mycel.db \
+  --command-pattern "rm -rf /" \
+  --remediation "no." --severity refuse --refusal-mode hard
+```
+
 ## language recommendation
 
 recommendation: **rust core, with thin python and typescript adapters**.

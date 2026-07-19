@@ -81,6 +81,8 @@ load-bearing assumptions:
 
 ## v0.2: decay-pruned context
 
+**state: shipped 2026-05-30.** ttl-tiered `DecayEngine` (solid→retained, directional→distilled, vibes→decayed, no_compost preserved) over schema v4 `runs`; PromptPressure tier import with label fidelity recorded in the audit log; deterministic `SUBSTRATE.md` + `COMPOST.md` projections and a `maintain` cycle. metrics met: 46 ttl fixtures (≥40), 8/8 no-compost preserved (100%), 14 distilled (≥10), 11 decayed (≥10), 24 PromptPressure records imported (≥20). distill hardened against multibyte-boundary panic. **confidence: solid.**
+
 scope:
 
 - scheduled ttl-tiered context maintenance.
@@ -116,6 +118,8 @@ load-bearing assumptions:
 
 ## v0.3: self-spec on death
 
+**state: shipped 2026-05-30.** shared `TaskIdentity` primitive (canonical signature, reused by v0.4/v0.5), `SelfSpec` schema with `validate()` (all-gaps-collected) and `dedupe_specs`, `SpecStore` persistence, plus an `is_executable()` self-sufficiency bar. manual death-spec path only — no auto-spawn. metrics met: 37 validation fixtures (≥30), 15 near-duplicate specs collapsed (≥15), every spec carries preconditions/success-criteria/inherited-context/refusal-risks, and a blind-reviewer pass found 11/12 specs executable without the transcript (≥10, see `docs/v0.3-blind-review-evidence.md`). **confidence: directional** (handoff quality proven on a small corpus by start-cold judgment, not execute-to-green).
+
 scope:
 
 - next-agent spec schema.
@@ -150,6 +154,8 @@ load-bearing assumptions:
 
 ## v0.4: sclerotia
 
+**state: shipped 2026-05-30.** `Sclerotium` dormant-work records built on the shared `TaskIdentity` primitive (blocker, attempted paths, next command, typed wake conditions, confidence-tagged inherited context); a closed, deterministically-evaluable `WakeCondition` vocabulary (time/file-exists/file-absent/dependency-resolved/signal-raised/manual) over a caller-supplied `WakeWorld`; `SclerotiumStore` persistence (additive `sclerotia` table, schema stays v4); and pure, antibody-gated, manual-confirm-only `evaluate_resume` (`NotWakeable`/`BlockedByAntibody`/`ReadyForManualResume`) that never auto-executes. metrics met: 36 wake-condition fixtures (≥30) with no mislabels, 14 records serialize/restore (≥10), every record references a canonical `TaskIdentity` signature, and resume is antibody-gated. independently reviewed (6-lens adversarial workflow): SPEC PASS / QUALITY APPROVED, no confirmed defects. **confidence: directional.**
+
 scope:
 
 - dormant work records built on self-spec schema.
@@ -182,6 +188,8 @@ load-bearing assumptions:
 - dormant state can stay useful without preserving the full transcript. **confidence: directional. load-bearing.**
 
 ## v0.5: spore-based discovery
+
+**state: shipped 2026-05-30.** typed `Spore` manifest built on the shared `TaskIdentity` primitive, with `CompletedWork`/`AdjacentWork` kinds; `classify_adjacent_work` turns raw notices into typed candidate records; a dedup-on-write local catalog (`SporeStore`, additive `spores` table, schema stays v4) keyed on `(kind, signature)`; and inert interop export to the loss-matrix shapes — `MycelNative` lossless, `Hermes`/`OpenClaw`/`AgentSkills` lossy and declaring their dropped ecology fields with no `confidence` leakage. germination is candidate-only (`germinated` always false); nothing launches an agent. metrics met: 26 spores catalogued (≥25), 22 adjacent-work notices classified (≥20), 16 repeated spores deduped (≥15), 10 spores exported to the loss-matrix (≥10), zero germinations. independently reviewed (5-lens adversarial workflow): SPEC PASS / QUALITY APPROVED, no confirmed defects. **confidence: directional.**
 
 scope:
 

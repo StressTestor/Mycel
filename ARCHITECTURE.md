@@ -49,24 +49,39 @@ superseded-by-ADR: `docs/adr/0003-language-and-runtime.md`
 current structure:
 
 ```text
-mycel/
+Mycel/
   Cargo.toml
+  install.sh                 verbose fail-loud installer -> ~/.mycel
+  config/
+    mycel.config.toml.template
+    mcp.json.template
   crates/
     mycel-core/
-    mycel-mcp/
-    mycel-cli/
+    mycel-mcp/               McpTools lib + mycel-mcp-server bin (stdio JSON-RPC)
+    mycel-cli/               bin name: mycel-substrate
+    mycel-gate/              PreToolUse hook bin, fail-closed antibody gate
     mycel-tests/
     sentinel-guard/
+  harness/                   grafted kimi-code fork (TS), the agent body
+    apps/mycel/              bin name: mycel
+    packages/                agent-core, agent-core-v2, kosong, ...
   adapters/
     hermes/
     openclaw/
   schemas/
   examples/
   docs/
-    adr/
+    adr/                     0006 = harness adoption
+    specs/                   harness graft design
+    plans/
     schemas/
     open-questions.md
 ```
+
+The `harness/` tree is the kimi-code fork (MIT), grafted with full history and
+diverged from upstream (ADR-0006). It is the agent body; `crates/` is the
+substrate brain. They meet at two contracts: the `mycel-gate` hook (enforcement,
+fail-closed) and `mycel-mcp-server` over MCP (conversation).
 
 `crates/sentinel-guard` enters the workspace as a Git submodule pointed at
 `https://github.com/StressTestor/sentinel.git`. Mycel builds it as a workspace
@@ -78,10 +93,42 @@ publication path for non-Mycel users.
 | subsystem | role |
 | --- | --- |
 | `mycel-core` | substrate, antibodies, deterministic proposed-run evaluation, audit/projection runtime |
-| `mycel-mcp` | canonical tool surface for ingest, evaluate, list-antibodies, and harness metrics |
-| `mycel-cli` | local command surface that calls the MCP tool surface |
+| `mycel-mcp` | McpTools lib + `mycel-mcp-server` stdio MCP bin (evaluate_run, list_antibodies, propose_antibody - proposals are inert until promoted) |
+| `mycel-cli` | local command surface (bin `mycel-substrate`): ingest, evaluate, list-antibodies, antibody-add, maintain |
+| `mycel-gate` | `PreToolUse` hook bin: reads hook JSON on stdin, runs the evaluation engine, emits a fail-closed allow/deny. Never creates the substrate db (a deleted db reads as guard-disarmed -> block) |
 | `mycel-tests` | external black-box adversarial suite for v0.1 fail-pattern immunity |
 | `sentinel-guard` | always-on runtime defense and shared policy evaluator |
+| `harness/apps/mycel` | the agent body (bin `mycel`): TUI, sessions, subagents, providers, hooks |
+
+### gate data flow (fail-closed immunity)
+
+```text
+harness Bash tool call
+  -> PreToolUse hook (fail_mode = "closed")
+    -> mycel-gate  (stdin: {tool_name, tool_input.command})
+      -> AntibodyStore::evaluate_run  (SQLite substrate)
+        refuse -> {"hookSpecificOutput":{"permissionDecision":"deny", reason: remediation + source}} -> tool BLOCKED
+        warn   -> {"message": "..."} -> tool runs, model sees warning
+        allow  -> {} -> tool runs
+      gate crash / timeout / missing db / bad json -> nonzero exit -> BLOCKED
+```
+
+### env vars
+
+| var | meaning |
+| --- | --- |
+| `MYCEL_HOME` | mycel home dir (default `~/.mycel`). Legacy `KIMI_CODE_HOME` honored with a deprecation warning |
+| `MYCEL_INSTALL_DIR` | installer target (default `~/.mycel`) |
+| `MYCEL_NO_MODIFY_PATH` | skip the installer's shell-rc PATH edit |
+
+### gotchas
+
+| problem | cause | fix |
+| --- | --- | --- |
+| gate blocks everything after a db delete | by design: missing db = guard disarmed | re-run `install.sh` to re-init the substrate |
+| `mycel` not found after install | PATH rc line not sourced | restart shell or `export PATH="$HOME/.mycel/bin:$PATH"` |
+| harness build missing at launch | repo moved or drive unmounted | shim errors loudly with the fix; re-run `install.sh` |
+| fresh-HOME install fails at cargo | changing `HOME` unroots rustup | keep `RUSTUP_HOME`/`CARGO_HOME` pointed at the real dirs |
 
 Sentinel gates three scopes:
 
@@ -107,6 +154,17 @@ Volva-shedding uses Sentinel as the gate substrate. it stays post-v1, but the in
   `file_pattern` uses glob matching, and `command_pattern` uses substring matching.
 - substrate mutations append JSONL audit events immediately and debounce
   `SUBSTRATE.md` projection regeneration by 500ms.
+- ttl-tiered decay maintenance: solid records are retained, directional records
+  are distilled to a gist, vibes records decay to a tombstone, and `no_compost`
+  records are preserved regardless of tier.
+- handoff specs (self-spec) and dormant-work records (sclerotia) share one
+  `TaskIdentity` signature; dormant records become wakeable only when all typed
+  wake conditions are met, and resume only through antibody-gated, manual-confirm
+  evaluation — never auto-execution.
+- work-discovery spores (completed-work / adjacent-work) reuse the same
+  `TaskIdentity` signature, are catalogued dedup-on-write, and export to the
+  interop loss-matrix shapes as inert metadata that declares its dropped ecology
+  fields; v0.5 produces germination candidates only and never launches an agent.
 
 Schema-driven adapters should reduce cross-language coupling. **confidence: directional. load-bearing.**
 
@@ -120,10 +178,16 @@ current tables:
 | --- | --- |
 | `antibodies` | v0.1 fail-pattern immunity records, including signature fields, source, severity, confidence, refusal mode, remediation, examples, expiry, and hit count |
 | `sentinel_audit_events` | ingested Sentinel JSONL `AuditEvent` records, preserving stable fields as typed columns and unstable fields as metadata |
+| `runs` | v0.2 substrate run records: kind, status, summary, confidence, TTL (`expires_at`), preservation flag (`no_compost`), decay state (`retained`/`distilled`/`decayed`), and `distilled_summary` gist |
+| `audit_log` | append-only structured event log; entries include `event` type (e.g. `decay`, `promptpressure_import`, `maintenance`) and a JSON payload |
+| `specs` | v0.3 self-spec handoff records stored as JSON with an indexed `signature` column |
+| `sclerotia` | v0.4 dormant-work records (blocker, attempted paths, next command, typed wake conditions) stored as JSON with an indexed `signature` column |
+| `spores` | v0.5 work-discovery manifests (completed-work / adjacent-work) stored as JSON with indexed `signature` and `kind` columns |
 
-SQLite `PRAGMA user_version` is the migration marker. version `3` creates the
-`antibodies` table with `command_pattern` column, indexes antibody `tool_pattern`
-and `scope`, and indexes Sentinel `matched_rule` for source-event lineage queries.
+SQLite `PRAGMA user_version` is the migration marker. version `4` creates the
+`runs` and `audit_log` tables in addition to the v3 schema. The `specs` (v0.3),
+`sclerotia` (v0.4), and `spores` (v0.5) tables are added additively to the same schema
+build, so they do not bump `user_version` past 4.
 
 Sentinel `matched_rule` parsing populates signature fields:
 - `deny.paths: X` or `allow.paths: X` → `file_pattern = X`
@@ -142,6 +206,16 @@ and schedules `SUBSTRATE.md` regeneration for 500ms after the latest mutation.
 `SUBSTRATE.md` carries a generated-file header that says it is projection-only
 and not an input surface. audit logs rotate from `name.jsonl` to `name.1.jsonl`
 when the configured size limit would be exceeded by the next event.
+
+`mycel maintain` runs a full decay cycle and regenerates two workspace files:
+
+| file | content |
+| --- | --- |
+| `SUBSTRATE.md` | live / retained / preserved runs (active substrate) |
+| `COMPOST.md` | distilled runs (gist kept) + decayed runs (tombstone only) |
+
+both files are deterministic projections (stable sort by `(created_at, id)`, no generation
+timestamp in body). see ADR 0011.
 
 ## eval harness
 
@@ -191,8 +265,13 @@ current useful commands:
 cargo build --workspace
 cargo test --workspace
 cargo fmt -p mycel-core -p mycel-mcp -p mycel-cli -p mycel-tests
-cargo clippy --workspace -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 mycel harness
+mycel ingest --jsonl <path>
+mycel evaluate --tool-name <name>
+mycel list-antibodies
+mycel import-promptpressure --db <path> --jsonl <path> [--now <ts>]
+mycel maintain --db <path> --workspace <dir> [--now <ts>]
 git status --short
 git log --oneline
 ```

@@ -1,0 +1,24 @@
+{"source_id":"pp-001","tier":"verified","summary":"Rust borrow checker enforces memory safety at compile time with zero runtime overhead."}
+{"source_id":"pp-002","tier":"verified","summary":"SQLite WAL mode allows concurrent readers with a single writer without blocking."}
+{"source_id":"pp-003","tier":"verified","summary":"The workspace Cargo.toml uses resolver = \"2\" which activates the new feature resolver for all members."}
+{"source_id":"pp-004","tier":"verified","summary":"Schema migrations are idempotent: CREATE TABLE IF NOT EXISTS combined with PRAGMA user_version guards prevent double-application."}
+{"source_id":"pp-005","tier":"verified","summary":"UUID v4 is used for all primary keys; collision probability at ten million records per day is negligible."}
+{"source_id":"pp-006","tier":"verified","summary":"The audit_log table uses a TEXT payload column storing serialized JSON, with serde_json::Value for in-process deserialization."}
+{"source_id":"pp-007","tier":"verified","summary":"All decay operations are idempotent: rows with a non-null decay_state are skipped unconditionally on subsequent engine passes."}
+{"source_id":"pp-008","tier":"verified","summary":"no_compost flag is orthogonal to confidence and TTL: maintenance skips these records entirely regardless of expiry."}
+{"source_id":"pp-009","tier":"probable","summary":"Distillation of directional runs may benefit from an LLM summarization step rather than the current deterministic truncation approach, but this is unresolved for v0.2."}
+{"source_id":"pp-010","tier":"probable","summary":"The promptpressure import path should be extended in a future milestone to support bulk JSON array payloads rather than line-delimited JSONL only."}
+{"source_id":"pp-011","tier":"probable","summary":"Confidence tier ordering in the decay policy likely needs a fourth tier between Directional and Solid to handle findings with partial verification that persist past one sprint cycle."}
+{"source_id":"pp-012","tier":"probable","summary":"The AuditLog table could be sharded by event type to improve query performance at scale, though at current volume a single table with an index on event is sufficient."}
+{"source_id":"pp-013","tier":"probable","summary":"Projection rendering for SUBSTRATE.md should be regenerated asynchronously after each maintenance pass rather than synchronously on mutation to avoid blocking the calling thread."}
+{"source_id":"pp-014","tier":"probable","summary":"Import batching through PromptPressure would benefit from a transaction wrapper so partial failures roll back the entire batch, preventing audit-log/runs table divergence."}
+{"source_id":"pp-015","tier":"probable","summary":"The TTL policy for verified-tier records at 365 days may be too aggressive for findings that have a natural expiry tied to a specific dependency version or external API contract."}
+{"source_id":"pp-016","tier":"probable","summary":"Run kind Observation is the correct mapping for PromptPressure imports but the schema should add a provenance field to distinguish substrate-native observations from external imports."}
+{"source_id":"pp-017","tier":"speculative","summary":"Mycel could replace its SQLite backend with a CRDT-backed log for multi-agent scenarios."}
+{"source_id":"pp-018","tier":"speculative","summary":"A confidence auto-upgrade path might let Vibes runs graduate to Directional after external verification signals arrive."}
+{"source_id":"pp-019","tier":"speculative","summary":"Embedding-based deduplication could catch semantically identical runs inserted with different summaries before they land in the substrate."}
+{"source_id":"pp-020","tier":"speculative","summary":"The decay engine might benefit from a probabilistic expiry window rather than a hard TTL cutoff to smooth maintenance load."}
+{"source_id":"pp-021","tier":"speculative","summary":"Cross-session run correlation using vector similarity search on distilled_summary could surface recurring patterns invisible to keyword search."}
+{"source_id":"pp-022","tier":"speculative","summary":"PromptPressure tiers might eventually map to a continuous confidence score rather than three discrete levels if empirical calibration data is collected."}
+{"source_id":"pp-023","tier":"speculative","summary":"Maintenance passes could be scheduled by the CLI cron integration rather than triggered ad-hoc, giving predictable decay windows."}
+{"source_id":"pp-024","tier":"speculative","summary":"An adversarial test could fuzz the import pipeline with malformed tier values to confirm the UnknownEnum error path is exercised correctly in production."}
