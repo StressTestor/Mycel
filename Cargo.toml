@@ -2,6 +2,7 @@
 members = [
   "crates/mycel-core",
   "crates/mycel-gate",
+  "crates/mycel-observe",
   "crates/mycel-mcp",
   "crates/mycel-cli",
   "crates/mycel-tests",
