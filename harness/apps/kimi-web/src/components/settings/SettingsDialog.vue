@@ -8,7 +8,6 @@ import { useI18n } from 'vue-i18n';
 import { useKimiWebClient } from '../../composables/useKimiWebClient';
 import type { AppSession } from '../../api/types';
 import { useDialogFocus } from '../../composables/useDialogFocus';
-import LanguageSwitcher from './LanguageSwitcher.vue';
 import { serverEndpointLabel } from '../../api/config';
 import { downloadTraceLog, isTraceEnabled } from '../../debug/trace';
 import type { Accent, ColorScheme } from '../../composables/useKimiWebClient';
@@ -381,10 +380,6 @@ function archiveTime(iso: string): string {
                 />
                 <span class="num-unit">px</span>
               </label>
-            </div>
-            <div class="row">
-              <span class="rlabel">{{ t('sidebar.language') }}</span>
-              <LanguageSwitcher />
             </div>
             <div class="row">
               <span class="rlabel">
