@@ -135,10 +135,13 @@ GATE_OUT="$(printf '{"tool_name":"Bash","tool_input":{"command":"echo mycel-inst
 _log "gate verified: benign payload allowed"
 
 STEP="verify: gate fail-closed on missing db"
-set +e
-printf '{"tool_name":"Bash","tool_input":{"command":"echo x"}}' | "$MYCEL_INSTALL_DIR/bin/mycel-gate" --db "$MYCEL_INSTALL_DIR/substrate/does-not-exist.db" >/dev/null 2>&1
-MISSING_CODE=$?
-set -e
+# An `if` condition is exempt from errexit AND the ERR trap, so the gate's
+# intended nonzero (exit 3) is captured cleanly instead of tripping the trap.
+if printf '{"tool_name":"Bash","tool_input":{"command":"echo x"}}' | "$MYCEL_INSTALL_DIR/bin/mycel-gate" --db "$MYCEL_INSTALL_DIR/substrate/does-not-exist.db" >/dev/null 2>&1; then
+  MISSING_CODE=0
+else
+  MISSING_CODE=$?
+fi
 [ "$MISSING_CODE" -eq 3 ] || _fail "gate should exit 3 on missing db, got $MISSING_CODE"
 _log "gate verified: missing db blocks (exit 3)"
 
