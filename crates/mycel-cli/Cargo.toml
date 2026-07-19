@@ -6,7 +6,9 @@ license.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "mycel"
+# named mycel-substrate, not mycel: the `mycel` command is the harness (the
+# thing users launch); this is the substrate management CLI beside it.
+name = "mycel-substrate"
 path = "src/main.rs"
 
 [dependencies]

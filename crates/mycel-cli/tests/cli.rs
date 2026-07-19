@@ -3,7 +3,7 @@ use predicates::prelude::*;
 
 #[test]
 fn cli_runs_v0_1_harness_through_mcp_surface() {
-    let mut cmd = Command::cargo_bin("mycel").expect("mycel binary");
+    let mut cmd = Command::cargo_bin("mycel-substrate").expect("mycel binary");
 
     cmd.arg("harness").assert().success().stdout(
         predicate::str::contains(r#""eval_fixture_count""#)
@@ -44,7 +44,7 @@ fn cli_import_promptpressure_then_maintain_produces_decay_projections() {
 
     // Import at now=1_000_000.
     let import_now: i64 = 1_000_000;
-    Command::cargo_bin("mycel")
+    Command::cargo_bin("mycel-substrate")
         .expect("mycel binary")
         .args([
             "import-promptpressure",
@@ -61,7 +61,7 @@ fn cli_import_promptpressure_then_maintain_produces_decay_projections() {
 
     // Run maintain at now = import_now + 40 days in seconds (> 30d TTL for probable, > 7d for speculative).
     let maintain_now: i64 = import_now + 40 * 24 * 60 * 60;
-    Command::cargo_bin("mycel")
+    Command::cargo_bin("mycel-substrate")
         .expect("mycel binary")
         .args([
             "maintain",

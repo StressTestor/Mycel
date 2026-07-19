@@ -15,7 +15,7 @@ fn antibody_add_inserts_and_is_refused_on_matching_command() {
     let db = dir.path().join("mycel.db");
     init_db(&db);
 
-    Command::cargo_bin("mycel")
+    Command::cargo_bin("mycel-substrate")
         .expect("mycel binary")
         .args([
             "antibody-add",
@@ -39,7 +39,7 @@ fn antibody_add_inserts_and_is_refused_on_matching_command() {
         .stdout(predicate::str::contains(r#""id""#));
 
     // list-antibodies shows the inserted antibody.
-    Command::cargo_bin("mycel")
+    Command::cargo_bin("mycel-substrate")
         .expect("mycel binary")
         .args(["list-antibodies", "--db", db.to_str().unwrap()])
         .assert()
@@ -76,7 +76,7 @@ fn antibody_add_missing_db_errors_and_creates_nothing() {
     let missing = dir.path().join("substrate").join("mycel.db");
     assert!(!missing.exists(), "precondition: db absent");
 
-    Command::cargo_bin("mycel")
+    Command::cargo_bin("mycel-substrate")
         .expect("mycel binary")
         .args([
             "antibody-add",
@@ -111,7 +111,7 @@ fn antibody_add_requires_a_signature_field() {
     let db = dir.path().join("mycel.db");
     init_db(&db);
 
-    Command::cargo_bin("mycel")
+    Command::cargo_bin("mycel-substrate")
         .expect("mycel binary")
         .args([
             "antibody-add",
@@ -139,7 +139,7 @@ fn antibody_add_warns_on_non_refusing_combo() {
 
     // severity=refuse but refusal-mode=soft can never hard-block: warn on stderr, still inserts,
     // outcome_preview degrades to warn.
-    Command::cargo_bin("mycel")
+    Command::cargo_bin("mycel-substrate")
         .expect("mycel binary")
         .args([
             "antibody-add",

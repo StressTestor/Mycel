@@ -32,12 +32,16 @@ if [ "$NODE_MAJOR" -lt 24 ] || { [ "$NODE_MAJOR" -eq 24 ] && [ "$NODE_MINOR" -lt
 fi
 command -v pnpm >/dev/null 2>&1 || _fail "pnpm not found. install with: npm i -g pnpm@10"
 command -v cargo >/dev/null 2>&1 || _fail "cargo not found. install rust: https://rustup.rs"
-_log "prerequisites ok: node $(node -v), pnpm $(pnpm --version), $(cargo --version | cut -d' ' -f1-2)"
+# `command -v cargo` finding a rustup shim is not enough: a rustup with no
+# default toolchain resolves the shim but cannot actually run cargo. Prove it
+# runs before we commit to a multi-minute build.
+CARGO_VER="$(cargo --version 2>&1)" || _fail "cargo is present but cannot run: $CARGO_VER (try: rustup default stable)"
+_log "prerequisites ok: node $(node -v), pnpm $(pnpm --version), $CARGO_VER"
 
 # ---------- rust brain ----------
 STEP="cargo build"
-_log "building mycel-gate + mycel-cli (release)"
-cargo build --release -p mycel-gate -p mycel-cli --manifest-path "$REPO_ROOT/Cargo.toml"
+_log "building mycel-gate + mycel-substrate + mycel-mcp-server (release)"
+cargo build --release -p mycel-gate -p mycel-cli -p mycel-mcp --manifest-path "$REPO_ROOT/Cargo.toml"
 
 # ---------- ts harness ----------
 STEP="harness install"
@@ -52,7 +56,8 @@ _log "building harness"
 STEP="install binaries"
 mkdir -p "$MYCEL_INSTALL_DIR/bin" "$MYCEL_INSTALL_DIR/substrate"
 install -m 0755 "$REPO_ROOT/target/release/mycel-gate" "$MYCEL_INSTALL_DIR/bin/mycel-gate"
-install -m 0755 "$REPO_ROOT/target/release/mycel-cli"  "$MYCEL_INSTALL_DIR/bin/mycel-cli"
+install -m 0755 "$REPO_ROOT/target/release/mycel-substrate"  "$MYCEL_INSTALL_DIR/bin/mycel-substrate"
+install -m 0755 "$REPO_ROOT/target/release/mycel-mcp-server" "$MYCEL_INSTALL_DIR/bin/mycel-mcp-server"
 
 NODE_BIN="$(command -v node)"
 cat > "$MYCEL_INSTALL_DIR/bin/mycel" <<SHIM
@@ -67,7 +72,7 @@ fi
 exec "$NODE_BIN" "\$ENTRY" "\$@"
 SHIM
 chmod +x "$MYCEL_INSTALL_DIR/bin/mycel"
-_log "installed mycel, mycel-gate, mycel-cli to $MYCEL_INSTALL_DIR/bin"
+_log "installed mycel, mycel-gate, mycel-substrate, mycel-mcp-server to $MYCEL_INSTALL_DIR/bin"
 
 STEP="config scaffold"
 if [ -f "$MYCEL_INSTALL_DIR/config.toml" ]; then
@@ -75,6 +80,12 @@ if [ -f "$MYCEL_INSTALL_DIR/config.toml" ]; then
 else
   sed "s|\$HOME|$HOME|g" "$REPO_ROOT/config/mycel.config.toml.template" > "$MYCEL_INSTALL_DIR/config.toml"
   _log "wrote config.toml from template - uncomment a provider and set default_model"
+fi
+if [ -f "$MYCEL_INSTALL_DIR/mcp.json" ]; then
+  _log "kept existing mcp.json (not overwritten)"
+else
+  sed "s|\$HOME|$HOME|g" "$REPO_ROOT/config/mcp.json.template" > "$MYCEL_INSTALL_DIR/mcp.json"
+  _log "wrote mcp.json registering the mycel-substrate MCP server"
 fi
 if [ -d "$HOME/.kimi-code" ] && [ ! -f "$MYCEL_INSTALL_DIR/.migration-hint-shown" ]; then
   _log "found ~/.kimi-code - to migrate sessions/config run:"
@@ -108,7 +119,7 @@ DB="$MYCEL_INSTALL_DIR/substrate/mycel.db"
 if [ -f "$DB" ]; then
   _log "kept existing substrate db"
 else
-  "$MYCEL_INSTALL_DIR/bin/mycel-cli" list-antibodies --db "$DB" >/dev/null
+  "$MYCEL_INSTALL_DIR/bin/mycel-substrate" list-antibodies --db "$DB" >/dev/null
   [ -f "$DB" ] || _fail "substrate init did not create $DB"
   _log "initialized empty substrate at $DB (zero antibodies = allow-by-default)"
 fi
