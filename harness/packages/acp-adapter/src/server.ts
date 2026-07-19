@@ -187,7 +187,7 @@ export class AcpServer implements Agent {
        * them to {@link Session.activateSkill} instead of forwarding the
        * raw slash text — matching the TUI's slash-command behavior so
        * skill activations don't fall back to model-driven Bash
-       * exploration of `~/.kimi-code/skills/`.
+       * exploration of `~/.mycel/skills/`.
        */
       slashCommands?: SlashCommandsResolver;
     },

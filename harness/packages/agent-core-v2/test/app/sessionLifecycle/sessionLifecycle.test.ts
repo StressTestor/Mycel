@@ -1091,7 +1091,7 @@ describe('SessionLifecycleService', () => {
       await writeFile(join(srcDir, 'state.json'), '{"source":true}');
       await writeFile(join(srcDir, 'agents', 'main', 'wire.jsonl'), '{"type":"metadata"}\n');
       await mkdir(join(srcDir, 'logs'), { recursive: true });
-      await writeFile(join(srcDir, 'logs', 'kimi-code.log'), 'log');
+      await writeFile(join(srcDir, 'logs', 'mycel.log'), 'log');
 
       await svc.fork({ sourceSessionId: 'src', newSessionId: 'dst' });
 

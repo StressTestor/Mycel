@@ -11,8 +11,8 @@ import { createKimiCodeHostIdentity } from '#/cli/version';
 import { createKimiHarness, log } from '@moonshot-ai/kimi-code-sdk';
 import { __resetRootLoggerForTest } from '../../../../packages/agent-core/src/logging/logger';
 
-const SESSION_LOG = 'logs/kimi-code.log';
-const GLOBAL_LOG = 'logs/global/kimi-code.log';
+const SESSION_LOG = 'logs/mycel.log';
+const GLOBAL_LOG = 'logs/global/mycel.log';
 const MAIN_WIRE = 'agents/main/wire.jsonl';
 const ENABLED = process.env['KIMI_E2E'] === '1';
 

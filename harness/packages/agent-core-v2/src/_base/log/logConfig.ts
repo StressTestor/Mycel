@@ -39,11 +39,11 @@ export interface ResolveLoggingInput {
 }
 
 export function resolveGlobalLogPath(homeDir: string): string {
-  return join(homeDir, 'logs', 'kimi-code.log');
+  return join(homeDir, 'logs', 'mycel.log');
 }
 
 export function resolveSessionLogPath(sessionDir: string): string {
-  return join(sessionDir, 'logs', 'kimi-code.log');
+  return join(sessionDir, 'logs', 'mycel.log');
 }
 
 export function resolveLoggingConfig(input: ResolveLoggingInput): LoggingConfig {

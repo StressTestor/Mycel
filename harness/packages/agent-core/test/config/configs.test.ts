@@ -383,7 +383,7 @@ removed_flag = true
     await ensureConfigFile(configPath);
 
     const text = await readFile(configPath, 'utf-8');
-    expect(text).toContain('Runtime settings for Kimi Code.');
+    expect(text).toContain('Runtime settings for Mycel.');
     expect(text).not.toMatch(/^default_thinking =/m);
     expect(text).not.toMatch(/^default_model =/m);
 

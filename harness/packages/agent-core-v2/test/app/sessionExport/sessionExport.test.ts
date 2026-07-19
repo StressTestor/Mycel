@@ -94,7 +94,7 @@ describe('sessionExport', () => {
     await mkdir(join(sessionDir, 'agents', 'main'), { recursive: true });
     await mkdir(join(sessionDir, 'logs'), { recursive: true });
     await writeFile(join(sessionDir, 'state.json'), '{}\n', 'utf-8');
-    await writeFile(join(sessionDir, 'logs', 'kimi-code.log'), '{"msg":"session"}\n', 'utf-8');
+    await writeFile(join(sessionDir, 'logs', 'mycel.log'), '{"msg":"session"}\n', 'utf-8');
     await writeFile(
       join(sessionDir, 'agents', 'main', 'wire.jsonl'),
       [
@@ -103,7 +103,7 @@ describe('sessionExport', () => {
       ].join('\n'),
       'utf-8',
     );
-    const globalLogPath = join(tmp, 'logs', 'kimi-code.log');
+    const globalLogPath = join(tmp, 'logs', 'mycel.log');
     await mkdir(join(tmp, 'logs'), { recursive: true });
     await writeFile(globalLogPath, '{"msg":"global"}\n', 'utf-8');
 
@@ -128,9 +128,9 @@ describe('sessionExport', () => {
     expect(result.entries).toEqual([
       'manifest.json',
       'agents/main/wire.jsonl',
-      'logs/kimi-code.log',
+      'logs/mycel.log',
       'state.json',
-      'logs/global/kimi-code.log',
+      'logs/global/mycel.log',
     ]);
     expect(result.manifest).toMatchObject({
       sessionId: 'ses_demo',
@@ -139,8 +139,8 @@ describe('sessionExport', () => {
       workspaceDir: '/workspace/demo',
       sessionFirstActivity: '2023-11-14T22:13:20.000Z',
       sessionLastActivity: '2023-11-14T22:13:25.000Z',
-      sessionLogPath: 'logs/kimi-code.log',
-      globalLogPath: 'logs/global/kimi-code.log',
+      sessionLogPath: 'logs/mycel.log',
+      globalLogPath: 'logs/global/mycel.log',
     });
   });
 
@@ -195,7 +195,7 @@ describe('sessionExport', () => {
   it('keeps the session log bound when it rotates as wire scanning starts', async () => {
     const tmp = await mkdtemp(join(tmpdir(), 'session-export-test-'));
     const sessionDir = join(tmp, 'sessions', 'ws_demo', 'ses_rotating_log');
-    const logPath = join(sessionDir, 'logs', 'kimi-code.log');
+    const logPath = join(sessionDir, 'logs', 'mycel.log');
     const rotatedPath = `${logPath}.1`;
     const wirePath = join(sessionDir, 'agents', 'main', 'wire.jsonl');
     const outputPath = join(tmp, 'rotating-log.zip');
@@ -227,9 +227,9 @@ describe('sessionExport', () => {
       });
 
       expect(rotated).toBe(true);
-      expect(result.manifest.sessionLogPath).toBe('logs/kimi-code.log');
-      expect(result.entries).toContain('logs/kimi-code.log');
-      await expect(readZipEntry(outputPath, 'logs/kimi-code.log')).resolves.toEqual(log);
+      expect(result.manifest.sessionLogPath).toBe('logs/mycel.log');
+      expect(result.entries).toContain('logs/mycel.log');
+      await expect(readZipEntry(outputPath, 'logs/mycel.log')).resolves.toEqual(log);
     } finally {
       fsOpenHook.afterOpen = undefined;
     }
@@ -239,7 +239,7 @@ describe('sessionExport', () => {
     const tmp = await mkdtemp(join(tmpdir(), 'session-export-test-'));
     const sessionDir = join(tmp, 'sessions', 'ws_demo', 'ses_rotating_global');
     const wirePath = join(sessionDir, 'agents', 'main', 'wire.jsonl');
-    const globalLogPath = join(tmp, 'logs', 'kimi-code.log');
+    const globalLogPath = join(tmp, 'logs', 'mycel.log');
     const rotatedPath = `${globalLogPath}.1`;
     const outputPath = join(tmp, 'rotating-global.zip');
     const log = Buffer.from('global log before rotation\n', 'utf8');
@@ -272,9 +272,9 @@ describe('sessionExport', () => {
       });
 
       expect(rotated).toBe(true);
-      expect(result.manifest.globalLogPath).toBe('logs/global/kimi-code.log');
-      expect(result.entries).toContain('logs/global/kimi-code.log');
-      await expect(readZipEntry(outputPath, 'logs/global/kimi-code.log')).resolves.toEqual(log);
+      expect(result.manifest.globalLogPath).toBe('logs/global/mycel.log');
+      expect(result.entries).toContain('logs/global/mycel.log');
+      await expect(readZipEntry(outputPath, 'logs/global/mycel.log')).resolves.toEqual(log);
     } finally {
       fsOpenHook.afterOpen = undefined;
     }
@@ -283,8 +283,8 @@ describe('sessionExport', () => {
   it('closes pre-opened logs when manifest creation fails before writer ownership', async () => {
     const tmp = await mkdtemp(join(tmpdir(), 'session-export-test-'));
     const sessionDir = join(tmp, 'sessions', 'ws_demo', 'ses_invalid_manifest');
-    const sessionLogPath = join(sessionDir, 'logs', 'kimi-code.log');
-    const globalLogPath = join(tmp, 'logs', 'kimi-code.log');
+    const sessionLogPath = join(sessionDir, 'logs', 'mycel.log');
+    const globalLogPath = join(tmp, 'logs', 'mycel.log');
     const wirePath = join(sessionDir, 'agents', 'main', 'wire.jsonl');
     const outputPath = join(tmp, 'invalid-manifest.zip');
     await mkdir(join(sessionDir, 'logs'), { recursive: true });
@@ -337,7 +337,7 @@ describe('sessionExport', () => {
     const sessionDir = join(tmp, 'sessions', 'ws_demo', 'ses_unreadable_global');
     await mkdir(sessionDir, { recursive: true });
     await writeFile(join(sessionDir, 'state.json'), '{}\n', 'utf-8');
-    const globalLogPath = join(tmp, 'logs', 'kimi-code.log');
+    const globalLogPath = join(tmp, 'logs', 'mycel.log');
 
     const outputPath = join(tmp, 'unreadable-global.zip');
     const result = await exportSessionDirectory({
@@ -357,7 +357,7 @@ describe('sessionExport', () => {
 
     await expect(stat(outputPath)).resolves.toMatchObject({ size: expect.any(Number) });
     expect(result.manifest.globalLogPath).toBeUndefined();
-    expect(result.entries).not.toContain('logs/global/kimi-code.log');
+    expect(result.entries).not.toContain('logs/global/mycel.log');
   });
 
   it('archives more than 300 session files without exhausting file handles', async () => {
@@ -448,7 +448,7 @@ describe('sessionExport', () => {
         manifest: testManifest('ses_extra_conflict'),
         sessionDir: tmp,
         sessionFiles: [],
-        extraEntries: [{ source, target: 'logs/global/kimi-code.log' }],
+        extraEntries: [{ source, target: 'logs/global/mycel.log' }],
       }),
     ).rejects.toMatchObject({ code: 'session.export_output_conflict' });
     expect(closeCalls).toBe(1);
@@ -457,7 +457,7 @@ describe('sessionExport', () => {
 
   it('archives a bound session log after its path is rotated', async () => {
     const tmp = await mkdtemp(join(tmpdir(), 'session-export-test-'));
-    const logPath = join(tmp, 'logs', 'kimi-code.log');
+    const logPath = join(tmp, 'logs', 'mycel.log');
     const rotatedPath = `${logPath}.1`;
     const outputPath = join(tmp, 'rotated-log.zip');
     const original = Buffer.from('before rotation\n', 'utf8');
@@ -481,8 +481,8 @@ describe('sessionExport', () => {
         sessionDir: tmp,
         sessionFiles: [{ path: logPath, source }],
       }),
-    ).resolves.toContain('logs/kimi-code.log');
-    await expect(readZipEntry(outputPath, 'logs/kimi-code.log')).resolves.toEqual(original);
+    ).resolves.toContain('logs/mycel.log');
+    await expect(readZipEntry(outputPath, 'logs/mycel.log')).resolves.toEqual(original);
     expect(closeCalls).toBe(1);
   });
 

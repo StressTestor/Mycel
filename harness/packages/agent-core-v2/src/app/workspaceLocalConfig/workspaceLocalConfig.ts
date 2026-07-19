@@ -2,7 +2,7 @@
  * `workspaceLocalConfig` domain (L2) — project-local workspace config access.
  *
  * Defines the App-scoped `IWorkspaceLocalConfigService` contract for
- * project-local `.kimi-code/local.toml` access. Session domains consume the
+ * project-local `.mycel/local.toml` access. Session domains consume the
  * resolved directory list and never parse or write the TOML document
  * themselves; the local filesystem backend supplies the implementation.
  */
