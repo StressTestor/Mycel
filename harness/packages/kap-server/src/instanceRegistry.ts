@@ -315,7 +315,7 @@ export function createInstanceRegistry(options: InstanceRegistryOptions = {}): I
   };
 }
 
-/** Resolve the instances directory for a given home (or the default kimi home). */
+/** Resolve the instances directory for a given home (or the default mycel home). */
 export function resolveServerInstancesDir(homeDir?: string): string {
   return homeDir === undefined
     ? DEFAULT_SERVER_INSTANCES_DIR

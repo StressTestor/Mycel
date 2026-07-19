@@ -114,7 +114,7 @@ describe('HarnessAPI session skills', () => {
     expect(JSON.stringify(skills)).not.toContain('Do not migrate Claude custom commands');
   });
 
-  it('resolves user brand skills from the kimi home, not the OS home', async () => {
+  it('resolves user brand skills from the mycel home, not the OS home', async () => {
     const processHome = join(tmp, 'process-home');
     vi.stubEnv('HOME', processHome);
     await writeLegacyUserSkill(processHome, 'real-home-only', 'Real home skill');

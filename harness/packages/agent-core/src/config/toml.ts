@@ -85,7 +85,7 @@ export function readConfigFileForUpdate(filePath: string): KimiConfig {
     if (error instanceof KimiError && error.code === ErrorCodes.CONFIG_INVALID) {
       throw new KimiError(
         ErrorCodes.CONFIG_INVALID,
-        `Cannot change settings while ${filePath} is invalid — fix it first (run \`kimi doctor\` for details).`,
+        `Cannot change settings while ${filePath} is invalid — fix it first (run \`mycel doctor\` for details).`,
         { cause: error },
       );
     }
@@ -183,7 +183,7 @@ export function loadRuntimeConfigSafe(
         config = salvaged.config;
         if (salvaged.dropped.length > 0) {
           fileWarnings.push(
-            `Ignored invalid config in ${filePath}: ${salvaged.dropped.join(', ')}. Run \`kimi doctor\` for details.`,
+            `Ignored invalid config in ${filePath}: ${salvaged.dropped.join(', ')}. Run \`mycel doctor\` for details.`,
           );
         }
       }

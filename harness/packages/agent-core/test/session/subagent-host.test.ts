@@ -1392,7 +1392,7 @@ describe('Session.createAgent', () => {
     expect(created.agent.config.systemPrompt).toContain('leaf instructions');
   });
 
-  it('uses the kimi home for global branded AGENTS.md files', async () => {
+  it('uses the mycel home for global branded AGENTS.md files', async () => {
     const realHome = '/real-home';
     const kimiHome = '/kimi-home';
     const workDir = '/repo/packages/app';
