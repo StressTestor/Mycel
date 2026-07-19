@@ -72,88 +72,6 @@ importers:
         specifier: 4.1.4
         version: 4.1.4(@types/node@22.19.17)(@vitest/coverage-v8@4.1.4)(jsdom@25.0.1)(msw@2.15.0(@types/node@22.19.17)(typescript@6.0.2))(vite@8.0.8(@types/node@22.19.17)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
 
-  apps/kimi-code:
-    devDependencies:
-      '@moonshot-ai/acp-adapter':
-        specifier: workspace:^
-        version: link:../../packages/acp-adapter
-      '@moonshot-ai/agent-core-v2':
-        specifier: workspace:^
-        version: link:../../packages/agent-core-v2
-      '@moonshot-ai/kap-server':
-        specifier: workspace:^
-        version: link:../../packages/kap-server
-      '@moonshot-ai/kimi-code-oauth':
-        specifier: workspace:^
-        version: link:../../packages/oauth
-      '@moonshot-ai/kimi-code-sdk':
-        specifier: workspace:^
-        version: link:../../packages/node-sdk
-      '@moonshot-ai/kimi-telemetry':
-        specifier: workspace:^
-        version: link:../../packages/telemetry
-      '@moonshot-ai/kimi-web':
-        specifier: workspace:^
-        version: link:../kimi-web
-      '@moonshot-ai/migration-legacy':
-        specifier: workspace:^
-        version: link:../../packages/migration-legacy
-      '@moonshot-ai/pi-tui':
-        specifier: workspace:^
-        version: link:../../packages/pi-tui
-      '@moonshot-ai/vis-server':
-        specifier: workspace:^
-        version: link:../vis/server
-      '@moonshot-ai/vis-web':
-        specifier: workspace:*
-        version: link:../vis/web
-      '@types/semver':
-        specifier: ^7.7.0
-        version: 7.7.1
-      '@types/yazl':
-        specifier: ^2.4.6
-        version: 2.4.6
-      chalk:
-        specifier: ^5.4.1
-        version: 5.6.2
-      cli-highlight:
-        specifier: ^2.1.11
-        version: 2.1.11
-      commander:
-        specifier: ^13.1.0
-        version: 13.1.0
-      jimp:
-        specifier: ^1.6.1
-        version: 1.6.1
-      pathe:
-        specifier: ^2.0.3
-        version: 2.0.3
-      postject:
-        specifier: 1.0.0-alpha.6
-        version: 1.0.0-alpha.6
-      semver:
-        specifier: ^7.7.4
-        version: 7.7.4
-      smol-toml:
-        specifier: ^1.6.1
-        version: 1.6.1
-      tsx:
-        specifier: ^4.21.0
-        version: 4.21.0
-      yazl:
-        specifier: ^3.3.1
-        version: 3.3.1
-      zod:
-        specifier: ^4.3.6
-        version: 4.3.6
-    optionalDependencies:
-      '@mariozechner/clipboard':
-        specifier: ^0.3.9
-        version: 0.3.9
-      node-pty:
-        specifier: ^1.1.0
-        version: 1.1.0
-
   apps/kimi-inspect:
     dependencies:
       '@moonshot-ai/agent-core-v2':
@@ -260,6 +178,88 @@ importers:
       ws:
         specifier: ^8.18.0
         version: 8.20.0
+
+  apps/mycel:
+    devDependencies:
+      '@moonshot-ai/acp-adapter':
+        specifier: workspace:^
+        version: link:../../packages/acp-adapter
+      '@moonshot-ai/agent-core-v2':
+        specifier: workspace:^
+        version: link:../../packages/agent-core-v2
+      '@moonshot-ai/kap-server':
+        specifier: workspace:^
+        version: link:../../packages/kap-server
+      '@moonshot-ai/kimi-code-oauth':
+        specifier: workspace:^
+        version: link:../../packages/oauth
+      '@moonshot-ai/kimi-code-sdk':
+        specifier: workspace:^
+        version: link:../../packages/node-sdk
+      '@moonshot-ai/kimi-telemetry':
+        specifier: workspace:^
+        version: link:../../packages/telemetry
+      '@moonshot-ai/kimi-web':
+        specifier: workspace:^
+        version: link:../kimi-web
+      '@moonshot-ai/migration-legacy':
+        specifier: workspace:^
+        version: link:../../packages/migration-legacy
+      '@moonshot-ai/pi-tui':
+        specifier: workspace:^
+        version: link:../../packages/pi-tui
+      '@moonshot-ai/vis-server':
+        specifier: workspace:^
+        version: link:../vis/server
+      '@moonshot-ai/vis-web':
+        specifier: workspace:*
+        version: link:../vis/web
+      '@types/semver':
+        specifier: ^7.7.0
+        version: 7.7.1
+      '@types/yazl':
+        specifier: ^2.4.6
+        version: 2.4.6
+      chalk:
+        specifier: ^5.4.1
+        version: 5.6.2
+      cli-highlight:
+        specifier: ^2.1.11
+        version: 2.1.11
+      commander:
+        specifier: ^13.1.0
+        version: 13.1.0
+      jimp:
+        specifier: ^1.6.1
+        version: 1.6.1
+      pathe:
+        specifier: ^2.0.3
+        version: 2.0.3
+      postject:
+        specifier: 1.0.0-alpha.6
+        version: 1.0.0-alpha.6
+      semver:
+        specifier: ^7.7.4
+        version: 7.7.4
+      smol-toml:
+        specifier: ^1.6.1
+        version: 1.6.1
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      yazl:
+        specifier: ^3.3.1
+        version: 3.3.1
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    optionalDependencies:
+      '@mariozechner/clipboard':
+        specifier: ^0.3.9
+        version: 0.3.9
+      node-pty:
+        specifier: ^1.1.0
+        version: 1.1.0
 
   apps/vis:
     devDependencies:
