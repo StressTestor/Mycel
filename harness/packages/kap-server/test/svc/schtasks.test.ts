@@ -166,7 +166,7 @@ describe('schtasks manager — install', () => {
     expect(result.status).toBe('installed');
     expect(result.taskName).toBe(KIMI_SERVER_TASK_NAME);
     expect(writtenXmls.length).toBe(1);
-    expect(writtenXmls[0]).toContain(`<Description>Kimi Code local server`);
+    expect(writtenXmls[0]).toContain(`<Description>Mycel local server`);
     expect(writtenXmls[0]).toContain('--host 127.0.0.1');
     expect(writtenXmls[0]).toContain('--port 58627');
 

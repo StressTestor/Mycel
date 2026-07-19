@@ -606,10 +606,10 @@ export interface ListenWithPortRetryOptions {
  *
  * Why this is the right layer: when the `multi_server` flag is off,
  * {@link startServer} takes the single-instance lock *before* listening, so by
- * the time we reach `listen` a live kimi server would already have thrown
+ * the time we reach `listen` a live mycel server would already have thrown
  * `ServerLockedError`; any `EADDRINUSE` is then a third-party listener and
  * bumping the port is the desired policy ("if the port is taken by something
- * other than kimi server itself, +1"). When `multi_server` is on, the lock is
+ * other than mycel server itself, +1"). When `multi_server` is on, the lock is
  * replaced by the instance registry, so a busy port may be a sibling kimi
  * instance — the same `port + 1` walk then serves as the multi-instance
  * coexistence mechanism (second instance lands on the next free port).

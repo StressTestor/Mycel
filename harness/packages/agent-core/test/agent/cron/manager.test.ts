@@ -104,7 +104,7 @@ describe('CronManager', () => {
       expect(byId.get(oneShot.id)).toMatchObject({ recurring: false });
 
       // A degenerate expression reports `nextFireAt: null` so hosts polling
-      // for pending work (e.g. `kimi -p`) never wait on a task that can
+      // for pending work (e.g. `mycel -p`) never wait on a task that can
       // never trigger a turn.
       expect(byId.get(neverFires.id)?.nextFireAt).toBeNull();
     });

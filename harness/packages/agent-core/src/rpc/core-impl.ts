@@ -182,7 +182,7 @@ export interface KimiCoreOptions {
   readonly telemetry?: TelemetryClient | undefined;
   readonly appVersion?: string;
   /**
-   * Host UI mode (`'print'` for `kimi -p`, `'cli'` for the TUI, ...). When
+   * Host UI mode (`'print'` for `mycel -p`, `'cli'` for the TUI, ...). When
    * `'print'`, sessions are created with the print-mode config defaults from
    * `applyPrintModeConfigDefaults` (user-set values still win).
    */
@@ -214,7 +214,7 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
   private pluginsLoadError: Error | undefined;
   private readonly appVersion: string | undefined;
   private readonly experimentalFlags: FlagResolver;
-  /** `true` when the host runs `kimi -p` (v1 print mode); see `withPrintModeDefaults`. */
+  /** `true` when the host runs `mycel -p` (v1 print mode); see `withPrintModeDefaults`. */
   private readonly printMode: boolean;
   /** Owner-scoped [image] limits; reload pushes the new config via setConfig. */
   readonly imageLimits: ImageLimits;
@@ -1276,7 +1276,7 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
   }
 
   /**
-   * Config bound to a newly created/resumed session. In print mode (`kimi -p`,
+   * Config bound to a newly created/resumed session. In print mode (`mycel -p`,
    * v1) the print-mode defaults are merged in; explicit user config wins. The
    * raw `this.config` is left untouched so `getKimiConfig` and config writes
    * still round-trip the user's file values.

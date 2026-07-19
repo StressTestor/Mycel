@@ -417,7 +417,7 @@ export class Session {
 
   /**
    * Block until every still-running background task (across all agents in this
-   * session) reaches a terminal state. Used by `kimi -p` after the main agent's
+   * session) reaches a terminal state. Used by `mycel -p` after the main agent's
    * turn finishes when the resolved print background mode is `'drain'`
    * (`print_background_mode = "drain"`, or the legacy `keep_alive_on_exit = true`
    * fallback), so background subagents get a chance to complete before the process
@@ -429,7 +429,7 @@ export class Session {
   }
 
   /**
-   * Used by `kimi -p` after the main agent's turn ends with `reason ===
+   * Used by `mycel -p` after the main agent's turn ends with `reason ===
    * 'completed'`. Returns `'finish'` when the run may exit, or `'continue'` when
    * the caller must keep the session alive so a background-task completion can
    * steer the main agent into a new turn. Policy is selected by
@@ -474,7 +474,7 @@ export class Session {
 
   /**
    * Enumerate the cron tasks scheduled in this session. Hosts running a
-   * bounded session lifetime (e.g. `kimi -p`) poll this to decide whether
+   * bounded session lifetime (e.g. `mycel -p`) poll this to decide whether
    * pending scheduled work still needs the process alive.
    */
   async getCronTasks(): Promise<GetCronTasksResult> {

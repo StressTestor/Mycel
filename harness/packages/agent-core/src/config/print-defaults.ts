@@ -1,7 +1,7 @@
 import type { KimiConfig } from './schema';
 
 /**
- * Print-mode (`kimi -p`) defaults for the v1 engine. A headless run should not
+ * Print-mode (`mycel -p`) defaults for the v1 engine. A headless run should not
  * be cut short by limits meant for interactive use, so every value here is
  * "effectively unbounded". Explicit user config always wins over these.
  */

@@ -77,7 +77,7 @@ const STALE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Point-in-time view of a scheduled cron task, exposed over RPC so host
- * applications (e.g. the `kimi -p` flow deciding whether pending work
+ * applications (e.g. the `mycel -p` flow deciding whether pending work
  * remains before exit) can enumerate scheduled tasks without going
  * through the model-facing CronList tool.
  */

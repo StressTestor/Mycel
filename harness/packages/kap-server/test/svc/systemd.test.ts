@@ -86,7 +86,7 @@ describe('buildSystemdUnit', () => {
     expect(unit).toContain('[Unit]');
     expect(unit).toContain('[Service]');
     expect(unit).toContain('[Install]');
-    expect(unit).toContain('Description=Kimi Code local server');
+    expect(unit).toContain('Description=Mycel local server');
     expect(unit).toContain('ExecStart=/usr/local/bin/kimi server run --port 58627');
     expect(unit).toContain('Restart=always');
     expect(unit).toContain('WantedBy=default.target');
