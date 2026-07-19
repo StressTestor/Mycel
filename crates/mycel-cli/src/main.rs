@@ -1,9 +1,12 @@
 use std::{fs::File, io::BufRead, io::BufReader, path::PathBuf};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
-use mycel_core::{Db, PromptPressureRecord, ProposedRun, SignatureScope};
+use mycel_core::{
+    Antibody, AntibodySource, Confidence, Db, PromptPressureRecord, ProposedRun, RefusalMode,
+    Severity, Signature, SignatureScope,
+};
 use mycel_mcp::McpTools;
 use serde_json::json;
 
@@ -37,6 +40,34 @@ enum Command {
     ListAntibodies {
         #[arg(long)]
         db: Option<PathBuf>,
+    },
+    /// Insert one fully-specified, curated antibody into an existing substrate.
+    AntibodyAdd {
+        /// Path to the substrate db. Must already exist; antibody-add never creates it.
+        #[arg(long)]
+        db: PathBuf,
+        #[arg(long)]
+        command_pattern: Option<String>,
+        #[arg(long)]
+        tool_name: Option<String>,
+        #[arg(long)]
+        error_class: Option<String>,
+        #[arg(long)]
+        file_pattern: Option<String>,
+        #[arg(long)]
+        remediation: String,
+        /// One of: refuse, warn, info.
+        #[arg(long)]
+        severity: String,
+        /// One of: hard, soft, log-only.
+        #[arg(long)]
+        refusal_mode: String,
+        /// One of: global, project, personal.
+        #[arg(long, default_value = "project")]
+        scope: String,
+        /// Provenance label. "curated"/"manual" store as manual; sentinel/failed-run also accepted.
+        #[arg(long, default_value = "curated")]
+        source: String,
     },
     /// Apply decay, regenerate SUBSTRATE.md and COMPOST.md, and append a maintenance audit event.
     Maintain {
@@ -104,6 +135,79 @@ fn main() -> Result<()> {
                 serde_json::to_string_pretty(&tools.list_antibodies()?)?
             );
         }
+        Command::AntibodyAdd {
+            db,
+            command_pattern,
+            tool_name,
+            error_class,
+            file_pattern,
+            remediation,
+            severity,
+            refusal_mode,
+            scope,
+            source,
+        } => {
+            // SECURITY: never create the db - consistent with the gate's disarm rule. A missing
+            // db means the substrate was never initialized (or was deleted); fail loudly.
+            if !db.exists() {
+                bail!(
+                    "antibody-add error: substrate db missing at {}: run install.sh to initialize (never auto-created)",
+                    db.display()
+                );
+            }
+            if command_pattern.is_none()
+                && tool_name.is_none()
+                && error_class.is_none()
+                && file_pattern.is_none()
+            {
+                bail!("antibody-add error: at least one signature field required (--command-pattern, --tool-name, --error-class, --file-pattern)");
+            }
+
+            let severity = parse_severity(&severity)?;
+            let refusal_mode = parse_refusal_mode(&refusal_mode)?;
+            let source = parse_source(&source)?;
+            let preview = outcome_preview(severity, refusal_mode);
+
+            // Loud at seeding time: a refuse-severity antibody that can never hard-block is almost
+            // always a misconfigured gate.
+            if severity == Severity::Refuse && preview != "refuse" {
+                eprintln!(
+                    "antibody-add warning: severity=refuse with refusal-mode={} will NOT hard-block (only severity=refuse + refusal-mode=hard refuses); this antibody will {}",
+                    refusal_mode_label(refusal_mode),
+                    preview
+                );
+            }
+
+            let id = uuid::Uuid::new_v4();
+            let now = Utc::now();
+            let antibody = Antibody {
+                id,
+                signature: Signature {
+                    error_class,
+                    file_pattern,
+                    agent_role: None,
+                    tool_pattern: tool_name,
+                    command_pattern,
+                    scope: parse_scope(&scope),
+                },
+                source,
+                severity,
+                confidence: Confidence::Solid,
+                refusal_mode,
+                remediation,
+                examples: Vec::new(),
+                created_at: now,
+                expires_at: None,
+                hit_count: 0,
+            };
+
+            let tools = McpTools::open(&db)?;
+            tools.insert_antibodies([antibody])?;
+            println!(
+                "{}",
+                json!({ "id": id.to_string(), "outcome_preview": preview })
+            );
+        }
         Command::Maintain { db, workspace, now } => {
             let now_ts = now.unwrap_or_else(|| Utc::now().timestamp());
             let substrate_db = Db::open(&db)?;
@@ -158,5 +262,58 @@ fn parse_scope(scope: &str) -> SignatureScope {
         "global" => SignatureScope::Global,
         "personal" => SignatureScope::Personal,
         _ => SignatureScope::Project,
+    }
+}
+
+fn parse_severity(value: &str) -> Result<Severity> {
+    match value {
+        "refuse" => Ok(Severity::Refuse),
+        "warn" => Ok(Severity::Warn),
+        "info" => Ok(Severity::Info),
+        other => {
+            bail!("antibody-add error: unknown --severity {other:?} (expected refuse|warn|info)")
+        }
+    }
+}
+
+fn parse_refusal_mode(value: &str) -> Result<RefusalMode> {
+    match value {
+        "hard" => Ok(RefusalMode::Hard),
+        "soft" => Ok(RefusalMode::Soft),
+        "log-only" => Ok(RefusalMode::LogOnly),
+        other => {
+            bail!("antibody-add error: unknown --refusal-mode {other:?} (expected hard|soft|log-only)")
+        }
+    }
+}
+
+fn parse_source(value: &str) -> Result<AntibodySource> {
+    // AntibodySource has no dedicated "curated" variant; a curated/manual seed is stored as Manual.
+    match value {
+        "curated" | "manual" => Ok(AntibodySource::Manual),
+        "sentinel" | "sentinel-block" | "sentinel_block" => Ok(AntibodySource::SentinelBlock),
+        "failed-run" | "failed_run" => Ok(AntibodySource::FailedRun),
+        other => bail!(
+            "antibody-add error: unknown --source {other:?} (expected curated|manual|sentinel|failed-run)"
+        ),
+    }
+}
+
+fn refusal_mode_label(mode: RefusalMode) -> &'static str {
+    match mode {
+        RefusalMode::Hard => "hard",
+        RefusalMode::Soft => "soft",
+        RefusalMode::LogOnly => "log-only",
+    }
+}
+
+/// Mirror of `mycel_core`'s private `EvaluationOutcome::from_policy` (lib.rs:1069): a hard block
+/// requires severity=Refuse AND refusal-mode=Hard; log-only or info always allows; else warn.
+fn outcome_preview(severity: Severity, refusal_mode: RefusalMode) -> &'static str {
+    match (severity, refusal_mode) {
+        (Severity::Refuse, RefusalMode::Hard) => "refuse",
+        (_, RefusalMode::LogOnly) => "allow",
+        (Severity::Info, _) => "allow",
+        _ => "warn",
     }
 }
