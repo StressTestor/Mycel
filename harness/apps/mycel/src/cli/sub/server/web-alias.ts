@@ -1,7 +1,7 @@
 /**
- * `kimi web` — open the Mycel web UI.
+ * `mycel web` — open the Mycel web UI.
  *
- * Shares the exact same code path as `kimi server run`: it is registered via
+ * Shares the exact same code path as `mycel server run`: it is registered via
  * the same `buildRunCommand` builder (and therefore the same `handleRunCommand`
  * handler and the same ready banner) with two flipped defaults — `defaultOpen`
  * opens the browser, and `defaultForeground` runs the server in the foreground

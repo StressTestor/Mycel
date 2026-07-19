@@ -1,5 +1,5 @@
 /**
- * Minimal harness/session surface consumed by `kimi -p` (print mode).
+ * Minimal harness/session surface consumed by `mycel -p` (print mode).
  *
  * `run-prompt.ts` only needs a small subset of the SDK `KimiHarness` / `Session`
  * API. Coding the print-mode driver against these narrow interfaces — instead of

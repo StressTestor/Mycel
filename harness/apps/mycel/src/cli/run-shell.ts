@@ -207,7 +207,7 @@ export async function runShell(
     process.stdout.write(`${gutter}Bye!\n`);
     const hints: string[] = [];
     if (sessionId !== '' && hasContent) {
-      hints.push(`${gutter}To resume this session: kimi -r ${sessionId}`);
+      hints.push(`${gutter}To resume this session: mycel -r ${sessionId}`);
     }
     if (tui.exitOpenUrl !== undefined) {
       hints.push(`${gutter}open ${toTerminalHyperlink(tui.exitOpenUrl, tui.exitOpenUrl)}`);

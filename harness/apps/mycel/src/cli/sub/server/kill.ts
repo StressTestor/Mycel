@@ -1,5 +1,5 @@
 /**
- * `kimi server kill` — terminate the running server.
+ * `mycel server kill` — terminate the running server.
  *
  * Combines two independent mechanisms so the server dies even if one path
  * fails:

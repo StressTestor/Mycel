@@ -1,5 +1,5 @@
 /**
- * Native v2 `kimi -p` (print mode) runner.
+ * Native v2 `mycel -p` (print mode) runner.
  *
  * Unlike the v1 path (and the former `V2PromptHarness` / `V2Session` shim), this
  * runner talks to agent-core-v2's native DI services directly — no
@@ -266,7 +266,7 @@ async function resolveNativeSession(
     if (target.cwd !== undefined && resolve(target.cwd) !== resolve(workDir)) {
       stderr.write(
         `Session "${opts.session}" was created under a different directory.\n` +
-          `  cd "${target.cwd}" && kimi -r ${opts.session}\n\n`,
+          `  cd "${target.cwd}" && mycel -r ${opts.session}\n\n`,
       );
       throw new Error(`Session "${opts.session}" was created under a different directory.`);
     }
@@ -593,7 +593,7 @@ export interface PrintBackgroundPolicyInput {
 }
 
 /**
- * Apply the print-mode (`kimi -p`) background-task policy after the main turn
+ * Apply the print-mode (`mycel -p`) background-task policy after the main turn
  * completes. Mirrors v1's `Session.handlePrintMainTurnCompleted`:
  *  - goal    : while a goal is `active`, keep waiting for its continuation
  *              turns (bounded by `ceilingS` as a safety net), regardless of

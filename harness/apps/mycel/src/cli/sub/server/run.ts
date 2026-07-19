@@ -1,16 +1,16 @@
 /**
- * `kimi server run` — starts the local server.
+ * `mycel server run` — starts the local server.
  *
  * By default this ensures a single background daemon is running (spawning a
- * detached `kimi server run --daemon` child when needed) and returns once it is
+ * detached `mycel server run --daemon` child when needed) and returns once it is
  * healthy. Pass `--foreground` to run the server in-process and keep this
  * terminal attached until SIGINT/SIGTERM. OS-managed background operation
- * (launchd / systemd / schtasks) lives in `kimi server install` + `kimi server start`.
+ * (launchd / systemd / schtasks) lives in `mycel server install` + `mycel server start`.
  *
- * `kimi web` is an alias of this command (registered in `./web-alias.ts`) with
+ * `mycel web` is an alias of this command (registered in `./web-alias.ts`) with
  * two flipped defaults: `--open` defaults to `true`, and it runs in the
  * foreground by default — pass `--background` to get the daemon behavior of
- * `kimi server run`.
+ * `mycel server run`.
  */
 
 import { join } from 'node:path';
@@ -72,7 +72,7 @@ export interface RunCliOptions extends ServerCliOptions {
   foreground?: boolean;
   /**
    * Run as a background daemon and return once healthy. Only registered on
-   * `kimi web` (where foreground is the default); `kimi server run` has no
+   * `mycel web` (where foreground is the default); `mycel server run` has no
    * such flag because background is already its default.
    */
   background?: boolean;
@@ -102,7 +102,7 @@ export interface RunCommandDeps {
   ) => Promise<never>;
   /**
    * Probe for an already-live, healthy daemon. Used by foreground-mode
-   * `kimi web` to reuse a running server instead of failing to bind its port.
+   * `mycel web` to reuse a running server instead of failing to bind its port.
    * Defaults to the real lock-based probe when omitted.
    */
   findReusableDaemon?: () => Promise<EnsureDaemonResult | undefined>;
@@ -232,8 +232,8 @@ export function buildRunCommand(
 
 export interface RunCommandConfig {
   /**
-   * True for the `kimi web` alias: foreground becomes the default and
-   * `--background` opts back into the daemon. `kimi server run` leaves this
+   * True for the `mycel web` alias: foreground becomes the default and
+   * `--background` opts back into the daemon. `mycel server run` leaves this
    * false, keeping its background default and plain `--foreground` semantics.
    */
   defaultForeground?: boolean;
@@ -307,7 +307,7 @@ export async function handleRunCommand(
   };
   if (foreground) {
     if (config.defaultForeground === true) {
-      // `kimi web` defaults to foreground, but binding the port while a server
+      // `mycel web` defaults to foreground, but binding the port while a server
       // is already running would fail — reuse it the way the daemon path does:
       // print the reuse notice and open the browser, then let this command exit.
       const probe = deps.findReusableDaemon ?? findReusableDaemon;
@@ -338,7 +338,7 @@ function formatReuseNotice(origin: string): string {
   return (
     `${chalk.hex(darkColors.warning)('A server is already running')} at ${origin} — ` +
     `the options from this command were not applied. ` +
-    `Run ${chalk.bold('kimi server kill')} first to bind a new host/port.\n`
+    `Run ${chalk.bold('mycel server kill')} first to bind a new host/port.\n`
   );
 }
 
@@ -375,8 +375,8 @@ function formatDangerNoticeLines(opts: { foreground?: boolean } = {}): string[] 
   const danger = (text: string): string => chalk.hex(darkColors.error)(text);
   const dangerBold = (text: string): string => chalk.bold.hex(darkColors.error)(text);
   // A foreground server stops with Ctrl+C; only a background daemon needs the
-  // separate `kimi server kill` command.
-  const stopAction = opts.foreground === true ? 'press Ctrl+C' : 'run kimi server kill';
+  // separate `mycel server kill` command.
+  const stopAction = opts.foreground === true ? 'press Ctrl+C' : 'run mycel server kill';
   return [
     `  ${dangerBold('⚠ DANGER: authentication is DISABLED (--dangerous-bypass-auth).')}`,
     `  ${danger('Anyone who can reach this port gets full access. Only continue if you understand the risk.')}`,
@@ -385,8 +385,8 @@ function formatDangerNoticeLines(opts: { foreground?: boolean } = {}): string[] 
 }
 
 /**
- * `kimi server run` (non-daemon) — ensures a background daemon is running
- * (spawning a detached `kimi server run --daemon` child if needed), then
+ * `mycel server run` (non-daemon) — ensures a background daemon is running
+ * (spawning a detached `mycel server run --daemon` child if needed), then
  * returns its origin so the caller can print the ready banner and exit. The
  * server keeps running in the background after this returns.
  */
@@ -409,7 +409,7 @@ export async function startServerBackground(
 }
 
 /**
- * `kimi server run --daemon` — runs the local server as a background daemon.
+ * `mycel server run --daemon` — runs the local server as a background daemon.
  *
  * Spawned as a detached child by {@link startServerBackground}. The process is
  * expected to be detached (no controlling terminal) and self-terminates after
@@ -422,7 +422,7 @@ export async function startServerDaemon(options: ParsedServerOptions): Promise<n
 }
 
 /**
- * `kimi server run --foreground` — runs the local server in-process, attached
+ * `mycel server run --foreground` — runs the local server in-process, attached
  * to the current terminal. Resolves only via `process.exit` (SIGINT/SIGTERM).
  */
 export async function startServerForeground(
@@ -609,7 +609,7 @@ interface FormatReadyBannerOptions {
   dangerousBypassAuth?: boolean;
   /**
    * True when this process hosts the server attached to the terminal: the
-   * Stop hint becomes Ctrl+C instead of `kimi server kill`.
+   * Stop hint becomes Ctrl+C instead of `mycel server kill`.
    */
   foreground?: boolean;
 }
@@ -677,7 +677,7 @@ export function formatReadyBanner(
 
   // Auxiliary controls last. A foreground server is stopped by interrupting
   // the terminal; only a detached daemon needs the `kill` subcommand.
-  const stopHint = opts.foreground === true ? 'Ctrl+C' : 'kimi server kill';
+  const stopHint = opts.foreground === true ? 'Ctrl+C' : 'mycel server kill';
   lines.push(`  ${label('Logs:     ')}${muted('off')}${dim('  use --log-level info to enable')}`);
   lines.push(`  ${label('Stop:     ')}${muted(stopHint)}`);
   lines.push('');

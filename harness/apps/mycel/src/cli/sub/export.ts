@@ -1,5 +1,5 @@
 /**
- * `kimi export` sub-command.
+ * `mycel export` sub-command.
  *
  * CLI glue only: session lookup, previous-session confirmation, and output.
  * The actual ZIP/manifest export is owned by the SDK.

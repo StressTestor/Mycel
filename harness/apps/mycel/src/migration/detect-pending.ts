@@ -16,7 +16,7 @@ export interface DetectPendingInput {
   readonly targetHome: string;
   /**
    * When true, skip the marker-based suppression (`.migrated-to-kimi-code` /
-   * `.skip-migration-from-kimi-cli`). The explicit `kimi migrate` command sets
+   * `.skip-migration-from-kimi-cli`). The explicit `mycel migrate` command sets
    * this so a deliberate invocation always runs regardless of prior runs.
    */
   readonly ignoreMarker?: boolean;
