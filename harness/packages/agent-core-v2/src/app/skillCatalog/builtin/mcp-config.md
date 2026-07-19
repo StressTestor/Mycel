@@ -40,7 +40,7 @@ tools exist and the user didn't name one, ask which.
 Config lives in three files; on key collision, later entries in this
 precedence order override earlier ones.
 
-The kimi-code runtime resolves the user-global directory as `MYCEL_HOME`
+The mycel runtime resolves the user-global directory as `MYCEL_HOME`
 first, falling back to `~/.mycel`. Before touching the user-global file,
 resolve the actual directory with Bash so you don't read or write the wrong
 one. Check whether `MYCEL_HOME` is set and fall back to `~/.mycel`
@@ -113,7 +113,7 @@ For changes, the flow is:
 3. **Write and tell them how to reload MCP servers.** Preserve unrelated
    entries and the `mcpServers` wrapper. MCP servers load at session
    start, so tell the user to start a new session (for example `/new`) or
-   restart `kimi-code` for the change to take effect.
+   restart `mycel` for the change to take effect.
 
 ## Secrets
 

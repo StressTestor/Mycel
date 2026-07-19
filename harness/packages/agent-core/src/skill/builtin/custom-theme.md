@@ -1,11 +1,11 @@
 ---
 name: custom-theme
-description: Create or edit a kimi-code custom color theme — a JSON file under the resolved MYCEL_HOME data directory that recolors the TUI. Use when the user wants their own theme, asks for a specific palette or mood, or wants to tweak an existing custom theme's colors.
+description: Create or edit a mycel custom color theme — a JSON file under the resolved MYCEL_HOME data directory that recolors the TUI. Use when the user wants their own theme, asks for a specific palette or mood, or wants to tweak an existing custom theme's colors.
 ---
 
-# Create a kimi-code custom theme (custom-theme)
+# Create a mycel custom theme (custom-theme)
 
-Help the user design, write, and apply a custom color theme for the kimi-code TUI. A theme is a single JSON file; the TUI ships with `dark`, `light`, and `auto`, and any file the user adds becomes selectable alongside them.
+Help the user design, write, and apply a custom color theme for the mycel TUI. A theme is a single JSON file; the TUI ships with `dark`, `light`, and `auto`, and any file the user adds becomes selectable alongside them.
 
 ## Rules of engagement
 
@@ -16,7 +16,7 @@ Help the user design, write, and apply a custom color theme for the kimi-code TU
 
 ## Where a theme lives
 
-The kimi-code runtime resolves the data directory as `MYCEL_HOME` first, falling back to `~/.mycel`. Theme files live inside the `themes/` subdirectory of that data directory.
+The mycel runtime resolves the data directory as `MYCEL_HOME` first, falling back to `~/.mycel`. Theme files live inside the `themes/` subdirectory of that data directory.
 
 Before doing anything, resolve the actual data root with Bash so you don't write to the wrong place. Check whether `MYCEL_HOME` is set and fall back to `~/.mycel` when it is empty:
 

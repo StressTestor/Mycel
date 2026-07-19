@@ -1,15 +1,15 @@
 ---
 name: update-config
-description: Inspect or edit kimi-code's own config — `config.toml` (model, provider, permission, hooks) and `tui.toml` (theme, editor, notifications, auto-update). Use when the user asks what a setting does or wants to change one.
+description: Inspect or edit mycel's own config — `config.toml` (model, provider, permission, hooks) and `tui.toml` (theme, editor, notifications, auto-update). Use when the user asks what a setting does or wants to change one.
 ---
 
-# Configure kimi-code (update-config)
+# Configure mycel (update-config)
 
-Help the user inspect, change, and validate kimi-code's configuration files. The files are **TOML** with **snake_case** keys.
+Help the user inspect, change, and validate mycel's configuration files. The files are **TOML** with **snake_case** keys.
 
 ## The two config files
 
-kimi-code has two TOML config files, both under `<MYCEL_HOME>/`, both snake_case, but with different ownership — decide which one the user means before doing anything.
+mycel has two TOML config files, both under `<MYCEL_HOME>/`, both snake_case, but with different ownership — decide which one the user means before doing anything.
 
 The runtime resolves the data directory as `MYCEL_HOME` first, falling back to `~/.mycel`. Before doing anything, resolve the actual directory with Bash so you don't write to the wrong place. Check whether `MYCEL_HOME` is set and fall back to `~/.mycel` when it is empty:
 
