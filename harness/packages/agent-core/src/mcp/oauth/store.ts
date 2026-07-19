@@ -24,15 +24,16 @@ import {
   unlinkSync,
   writeSync,
 } from 'node:fs';
-import { homedir } from 'node:os';
 import { basename, join } from 'pathe';
+
+import { resolveKimiHome } from '../../config/path';
 
 export function mcpCredentialsDir(kimiHomeDir: string): string {
   return join(kimiHomeDir, 'credentials', 'mcp');
 }
 
 export function defaultMcpCredentialsDir(): string {
-  return mcpCredentialsDir(join(homedir(), '.kimi-code'));
+  return mcpCredentialsDir(resolveKimiHome());
 }
 
 export function sanitizeStoreKey(name: string): string {

@@ -271,6 +271,7 @@ export class PluginManager {
           ...hook,
           cwd: record.root,
           env: {
+            MYCEL_HOME: this.kimiHomeDir,
             KIMI_CODE_HOME: this.kimiHomeDir,
             KIMI_PLUGIN_ROOT: record.root,
           },
@@ -647,6 +648,7 @@ function withPluginMcpRuntime(
 
   const env = {
     ...config.env,
+    MYCEL_HOME: kimiHomeDir,
     KIMI_CODE_HOME: kimiHomeDir,
     KIMI_PLUGIN_ROOT: pluginRoot,
   };

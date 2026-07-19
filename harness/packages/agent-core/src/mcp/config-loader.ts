@@ -28,7 +28,7 @@ export async function resolveMcpJsonPaths(input: ResolveMcpJsonPathsInput): Prom
   return {
     user: join(resolveKimiHome(input.homeDir), 'mcp.json'),
     projectRoot: join(projectRoot, '.mcp.json'),
-    project: join(input.cwd, '.kimi-code', 'mcp.json'),
+    project: join(input.cwd, '.mycel', 'mcp.json'),
   };
 }
 

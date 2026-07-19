@@ -15,7 +15,7 @@
 import { createHash } from 'node:crypto';
 import { createWriteStream, existsSync } from 'node:fs';
 import { chmod, copyFile, mkdir, mkdtemp, readFile, rename, rm, stat } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { basename, join } from 'pathe';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -23,6 +23,7 @@ import { pipeline } from 'node:stream/promises';
 import { extract as extractTar } from 'tar';
 import { type Entry, fromBuffer as yauzlFromBuffer } from 'yauzl';
 
+import { resolveKimiHome } from '../../config/path';
 import { abortable } from '../../utils/abort';
 
 const RG_VERSION = '15.0.0';
@@ -125,9 +126,7 @@ function rgBinaryName(): string {
 }
 
 function getShareDir(): string {
-  const override = process.env['KIMI_CODE_HOME'];
-  if (override !== undefined && override !== '') return override;
-  return join(homedir(), '.kimi-code');
+  return resolveKimiHome();
 }
 
 function getVendorRgPath(_binName: string): string | undefined {

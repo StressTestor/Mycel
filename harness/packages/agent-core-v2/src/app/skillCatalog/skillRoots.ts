@@ -17,7 +17,7 @@ import type { SkillRoot, SkillSource } from './types';
 
 const USER_BRAND_DIRS = ['skills'] as const;
 const USER_GENERIC_DIRS = ['.agents/skills'] as const;
-const PROJECT_BRAND_DIRS = ['.kimi-code/skills'] as const;
+const PROJECT_BRAND_DIRS = ['.mycel/skills'] as const;
 const PROJECT_GENERIC_DIRS = ['.agents/skills'] as const;
 
 export interface SkillRootsOptions {

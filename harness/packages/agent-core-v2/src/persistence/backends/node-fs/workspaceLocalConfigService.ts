@@ -96,7 +96,7 @@ export class FileWorkspaceLocalConfigService implements IWorkspaceLocalConfigSer
   }
 
   private getWorkspaceLocalConfigPath(projectRoot: string): string {
-    return join(projectRoot, '.kimi-code', 'local.toml');
+    return join(projectRoot, '.mycel', 'local.toml');
   }
 
   private async findProjectRoot(workDir: string): Promise<string> {

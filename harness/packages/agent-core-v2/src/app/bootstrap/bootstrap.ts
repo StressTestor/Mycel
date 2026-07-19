@@ -140,12 +140,14 @@ function skillSeed(): ScopeSeed {
   ];
 }
 
+// Precedence kept in lockstep with agent-core config/path.ts and the app's
+// getDataDir: explicit arg > MYCEL_HOME > legacy KIMI_CODE_HOME > ~/.mycel.
 export function resolveKimiHome(
   homeDir?: string,
   env: NodeJS.ProcessEnv = process.env,
   osHomeDir: string = homedir(),
 ): string {
-  return homeDir ?? env['KIMI_CODE_HOME'] ?? join(osHomeDir, '.kimi-code');
+  return homeDir ?? env['MYCEL_HOME'] ?? env['KIMI_CODE_HOME'] ?? join(osHomeDir, '.mycel');
 }
 
 export function resolveConfigPath(input: {

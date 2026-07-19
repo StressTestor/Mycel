@@ -44,9 +44,12 @@ function rgBinaryName(): string {
 }
 
 function getShareDir(): string {
-  const override = process.env['KIMI_CODE_HOME'];
-  if (override !== undefined && override !== '') return override;
-  return join(homedir(), '.kimi-code');
+  // Precedence matches resolveKimiHome: MYCEL_HOME > legacy KIMI_CODE_HOME > ~/.mycel.
+  const mycelHome = process.env['MYCEL_HOME'];
+  if (mycelHome !== undefined && mycelHome !== '') return mycelHome;
+  const legacy = process.env['KIMI_CODE_HOME'];
+  if (legacy !== undefined && legacy !== '') return legacy;
+  return join(homedir(), '.mycel');
 }
 
 export function getShareBinRgPath(): string {

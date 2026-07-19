@@ -12,7 +12,7 @@ import { createDecorator } from '../../di';
 
 export interface IEnvironmentService {
   readonly _serviceBrand: undefined;
-  /** Resolved mycel home directory (e.g. `~/.kimi-code`). */
+  /** Resolved mycel home directory (e.g. `~/.mycel`). */
   readonly homeDir: string;
   /** Resolved absolute path to `config.toml`. */
   readonly configPath: string;

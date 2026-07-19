@@ -151,7 +151,7 @@ export function normalizeTuiConfig(config: TuiConfigFileShape): TuiConfig {
 export function renderTuiConfig(config: TuiConfig): string {
   return `# ~/.mycel/tui.toml
 # Client preferences for mycel.
-# Agent/runtime settings stay in ~/.kimi-code/config.toml.
+# Agent/runtime settings stay in ~/.mycel/config.toml.
 
 theme = "${escapeTomlBasicString(config.theme)}" # "auto" | "dark" | "light" | custom theme name
 disable_paste_burst = ${String(config.disablePasteBurst)} # true disables non-bracketed paste-burst fallback

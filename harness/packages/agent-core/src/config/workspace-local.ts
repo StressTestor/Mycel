@@ -109,7 +109,7 @@ export function normalizeAdditionalDirs(additionalDirs: readonly string[]): stri
 }
 
 function getWorkspaceLocalConfigPath(projectRoot: string): string {
-  return join(projectRoot, '.kimi-code', 'local.toml');
+  return join(projectRoot, '.mycel', 'local.toml');
 }
 
 async function findProjectRoot(kaos: Kaos, workDir: string): Promise<string> {

@@ -33,11 +33,11 @@ describe('resolveMcpJsonPaths', () => {
     await mkdir(join(repoRoot, '.git'), { recursive: true });
     await mkdir(cwd, { recursive: true });
 
-    const paths = await resolveMcpJsonPaths({ cwd, homeDir: '/home/user/.kimi-code' });
+    const paths = await resolveMcpJsonPaths({ cwd, homeDir: '/home/user/.mycel' });
 
-    expect(paths.user).toBe('/home/user/.kimi-code/mcp.json');
+    expect(paths.user).toBe('/home/user/.mycel/mcp.json');
     expect(paths.projectRoot).toBe(join(repoRoot, '.mcp.json'));
-    expect(paths.project).toBe(join(cwd, '.kimi-code', 'mcp.json'));
+    expect(paths.project).toBe(join(cwd, '.mycel', 'mcp.json'));
   });
 });
 
@@ -67,7 +67,7 @@ describe('loadMcpServers', () => {
         userOnly: { transport: 'stdio', command: 'user-only' },
       },
     });
-    await writeJson(join(cwd, '.kimi-code', 'mcp.json'), {
+    await writeJson(join(cwd, '.mycel', 'mcp.json'), {
       mcpServers: {
         shared: { transport: 'stdio', command: 'shared-project' },
         local: { transport: 'http', url: 'http://localhost:8080/mcp' },
@@ -110,7 +110,7 @@ describe('loadMcpServers', () => {
         rootOnly: { command: 'root-only' },
       },
     });
-    await writeJson(join(cwd, '.kimi-code', 'mcp.json'), {
+    await writeJson(join(cwd, '.mycel', 'mcp.json'), {
       mcpServers: {
         shared: { transport: 'stdio', command: 'shared-project' },
         projectOnly: { transport: 'http', url: 'https://mcp.example.com' },
