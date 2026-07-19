@@ -989,6 +989,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mycel-observe"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "mycel-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "mycel-tests"
 version = "0.1.0"
 dependencies = [
