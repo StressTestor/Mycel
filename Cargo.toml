@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/mycel-core",
+  "crates/mycel-gate",
   "crates/mycel-mcp",
   "crates/mycel-cli",
   "crates/mycel-tests",
