@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { getDataDir } from '#/utils/paths';
 
 export const INVALID_TUI_CONFIG_MESSAGE =
-  'Invalid TUI config in ~/.kimi-code/tui.toml; using defaults.';
+  'Invalid TUI config in ~/.mycel/tui.toml; using defaults.';
 
 export const TuiThemeSchema = z.string();
 
@@ -149,7 +149,7 @@ export function normalizeTuiConfig(config: TuiConfigFileShape): TuiConfig {
 }
 
 export function renderTuiConfig(config: TuiConfig): string {
-  return `# ~/.kimi-code/tui.toml
+  return `# ~/.mycel/tui.toml
 # Client preferences for mycel.
 # Agent/runtime settings stay in ~/.kimi-code/config.toml.
 
