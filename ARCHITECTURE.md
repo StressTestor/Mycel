@@ -10,6 +10,8 @@ mycel is a local-first personal agent harness for coding, organized around subst
 
 the v0 design goal is to prove that agent runs can leave durable substrate records that affect future runs. **confidence: directional. load-bearing.**
 
+the product direction - a 14-harness field survey, the honest measured state of the gate ("the seam, measured"), and 12 scope-tiered bets (now/next/later) - lives in [`docs/VISION.md`](docs/VISION.md). read it for the "why" behind the substrate/immune-system framing. this file (`ARCHITECTURE.md`) is the how-it's-wired-today; VISION.md is the where-it's-going. **confidence: directional.**
+
 ## stack and dependencies
 
 superseded-by-ADR: `docs/adr/0003-language-and-runtime.md`
@@ -160,6 +162,7 @@ speaks Claude Code's hook dialect (exit 2 blocks) instead of the native
 | `MYCEL_HOME` | mycel home dir (default `~/.mycel`). Legacy `KIMI_CODE_HOME` honored with a deprecation warning |
 | `MYCEL_INSTALL_DIR` | installer target (default `~/.mycel`) |
 | `MYCEL_NO_MODIFY_PATH` | skip the installer's shell-rc PATH edit |
+| `KIMI_CODE_EXPERIMENTAL_CODEX_SUBSCRIPTION_AUTH` | enable the experimental Codex subscription provider without a config override |
 
 ### gotchas
 
@@ -299,7 +302,9 @@ OpenClaw and Hermes are useful references for interop design, but Mycel-specific
 - Sentinel is core runtime defense.
 - `storage = "codex"` depends on a current `codex` binary on `PATH` and an
   existing `codex login`. It uses an undocumented ChatGPT Responses endpoint,
-  so compatibility is version-sensitive and failures must remain explicit.
+  so compatibility is version-sensitive and failures must remain explicit. It
+  also requires `[experimental] codex_subscription_auth = true` or the matching
+  environment flag.
 
 generated projections can overwrite manual edits unless an override policy exists. **confidence: directional. load-bearing.**
 
