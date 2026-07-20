@@ -640,7 +640,7 @@ export function formatReadyBanner(
   const port = Number(new URL(origin).port);
   // Borderless header: the Kimi sprite (the little mascot with eyes) sits next
   // to the title, keeping the brand without the enclosing box.
-  const logo = ['▐█▛█▛█▌', '▐█████▌'] as const;
+  const logo = ['▐█ █ █▌', '▐▙▄▄▄▟▌'] as const;
   const lines: string[] = [
     '',
     `  ${primary(logo[0])}  ${title('Mycel server ready')}  ${dim(getVersion())}`,

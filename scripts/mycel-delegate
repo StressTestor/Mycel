@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+#
+# mycel-delegate — run a governed Claude subagent on the ChatGPT-free path.
+#
+# Claude Code generates and drives the task on your claude.ai subscription;
+# Mycel keeps governance: every Bash command the subagent runs passes
+# `mycel-gate --claude` (fail-closed), and the subagent can query the substrate
+# over MCP. The subscription does the work; your immunity gate still decides.
+#
+# usage:
+#   mycel-delegate "investigate why the build is failing in packages/foo"
+#   echo "long task on stdin" | mycel-delegate
+#
+# billing/auth: unsets ANTHROPIC_API_KEY so `claude` uses your subscription
+# login, not a stray (possibly empty) API key.
+
+set -uo pipefail
+
+MYCEL_HOME="${MYCEL_HOME:-$HOME/.mycel}"
+GOV="$MYCEL_HOME/delegate"
+
+_err() { printf 'mycel-delegate: %s\n' "$*" >&2; }
+
+command -v claude >/dev/null 2>&1 || {
+  _err "claude not found on PATH — install Claude Code to use delegated subagents"
+  exit 2
+}
+
+# Task: positional args win; otherwise read stdin.
+TASK="$*"
+if [ -z "$TASK" ]; then
+  TASK="$(cat)"
+fi
+if [ -z "${TASK// /}" ]; then
+  _err "no task given (pass it as an argument or on stdin)"
+  exit 1
+fi
+
+# Governance config must exist (scaffolded by install.sh). If it is missing,
+# fail rather than silently spawning an ungoverned subagent.
+if [ ! -f "$GOV/settings.json" ]; then
+  _err "governance config missing at $GOV/settings.json — run install.sh"
+  exit 3
+fi
+
+PREAMBLE_FILE="$GOV/subagent-preamble.md"
+if [ -f "$PREAMBLE_FILE" ]; then
+  FRAMING="$(cat "$PREAMBLE_FILE")"
+else
+  FRAMING="You are a subagent inside the Mycel coding harness. The main Mycel agent is your caller; the end user cannot see your context, only your final message. Commands pass a fail-closed gate — if one is blocked, do not retry it, report why in your summary. Stay scoped to the handed task and return a tight, technically complete conclusion."
+fi
+
+MCP_ARGS=()
+if [ -f "$GOV/mcp.json" ]; then
+  MCP_ARGS=(--mcp-config "$GOV/mcp.json")
+fi
+
+# Pipe the task on stdin; claude reads it as the print-mode prompt.
+printf '%s' "$TASK" | env -u ANTHROPIC_API_KEY claude -p \
+  --settings "$GOV/settings.json" \
+  "${MCP_ARGS[@]}" \
+  --append-system-prompt "$FRAMING" \
+  --allowed-tools "Bash Read Grep Glob Edit Write WebSearch WebFetch"

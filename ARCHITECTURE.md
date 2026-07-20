@@ -65,7 +65,7 @@ Mycel/
     sentinel-guard/
   harness/                   grafted kimi-code fork (TS), the agent body
     apps/mycel/              bin name: mycel
-    packages/                agent-core, agent-core-v2, kosong, ...
+    packages/                agent-core, agent-core-v2, kosong, oauth, ...
   adapters/
     hermes/
     openclaw/
@@ -101,6 +101,8 @@ publication path for non-Mycel users.
 | `mycel-tests` | external black-box adversarial suite for v0.1 fail-pattern immunity |
 | `sentinel-guard` | always-on runtime defense and shared policy evaluator |
 | `harness/apps/mycel` | the agent body (bin `mycel`): TUI, sessions, subagents, providers, hooks |
+| `mycel-delegate` | script: runs a governed `claude -p` subagent on the Claude subscription. Claude generates + drives; every Bash command still passes `mycel-gate --claude` (fail-closed), so delegated work stays under the immunity gate. Preferred for subagent work via `~/.mycel/AGENTS.md` when `claude` is present |
+| `harness/packages/oauth` | managed credential adapters, including the experimental Codex app-server bridge |
 
 ### gate data flow (fail-closed immunity)
 
@@ -129,6 +131,27 @@ tool fails / is blocked
 
 The substrate learns from what goes wrong; nothing auto-activates. Proven by
 `tests/e2e/immunity-loop.sh`.
+
+### governed delegation (claude subagents on the subscription)
+
+```text
+main mycel agent decides to delegate substantial work
+  -> ~/.mycel/AGENTS.md steers it to `mycel-delegate "<task>"` when claude is present
+  -> mycel-delegate runs `claude -p` (ANTHROPIC_API_KEY unset -> subscription auth)
+       --settings -> PreToolUse Bash hook = mycel-gate --claude (fail-closed)
+       --mcp-config -> mycel-mcp-server (subagent can query the substrate)
+       --append-system-prompt -> the Mycel subagent preamble
+  -> the subagent's every Bash command passes mycel-gate --claude
+       deny  -> exit 2 + stderr reason -> Claude Code BLOCKS the tool
+       error -> exit 2 (fail-closed) -> BLOCKED
+       allow -> exit 0
+  -> the subagent returns a final message; mycel relays what matters
+```
+
+Claude generates and drives; Mycel keeps governance. `mycel-gate --claude`
+speaks Claude Code's hook dialect (exit 2 blocks) instead of the native
+`permissionDecision` JSON, so one gate governs both Mycel itself and delegated
+`claude -p` subagents. Live proof: `tests/e2e/delegate-live.sh`.
 
 ### env vars
 
@@ -164,6 +187,8 @@ Volva-shedding uses Sentinel as the gate substrate. it stays post-v1, but the in
 - local-first substrate state.
 - confidence-tagged empirical claims and assumptions.
 - schema-driven adapter boundaries.
+- request-scoped provider auth: OAuth adapters can supply both a bearer token
+  and provider-specific headers without moving tool execution out of Mycel.
 - generated human-readable workspace projections.
 - always-on runtime defense through shared Sentinel gates.
 - deterministic antibody evaluation: populated signature fields are AND matches,
@@ -261,6 +286,7 @@ the default operating model is local CLI plus local MCP server.
 | PromptPressure | confidence-tier input for context decay |
 | OpenClaw | plugin and skill interop reference |
 | Hermes Agent | skill and context lifecycle reference |
+| Codex / ChatGPT | experimental subscription-backed Responses provider; `codex app-server` owns login and token refresh while Mycel keeps its own loop, tools, hooks, and gate |
 
 OpenClaw and Hermes are useful references for interop design, but Mycel-specific ecology metadata will need graceful degradation. **confidence: directional. load-bearing.**
 
@@ -271,6 +297,9 @@ OpenClaw and Hermes are useful references for interop design, but Mycel-specific
 - vibes-tier claims stay hypotheses.
 - autonomous spawning waits behind refusal, dormancy, decay, and handoff controls.
 - Sentinel is core runtime defense.
+- `storage = "codex"` depends on a current `codex` binary on `PATH` and an
+  existing `codex login`. It uses an undocumented ChatGPT Responses endpoint,
+  so compatibility is version-sensitive and failures must remain explicit.
 
 generated projections can overwrite manual edits unless an override policy exists. **confidence: directional. load-bearing.**
 
@@ -283,6 +312,9 @@ cargo build --workspace
 cargo test --workspace
 cargo fmt -p mycel-core -p mycel-mcp -p mycel-cli -p mycel-tests
 cargo clippy --workspace --all-targets -- -D warnings
+cd harness && pnpm --filter @moonshot-ai/kimi-code-oauth typecheck
+cd harness && pnpm --filter @moonshot-ai/agent-core typecheck
+cd harness && pnpm --filter @moonshot-ai/agent-core-v2 typecheck
 mycel harness
 mycel ingest --jsonl <path>
 mycel evaluate --tool-name <name>
@@ -299,4 +331,4 @@ implementation commands do not exist yet.
 
 ## last updated
 
-2026-05-30
+2026-07-20
