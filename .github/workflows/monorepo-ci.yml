@@ -23,7 +23,7 @@ jobs:
         run: cargo test --workspace
       - name: gate contract e2e (deterministic, no model)
         run: bash tests/e2e/gate-contract.sh
-      - name: immunity loop e2e (m2: capture -> ingest -> promote -> block)
+      - name: "immunity loop e2e (m2: capture -> ingest -> promote -> block)"
         run: bash tests/e2e/immunity-loop.sh
 
   body:
