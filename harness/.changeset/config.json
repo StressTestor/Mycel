@@ -1,5 +1,5 @@
 {
-  "changelog": ["@changesets/changelog-github", { "repo": "MoonshotAI/kimi-code" }],
+  "changelog": ["@changesets/changelog-github", { "repo": "StressTestor/Mycel" }],
   "commit": false,
   "fixed": [],
   "linked": [],
