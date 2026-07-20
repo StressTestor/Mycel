@@ -26,14 +26,15 @@ describe('AssistantMessageComponent', () => {
     expect(visibleWidth(STATUS_BULLET)).toBe(2);
   });
 
-  it('uses the stable status bullet without stealing content width', () => {
+  it('labels the turn with the mycel role label in the fixed gutter', () => {
     const component = new AssistantMessageComponent();
 
     component.updateContent('abcdef');
 
-    const lines = component.render(8).map(strip);
-    expect(lines).toEqual(['', `${STATUS_BULLET}abcdef`]);
-    expect(visibleWidth(lines[1] ?? '')).toBe(8);
+    // Gutter is 8 columns: 'mycel' + 3 pad spaces, then the body at column 8.
+    const lines = component.render(14).map(strip);
+    expect(lines).toEqual(['', 'mycel   abcdef']);
+    expect(visibleWidth(lines[1] ?? '')).toBe(14);
   });
 
   it('keeps assistant lines within very narrow widths', () => {

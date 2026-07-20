@@ -90,18 +90,19 @@ describe('UserMessageComponent', () => {
     expect(imageLine).toContain('\u001B\\'); // intact Kitty terminator
   });
 
-  it('omits the sparkles bullet when an empty bullet is provided', () => {
+  it('omits the role label when an empty bullet is provided', () => {
     setCapabilities({ images: null, trueColor: true, hyperlinks: true });
 
-    const withBullet = stripAnsi(new UserMessageComponent('hello', []).render(80).join('\n'));
-    expect(withBullet).toContain('✨');
-    expect(withBullet).toContain('hello');
+    const withLabel = stripAnsi(new UserMessageComponent('hello', []).render(80).join('\n'));
+    // Default marker is the padded "you" role label in the fixed gutter.
+    expect(withLabel).toContain('you');
+    expect(withLabel).toContain('hello');
 
     const lines = new UserMessageComponent('$ ls', [], '').render(80).map(stripAnsi);
     const contentLine = lines.find((l) => l.includes('$ ls'));
     expect(contentLine).toBeDefined();
-    expect(stripAnsi(lines.join('\n'))).not.toContain('✨');
-    // The `$` sits at the leading column where the bullet used to be.
+    expect(stripAnsi(lines.join('\n'))).not.toContain('you');
+    // The `$` sits at the leading column where the label used to be.
     expect(contentLine?.startsWith('$ ls')).toBe(true);
   });
 });
