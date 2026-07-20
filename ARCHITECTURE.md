@@ -99,7 +99,7 @@ publication path for non-Mycel users.
 | `mycel-mcp` | McpTools lib + `mycel-mcp-server` stdio MCP bin (evaluate_run, list_antibodies, propose_antibody - proposals are inert until promoted) |
 | `mycel-observe` | `PostToolUseFailure` hook bin: appends each failed/blocked tool call to the substrate audit log as a `SentinelAuditEvent`. Observation-only, always exits 0. The capture half of the m2 learning loop |
 | `mycel-cli` | local command surface (bin `mycel-substrate`): ingest, evaluate, list-antibodies, antibody-add, maintain |
-| `mycel-gate` | `PreToolUse` hook bin: reads hook JSON on stdin, runs the evaluation engine, emits a fail-closed allow/deny. Never creates the substrate db (a deleted db reads as guard-disarmed -> block) |
+| `mycel-gate` | `PreToolUse` hook bin (catch-all matcher: governs every tool, not just Bash). For a write-class tool it extracts + canonicalizes the target path and runs a compiled protected-path floor (blocks writes to its own `bin`/`config.toml`/`substrate`) BEFORE the db is opened. Opens the substrate read-only + strict, so a 0-byte/truncated/empty-schema db fail-closes instead of allow-all; never creates the db (a deleted db reads as guard-disarmed -> block). Then runs the evaluation engine, emits a fail-closed allow/deny. Seals the Write/Edit + truncated-db self-disarm; a Bash-*command* write to a protected path is a documented residual (needs structured shell parsing) |
 | `mycel-tests` | external black-box adversarial suite for v0.1 fail-pattern immunity |
 | `sentinel-guard` | always-on runtime defense and shared policy evaluator |
 | `harness/apps/mycel` | the agent body (bin `mycel`): TUI, sessions, subagents, providers, hooks |
@@ -109,14 +109,18 @@ publication path for non-Mycel users.
 ### gate data flow (fail-closed immunity)
 
 ```text
-harness Bash tool call
+harness tool call (ANY tool - catch-all matcher)
   -> PreToolUse hook (fail_mode = "closed")
-    -> mycel-gate  (stdin: {tool_name, tool_input.command})
+    -> mycel-gate  (stdin: {tool_name, tool_input, cwd})
+      write-class tool? -> extract + canonicalize the target path (payload cwd, ~, symlinks, case)
+        -> protected-path floor: bin / config.toml / substrate   [runs BEFORE the db is opened]
+             hit -> deny  (same-session self-disarm blocked)
+      -> open substrate READ-ONLY + strict  (0-byte / truncated / empty-schema -> BLOCKED; never created)
       -> AntibodyStore::evaluate_run  (SQLite substrate)
         refuse -> {"hookSpecificOutput":{"permissionDecision":"deny", reason: remediation + source}} -> tool BLOCKED
         warn   -> {"message": "..."} -> tool runs, model sees warning
         allow  -> {} -> tool runs
-      gate crash / timeout / missing db / bad json -> nonzero exit -> BLOCKED
+      gate crash / timeout / missing|truncated db / bad json -> nonzero exit -> BLOCKED
 ```
 
 ### immunity learning loop (m2)

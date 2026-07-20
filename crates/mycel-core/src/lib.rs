@@ -6,16 +6,21 @@ use std::{
 
 use chrono::{DateTime, Utc};
 use regex::Regex;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub mod decay;
+pub mod pathguard;
 pub mod projection;
 pub mod promptpressure;
 pub mod sclerotia;
 pub mod selfspec;
 pub mod spore;
+
+pub use pathguard::{
+    protected_floor_check, resolve_path_forms, PathContext, PathForms, FLOOR_SOURCE_POINTER,
+};
 
 pub use decay::{DecayEngine, DecayReport};
 pub use projection::{render_compost_md, render_substrate_md, run_maintenance, MaintenanceReport};
@@ -269,6 +274,28 @@ impl AntibodyStore {
         };
         store.migrate()?;
         Ok(store)
+    }
+
+    /// Open the substrate strictly READ-ONLY for gate evaluation. Unlike
+    /// [`AntibodyStore::open`], this never creates and never migrates the db, and
+    /// it requires the `antibodies` table to exist and be queryable.
+    ///
+    /// SECURITY: `open` uses `Connection::open` (read-write, create-by-default)
+    /// and then `CREATE TABLE IF NOT EXISTS`, so a 0-byte, truncated, or
+    /// empty-schema db silently presents as an empty store - which matches
+    /// nothing and therefore ALLOWS everything. That is a same-session
+    /// self-disarm: truncate the db and the next tool runs ungoverned. Opening
+    /// read-only (no create, no migrate) and forcing a real schema read here
+    /// makes a 0-byte, non-SQLite, or missing-`antibodies`-table db fail rather
+    /// than allow. Install still uses `open` for its auto-create/migrate.
+    pub fn open_readonly_strict(path: impl AsRef<Path>) -> Result<Self> {
+        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        // Force a schema read: a 0-byte/garbage/empty-schema db errors here
+        // instead of masquerading as an empty allow-all store.
+        conn.query_row("SELECT count(*) FROM antibodies", [], |row| {
+            row.get::<_, i64>(0)
+        })?;
+        Ok(Self { conn })
     }
 
     pub fn schema_version(&self) -> Result<u32> {
@@ -1263,10 +1290,44 @@ fn field_matches(signature_value: &Option<String>, run_value: &Option<String>) -
 fn glob_field_matches(signature_value: &Option<String>, run_value: &Option<String>) -> bool {
     match signature_value {
         Some(pattern) => match run_value {
-            Some(value) => glob_matches(pattern, value),
+            Some(value) => path_pattern_matches(pattern, value),
             None => false,
         },
         None => true,
+    }
+}
+
+/// Match a `file_pattern` rule against a run's file path.
+///
+/// A glob pattern keeps the existing anchored-regex semantics untouched: a glob
+/// root like `**/.mycel/**` has no single concrete form, so it must NOT be
+/// canonicalized. A concrete-path rule additionally folds both sides to their
+/// lexical + canonical forms so `~`, a relative path, `./..`, a symlinked
+/// parent, or a case respelling on a case-insensitive volume cannot dodge it.
+///
+/// The fold happens at match time and is never baked into the stored pattern, so
+/// non-gate callers (mycel-mcp/mycel-cli/sclerotia) that pass raw values through
+/// `Signature::matches` keep exact-string behavior for the common equal case.
+/// Those callers resolve relative paths against the ambient process cwd, which is
+/// best-effort; the payload-cwd-precise seal lives in the gate's protected-path
+/// floor (`pathguard::protected_floor_check`).
+fn path_pattern_matches(pattern: &str, value: &str) -> bool {
+    if pathguard::is_glob(pattern) {
+        return glob_matches(pattern, value);
+    }
+    if value == pattern {
+        return true;
+    }
+    let ctx = ambient_path_context();
+    let pattern_forms = pathguard::resolve_path_forms(pattern, &ctx);
+    let value_forms = pathguard::resolve_path_forms(value, &ctx);
+    pathguard::forms_equal(&pattern_forms, &value_forms)
+}
+
+fn ambient_path_context() -> pathguard::PathContext {
+    pathguard::PathContext {
+        home: std::env::var_os("HOME").map(PathBuf::from),
+        cwd: std::env::current_dir().ok(),
     }
 }
 
