@@ -29,6 +29,38 @@ bash install.sh
 
 builds the rust binaries and the harness, installs `mycel` + `mycel-gate` + `mycel-substrate` + `mycel-mcp-server` into `~/.mycel/bin`, scaffolds a config, and verifies the gate before it calls itself done. every step is loud and every failure names the fix. then edit `~/.mycel/config.toml`, pick a provider, set `default_model`, and run `mycel`.
 
+### codex subscription provider
+
+mycel can experimentally use an existing ChatGPT subscription login while
+keeping Mycel's loop, tools, approvals, hooks, and fail-closed gate in charge.
+Install a current Codex CLI, run `codex login`, then add this to
+`~/.mycel/config.toml`:
+
+```toml
+default_model = "codex/gpt-5.6-sol"
+
+[experimental]
+codex_subscription_auth = true
+
+[providers."managed:codex"]
+type = "openai_responses"
+base_url = "https://chatgpt.com/backend-api/codex"
+oauth = { storage = "codex", key = "default" }
+
+[models."codex/gpt-5.6-sol"]
+provider = "managed:codex"
+model = "gpt-5.6-sol"
+max_context_size = 272000
+capabilities = [ "thinking", "image_in", "tool_use" ]
+support_efforts = [ "low", "medium", "high", "xhigh", "max" ]
+default_effort = "low"
+```
+
+the adapter asks `codex app-server` for short-lived request auth, so Mycel does
+not read or copy Codex's refresh token. the model endpoint is an undocumented
+ChatGPT backend, not a supported public OpenAI API. treat this provider as
+version-sensitive and keep the API-key provider available as the stable path.
+
 seed the immunity gate:
 
 ```sh

@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DisposableStore } from '#/_base/di/lifecycle';
 import { createServices, type TestInstantiationService } from '#/_base/di/test';
 import { IOAuthService } from '#/app/auth/auth';
+import { IBootstrapService } from '#/app/bootstrap/bootstrap';
 import { IConfigService } from '#/app/config/config';
 import { APIStatusError } from '#/app/llmProtocol/errors';
 import { type ModelConfig, IModelService } from '#/app/model/model';
@@ -42,6 +43,7 @@ describe('ModelResolverService', () => {
   let configValues: Record<string, unknown>;
   let resolveTokenProvider: ReturnType<typeof vi.fn>;
   let createdProtocolConfigs: Record<string, unknown>[];
+  let codexSubscriptionEnabled: boolean;
 
   beforeEach(() => {
     disposables = new DisposableStore();
@@ -51,6 +53,7 @@ describe('ModelResolverService', () => {
     configValues = {};
     resolveTokenProvider = vi.fn();
     createdProtocolConfigs = [];
+    codexSubscriptionEnabled = false;
     appliedThinkingEfforts = [];
     generateImpl = async () => ({
       id: null,
@@ -64,8 +67,14 @@ describe('ModelResolverService', () => {
     uploadVideoImpl = undefined;
     ix = createServices(disposables, {
       additionalServices: (reg) => {
+        reg.definePartialInstance(IBootstrapService, {
+          getEnv: () => undefined,
+        });
         reg.definePartialInstance(IConfigService, {
-          get: ((domain: string) => configValues[domain]) as unknown as IConfigService['get'],
+          get: ((domain: string) =>
+            domain === 'experimental'
+              ? { codex_subscription_auth: codexSubscriptionEnabled }
+              : configValues[domain]) as unknown as IConfigService['get'],
         });
         reg.definePartialInstance(IProviderService, {
           get: ((name: string) => providers[name]) as IProviderService['get'],
@@ -173,6 +182,77 @@ describe('ModelResolverService', () => {
 
     expect(auth).toEqual({ apiKey: 'oauth-token' });
     expect(resolveTokenProvider).toHaveBeenCalledWith('p', { storage: 'file', key: 'oauth/test' });
+  });
+
+  it('forwards provider-specific OAuth request headers', async () => {
+    codexSubscriptionEnabled = true;
+    providers['p'] = {
+      type: 'openai_responses',
+      baseUrl: 'https://chatgpt.com/backend-api/codex',
+      oauth: { storage: 'codex', key: 'default' },
+    };
+    models['m'] = { provider: 'p', model: 'gpt-5.6-sol', maxContextSize: 272000 };
+    resolveTokenProvider.mockReturnValue({
+      getAccessToken: async () => 'unused',
+      getRequestAuth: async () => ({
+        apiKey: 'codex-token',
+        headers: { 'ChatGPT-Account-ID': 'workspace-123' },
+      }),
+    });
+
+    const auth = await ix.get(IModelResolver).resolve('m').authProvider.getAuth();
+
+    expect(auth).toEqual({
+      apiKey: 'codex-token',
+      headers: { 'ChatGPT-Account-ID': 'workspace-123' },
+    });
+  });
+
+  it('omits unsupported max output tokens for platform-level Codex auth', async () => {
+    codexSubscriptionEnabled = true;
+    platforms['chatgpt'] = {
+      auth: { oauth: { storage: 'codex', key: 'default' } },
+    };
+    providers['p'] = {
+      type: 'openai_responses',
+      baseUrl: 'https://chatgpt.com/backend-api/codex',
+      platformId: 'chatgpt',
+    };
+    models['m'] = { provider: 'p', model: 'gpt-5.6-sol', maxContextSize: 272000 };
+    resolveTokenProvider.mockReturnValue({
+      getAccessToken: async () => 'codex-token',
+    });
+
+    const protocolConfig = await resolveAndCreateProvider();
+
+    expect(protocolConfig).toMatchObject({
+      providerOptions: { maxOutputTokensSupported: false },
+    });
+  });
+
+  it('rejects Codex subscription auth while its experimental flag is disabled', () => {
+    providers['p'] = {
+      type: 'openai_responses',
+      baseUrl: 'https://chatgpt.com/backend-api/codex',
+      oauth: { storage: 'codex', key: 'default' },
+    };
+    models['m'] = { provider: 'p', model: 'gpt-5.6-sol', maxContextSize: 272000 };
+
+    expect(() => ix.get(IModelResolver).resolve('m')).toThrow(/codex_subscription_auth/);
+  });
+
+  it('refuses to send Codex subscription auth to another endpoint', () => {
+    codexSubscriptionEnabled = true;
+    providers['p'] = {
+      type: 'openai_responses',
+      baseUrl: 'https://example.test/codex',
+      oauth: { storage: 'codex', key: 'default' },
+    };
+    models['m'] = { provider: 'p', model: 'gpt-5.6-sol', maxContextSize: 272000 };
+
+    expect(() => ix.get(IModelResolver).resolve('m')).toThrow(
+      /requires an explicit openai_responses provider/,
+    );
   });
 
   it('throws login_required when an OAuth provider has no token provider', async () => {

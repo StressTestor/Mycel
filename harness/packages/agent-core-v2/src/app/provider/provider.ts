@@ -38,7 +38,7 @@ export const ProviderTypeSchema = z.enum([
 export type ProviderType = z.infer<typeof ProviderTypeSchema>;
 
 export const OAuthRefSchema = z.object({
-  storage: z.enum(['file', 'keyring']),
+  storage: z.enum(['file', 'keyring', 'codex']),
   key: z.string().min(1),
   oauthHost: z.string().min(1).optional(),
 });

@@ -43,6 +43,14 @@ import type { OAuthFlowConfig } from './types';
 
 export interface BearerTokenProvider {
   getAccessToken(options?: { readonly force?: boolean | undefined }): Promise<string>;
+  getRequestAuth?(
+    options?: { readonly force?: boolean | undefined },
+  ): Promise<ProviderRequestAuth>;
+}
+
+export interface ProviderRequestAuth {
+  readonly apiKey?: string | undefined;
+  readonly headers?: Readonly<Record<string, string>> | undefined;
 }
 
 export interface AuthProviderStatus {

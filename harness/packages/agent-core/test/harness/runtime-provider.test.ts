@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { APIStatusError } from '@moonshot-ai/kosong';
 
 import type { KimiConfig, ModelAlias } from '../../src/config';
 import { ErrorCodes, KimiError } from '../../src/errors';
@@ -776,6 +777,53 @@ describe('ProviderManager OAuth auth', () => {
     };
   }
 
+  function codexConfig(enabled: boolean): KimiConfig {
+    return {
+      ...BASE_CONFIG,
+      experimental: { codex_subscription_auth: enabled },
+      providers: {
+        'managed:kimi-code': {
+          type: 'openai_responses',
+          baseUrl: 'https://chatgpt.com/backend-api/codex',
+          oauth: { storage: 'codex', key: 'default' },
+        },
+      },
+    };
+  }
+
+  it('rejects Codex subscription auth while its experimental flag is disabled', () => {
+    const manager = new ProviderManager({
+      config: codexConfig(false),
+      resolveOAuthTokenProvider: () => ({ getAccessToken: async () => 'unused' }),
+    });
+
+    expect(() => manager.resolveAuth('kimi-code/kimi-for-coding')).toThrow(
+      /codex_subscription_auth/,
+    );
+  });
+
+  it('allows Codex subscription auth when its experimental flag is enabled', () => {
+    const manager = new ProviderManager({
+      config: codexConfig(true),
+      resolveOAuthTokenProvider: () => ({ getAccessToken: async () => 'token' }),
+    });
+
+    expect(manager.resolveAuth('kimi-code/kimi-for-coding')).toBeDefined();
+  });
+
+  it('refuses to send Codex subscription auth to another endpoint', () => {
+    const config = codexConfig(true);
+    config.providers['managed:kimi-code']!.baseUrl = 'https://example.test/codex';
+    const manager = new ProviderManager({
+      config,
+      resolveOAuthTokenProvider: () => ({ getAccessToken: async () => 'token' }),
+    });
+
+    expect(() => manager.resolveAuth('kimi-code/kimi-for-coding')).toThrow(
+      /requires an openai_responses provider/,
+    );
+  });
+
   it('preserves non-Kimi token fetch failures instead of guessing their category', async () => {
     const tokenError = new Error('token storage permission denied');
     const manager = new ProviderManager({
@@ -808,6 +856,63 @@ describe('ProviderManager OAuth auth', () => {
 
     await expect(resolveAuth!(async () => 'ok')).rejects.toMatchObject({
       code: ErrorCodes.AUTH_LOGIN_REQUIRED,
+    });
+  });
+
+  it('forwards provider-specific OAuth request headers', async () => {
+    const manager = new ProviderManager({
+      config: oauthConfig(),
+      resolveOAuthTokenProvider: () => ({
+        async getAccessToken() {
+          return 'unused';
+        },
+        async getRequestAuth() {
+          return {
+            apiKey: 'codex-token',
+            headers: { 'ChatGPT-Account-ID': 'workspace-123' },
+          };
+        },
+      }),
+    });
+    const resolveAuth = manager.resolveAuth('kimi-code/kimi-for-coding');
+
+    const result = await resolveAuth!(async (auth) => auth);
+
+    expect(result).toEqual({
+      apiKey: 'codex-token',
+      headers: { 'ChatGPT-Account-ID': 'workspace-123' },
+    });
+  });
+
+  it('forces one atomic token and account refresh after a provider 401', async () => {
+    const forceCalls: Array<boolean | undefined> = [];
+    const manager = new ProviderManager({
+      config: oauthConfig(),
+      resolveOAuthTokenProvider: () => ({
+        async getAccessToken() {
+          return 'unused';
+        },
+        async getRequestAuth(options) {
+          forceCalls.push(options?.force);
+          return options?.force === true
+            ? { apiKey: 'fresh-token', headers: { 'ChatGPT-Account-ID': 'fresh-account' } }
+            : { apiKey: 'old-token', headers: { 'ChatGPT-Account-ID': 'old-account' } };
+        },
+      }),
+    });
+    const resolveAuth = manager.resolveAuth('kimi-code/kimi-for-coding');
+    let requests = 0;
+
+    const result = await resolveAuth!(async (auth) => {
+      requests += 1;
+      if (requests === 1) throw new APIStatusError(401, 'Unauthorized', 'req-401');
+      return auth;
+    });
+
+    expect(forceCalls).toEqual([undefined, true]);
+    expect(result).toEqual({
+      apiKey: 'fresh-token',
+      headers: { 'ChatGPT-Account-ID': 'fresh-account' },
     });
   });
 });

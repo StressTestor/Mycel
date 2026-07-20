@@ -1,5 +1,9 @@
 import type { FlagDefinitionInput } from './types';
 
+export const CODEX_SUBSCRIPTION_AUTH_FLAG_ID = 'codex_subscription_auth';
+export const CODEX_SUBSCRIPTION_AUTH_FLAG_ENV =
+  'KIMI_CODE_EXPERIMENTAL_CODEX_SUBSCRIPTION_AUTH';
+
 /**
  * Experimental feature flags.
  *
@@ -29,6 +33,15 @@ export const FLAG_DEFINITIONS = [
     description:
       'Keep MCP tool schemas out of the immutable top-level tools[]; the model loads them on demand via the select_tools tool. Only takes effect on models whose capability catalog declares dynamically loaded tools.',
     env: 'KIMI_CODE_EXPERIMENTAL_TOOL_SELECT',
+    default: false,
+    surface: 'core',
+  },
+  {
+    id: CODEX_SUBSCRIPTION_AUTH_FLAG_ID,
+    title: 'Codex subscription authentication',
+    description:
+      'Allow OpenAI Responses providers to reuse a ChatGPT subscription login through Codex app-server.',
+    env: CODEX_SUBSCRIPTION_AUTH_FLAG_ENV,
     default: false,
     surface: 'core',
   },

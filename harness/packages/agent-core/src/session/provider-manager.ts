@@ -1,7 +1,11 @@
 import type { Logger } from '#/logging/types';
 import type { ProviderConfig as KosongProviderConfig, ModelCapability, ProviderRequestAuth } from '@moonshot-ai/kosong';
 import { APIStatusError, getModelCapability, UNKNOWN_CAPABILITY } from '@moonshot-ai/kosong';
-import { parseKimiCodeCustomHeaders } from '@moonshot-ai/kimi-code-oauth';
+import {
+  CODEX_SUBSCRIPTION_BASE_URL,
+  isCodexSubscriptionBaseUrl,
+  parseKimiCodeCustomHeaders,
+} from '@moonshot-ai/kimi-code-oauth';
 import {
   effectiveModelAlias,
   type KimiConfig,
@@ -11,9 +15,17 @@ import {
   type ProviderType,
 } from '../config';
 import { ErrorCodes, isKimiError, KimiError } from '../errors';
+import {
+  CODEX_SUBSCRIPTION_AUTH_FLAG_ID,
+  FLAG_DEFINITIONS,
+  FlagResolver,
+} from '../flags';
 
 export interface BearerTokenProvider {
   getAccessToken(options?: { readonly force?: boolean }): Promise<string>;
+  getRequestAuth?(
+    options?: { readonly force?: boolean },
+  ): Promise<ProviderRequestAuth>;
 }
 
 export type OAuthTokenProviderResolver = (
@@ -155,8 +167,31 @@ export class ProviderManager implements ModelProvider {
     options?: { readonly log?: Logger },
   ): AuthorizedRequest | undefined {
     const { providerName } = this.resolveProviderConfig(model);
-    const providerConfig = this.config.providers[providerName];
+    const config = this.config;
+    const providerConfig = config.providers[providerName];
     if (providerConfig?.oauth === undefined) return undefined;
+
+    if (providerConfig.oauth.storage === 'codex') {
+      if (
+        providerConfig.type !== 'openai_responses' ||
+        !isCodexSubscriptionBaseUrl(providerConfig.baseUrl)
+      ) {
+        throw new KimiError(
+          ErrorCodes.CONFIG_INVALID,
+          `Codex subscription authentication requires an openai_responses provider at ${CODEX_SUBSCRIPTION_BASE_URL}.`,
+        );
+      }
+      if (
+        !new FlagResolver(process.env, FLAG_DEFINITIONS, config.experimental).enabled(
+          CODEX_SUBSCRIPTION_AUTH_FLAG_ID,
+        )
+      ) {
+        throw new KimiError(
+          ErrorCodes.CONFIG_INVALID,
+          'Codex subscription authentication is experimental. Enable `codex_subscription_auth = true` under `[experimental]` or set `KIMI_CODE_EXPERIMENTAL_CODEX_SUBSCRIPTION_AUTH=1`.',
+        );
+      }
+    }
 
     if (providerApiKey(providerConfig) !== undefined) {
       // oauth + apiKey on the same provider makes request auth ambiguous:
@@ -184,9 +219,12 @@ export class ProviderManager implements ModelProvider {
 
     const log = options?.log;
     const fetchAuth = async (force: boolean): Promise<ProviderRequestAuth> => {
-      let apiKey: string;
+      let auth: ProviderRequestAuth;
       try {
-        apiKey = await tokenProvider.getAccessToken(force ? { force: true } : undefined);
+        const refreshOptions = force ? { force: true } : undefined;
+        auth = tokenProvider.getRequestAuth === undefined
+          ? { apiKey: await tokenProvider.getAccessToken(refreshOptions) }
+          : await tokenProvider.getRequestAuth(refreshOptions);
       } catch (error) {
         // login-required is an expected state (the user must /login); don't
         // warn. Other failures (connection errors, etc.) are logged once for
@@ -196,8 +234,8 @@ export class ProviderManager implements ModelProvider {
         }
         throw error;
       }
-      if (apiKey.trim().length === 0) throw loginRequired();
-      return { apiKey };
+      if (auth.apiKey === undefined || auth.apiKey.trim().length === 0) throw loginRequired();
+      return auth;
     };
 
     return async (request) => {
@@ -339,6 +377,7 @@ function toKosongProviderConfig(
         model,
         baseUrl: providerValue(provider.baseUrl, provider.env, 'OPENAI_BASE_URL'),
         apiKey: providerApiKey(provider),
+        maxOutputTokensSupported: provider.oauth?.storage !== 'codex',
         ...defaultHeadersField({
           ...envCustomHeaders,
           ...kimiUserAgentHeader(kimiRequestHeaders),

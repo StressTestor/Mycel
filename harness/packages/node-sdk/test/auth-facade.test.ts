@@ -66,6 +66,41 @@ describe('KimiHarness.auth', () => {
     await expect(harness.auth.getCachedAccessToken()).resolves.toBe('oauth-access-token');
   });
 
+  it('gates Codex subscription auth behind its experimental flag', async () => {
+    const configPath = join(homeDir, 'config.toml');
+    await writeFile(
+      configPath,
+      `
+[providers.codex]
+type = "openai_responses"
+base_url = "https://chatgpt.com/backend-api/codex"
+oauth = { storage = "codex", key = "default" }
+`,
+    );
+    const harness = createKimiHarness({ homeDir, identity: TEST_IDENTITY });
+
+    expect(() =>
+      harness.auth.resolveOAuthTokenProvider('codex', { storage: 'codex', key: 'default' }),
+    ).toThrow(/codex_subscription_auth/);
+
+    await writeFile(
+      configPath,
+      `
+[experimental]
+codex_subscription_auth = true
+
+[providers.codex]
+type = "openai_responses"
+base_url = "https://chatgpt.com/backend-api/codex"
+oauth = { storage = "codex", key = "default" }
+`,
+    );
+
+    expect(
+      harness.auth.resolveOAuthTokenProvider('codex', { storage: 'codex', key: 'default' }),
+    ).toBeDefined();
+  });
+
   it('maps missing runtime OAuth tokens to login-required errors', async () => {
     const harness = createKimiHarness({ homeDir, identity: TEST_IDENTITY });
 

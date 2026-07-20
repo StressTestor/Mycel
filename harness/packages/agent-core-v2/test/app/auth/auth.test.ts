@@ -90,6 +90,7 @@ describe('OAuthService', () => {
   let configReplace: ReturnType<typeof vi.fn>;
   let events: DomainEvent[];
   let providerChangedEmitter: Emitter<ProvidersChangedEvent>;
+  let codexSubscriptionEnabled: boolean;
 
   beforeEach(() => {
     disposables = new DisposableStore();
@@ -109,6 +110,7 @@ describe('OAuthService', () => {
     services = undefined;
     defaultModel = undefined;
     thinking = undefined;
+    codexSubscriptionEnabled = false;
     configSet = vi.fn(async (domain: string, value: unknown) => {
       if (domain === 'defaultModel') {
         defaultModel = value as string | undefined;
@@ -191,7 +193,14 @@ describe('OAuthService', () => {
   }
 
   function configBacking(): Record<string, unknown> {
-    return { providers, models, services, defaultModel, thinking };
+    return {
+      providers,
+      models,
+      services,
+      defaultModel,
+      thinking,
+      experimental: { codex_subscription_auth: codexSubscriptionEnabled },
+    };
   }
 
   function stubManagedModelsFetch(): ReturnType<typeof vi.fn> {
@@ -657,6 +666,42 @@ describe('OAuthService', () => {
     });
   });
 
+  it('rejects Codex subscription auth while its experimental flag is disabled', () => {
+    providers['codex'] = {
+      type: 'openai_responses',
+      baseUrl: 'https://chatgpt.com/backend-api/codex',
+      oauth: { storage: 'codex', key: 'default' },
+    };
+    const svc = createService();
+
+    expect(() =>
+      svc.resolveTokenProvider('codex', { storage: 'codex', key: 'default' }),
+    ).toThrow(/Codex subscription authentication is experimental/);
+  });
+
+  it('binds enabled Codex subscription auth to the Codex Responses provider', () => {
+    codexSubscriptionEnabled = true;
+    providers['codex'] = {
+      type: 'openai_responses',
+      baseUrl: 'https://example.test/codex',
+      oauth: { storage: 'codex', key: 'default' },
+    };
+    const svc = createService();
+
+    expect(() =>
+      svc.resolveTokenProvider('codex', { storage: 'codex', key: 'default' }),
+    ).toThrow(/requires an openai_responses provider/);
+
+    providers['codex'] = {
+      type: 'openai_responses',
+      baseUrl: 'https://chatgpt.com/backend-api/codex',
+      oauth: { storage: 'codex', key: 'default' },
+    };
+    expect(
+      svc.resolveTokenProvider('codex', { storage: 'codex', key: 'default' }),
+    ).toBeDefined();
+  });
+
   it('resolveTokenProvider re-derives the managed provider oauth ref from the current base url', () => {
     const svc = createService();
     svc.resolveTokenProvider(OAUTH_PROVIDER, { storage: 'file', key: 'stale-key' });
@@ -966,6 +1011,20 @@ describe('WebSearchProviderService', () => {
     expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer access-token');
   });
 
+  it('rejects Codex subscription auth in services config before resolving a token', () => {
+    servicesConfig = {
+      moonshotSearch: {
+        baseUrl: 'https://attacker.example.test/search',
+        oauth: { storage: 'codex', key: 'default' },
+      },
+    };
+
+    expect(() => createService().getWebSearchProvider()).toThrow(
+      /Codex subscription authentication cannot be used for service credentials/,
+    );
+    expect(resolveTokenProvider).not.toHaveBeenCalled();
+  });
+
   it('returns undefined when services.moonshot_search has no baseUrl and no managed oauth', () => {
     servicesConfig = { moonshotSearch: { apiKey: 'search-key' } };
     expect(createService().getWebSearchProvider()).toBeUndefined();
@@ -1268,6 +1327,37 @@ describe('AuthSummaryService', () => {
     expect(getCachedAccessToken).toHaveBeenCalledWith('shared-kimi', {
       storage: 'file',
       key: 'oauth/shared-kimi',
+    });
+  });
+
+  it('ensureReady binds structured Codex credentials to the provider endpoint', async () => {
+    providers = {
+      codex: {
+        type: 'openai_responses',
+        platformId: 'codex-subscription',
+        baseUrl: 'https://chatgpt.com/backend-api/codex',
+      },
+    };
+    platforms = {
+      'codex-subscription': {
+        auth: { oauth: { storage: 'codex', key: 'default' } },
+      },
+    };
+    models = {
+      codex: {
+        providerId: 'codex',
+        name: 'gpt-5.6-sol',
+        protocol: 'openai_responses',
+        maxContextSize: 128000,
+      },
+    };
+    defaultModel = 'codex';
+    getCachedAccessToken.mockResolvedValue('access-token');
+
+    await expect(createSummary().ensureReady()).resolves.toBeUndefined();
+    expect(getCachedAccessToken).toHaveBeenCalledWith('codex', {
+      storage: 'codex',
+      key: 'default',
     });
   });
 });

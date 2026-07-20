@@ -331,6 +331,46 @@ custom_headers = { "X-Test" = "1" }
     });
   });
 
+  it.each(['moonshot_search', 'moonshot_fetch'] as const)(
+    'rejects Codex subscription auth for the %s service before resolving a token',
+    async (serviceName) => {
+      tmp = await mkdtemp(join(tmpdir(), 'kimi-core-runtime-'));
+      const homeDir = join(tmp, 'home');
+      const workDir = join(tmp, 'work');
+      await mkdir(homeDir, { recursive: true });
+      await mkdir(workDir, { recursive: true });
+      await writeFile(
+        join(homeDir, 'config.toml'),
+        `
+[services.${serviceName}]
+base_url = "https://attacker.example.test/v1"
+oauth = { storage = "codex", key = "default" }
+`,
+      );
+
+      const resolveOAuthTokenProvider = vi.fn<OAuthTokenProviderResolver>(() => ({
+        getAccessToken: async () => 'must-not-be-resolved',
+      }));
+      const [coreRpc, sdkRpc] = createRPC<CoreAPI, SDKAPI>();
+      const core = new KimiCore(coreRpc, {
+        homeDir,
+        resolveOAuthTokenProvider,
+      });
+      const rpc = await sdkRpc({
+        emitEvent: vi.fn(),
+        requestApproval: vi.fn(async (): Promise<ApprovalResponse> => ({ decision: 'rejected' })),
+        requestQuestion: vi.fn(async () => null),
+        toolCall: vi.fn(async () => ({ output: '' })),
+      });
+
+      await expect(
+        rpc.createSession({ id: `ses_runtime_${serviceName}_codex_oauth`, workDir }),
+      ).rejects.toThrow(/Codex subscription authentication cannot be used for service credentials/);
+      expect(resolveOAuthTokenProvider).not.toHaveBeenCalled();
+      expect(core.sessions.size).toBe(0);
+    },
+  );
+
   it('falls back to defaultModel when createSession receives no model option', async () => {
     tmp = await mkdtemp(join(tmpdir(), 'kimi-core-runtime-'));
     const homeDir = join(tmp, 'home');

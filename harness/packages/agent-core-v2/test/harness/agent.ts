@@ -821,10 +821,20 @@ class ConfigBackedModelResolver extends ModelResolverService {
     @IPlatformService platforms: IPlatformService,
     @IModelService models: IModelService,
     @IOAuthService oauth: IOAuthService,
+    @IBootstrapService bootstrapService: IBootstrapService,
     @IProtocolAdapterRegistry protocolRegistry: IProtocolAdapterRegistry,
     @IHostRequestHeaders hostRequestHeaders: IHostRequestHeaders,
   ) {
-    super(config, providers, platforms, models, oauth, protocolRegistry, hostRequestHeaders);
+    super(
+      config,
+      providers,
+      platforms,
+      models,
+      oauth,
+      bootstrapService,
+      protocolRegistry,
+      hostRequestHeaders,
+    );
   }
 
   override resolve(id: string): Model {

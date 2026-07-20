@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 
+import { isCodexSubscriptionOAuthRef } from '@moonshot-ai/kimi-code-oauth';
+
 import { ErrorCodes, KimiError } from '#/errors';
 import { getRootLogger, log } from '#/logging/logger';
 import { PluginManager } from '#/plugin';
@@ -1416,6 +1418,12 @@ function serviceCredentials(
   readonly tokenProvider?: BearerTokenProvider | undefined;
   readonly customHeaders?: Record<string, string> | undefined;
 } {
+  if (isCodexSubscriptionOAuthRef(service.oauth)) {
+    throw new KimiError(
+      ErrorCodes.CONFIG_INVALID,
+      'Codex subscription authentication cannot be used for service credentials.',
+    );
+  }
   const apiKey = nonEmptyString(service.apiKey);
   return {
     apiKey,

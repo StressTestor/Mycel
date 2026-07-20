@@ -107,6 +107,22 @@ base_url = "https://api.openai.com/v1"
 api_key = "sk-xxxxx"
 ```
 
+## Codex ChatGPT subscription (experimental)
+
+Mycel can reuse the login from an installed Codex CLI while keeping Mycel's agent loop, tools, approvals, hooks, and gate in control. Codex supplies only the model response.
+
+The provider is off by default and depends on an undocumented ChatGPT backend, so it can break when Codex or the backend changes. Keep an API-key provider configured when you need a supported, stable route.
+
+1. Install a current Codex CLI and run `codex login`.
+2. Open the generated `~/.mycel/config.toml` and uncomment the `provider: codex ChatGPT subscription` block copied from `config/mycel.config.toml.template`.
+3. Start Mycel with the configured model:
+
+```sh
+mycel -m codex/gpt-5.6-sol
+```
+
+The adapter asks `codex app-server` for short-lived request credentials; it does not read or copy Codex's refresh token. For safety, `storage = "codex"` is accepted only for an `openai_responses` model provider using the pinned subscription endpoint from the shipped template. It is rejected for custom provider destinations and for built-in search or fetch services.
+
 ## `google-genai`
 
 For connecting directly to the Google Gemini API. Thinking, vision, and multimodal capabilities are auto-detected by model name.

@@ -124,7 +124,7 @@ Each entry in the `providers` table defines an API provider, keyed by a unique n
 | `type` | `string` | Yes | Provider type: `kimi`, `anthropic`, `openai`, `openai_responses`, `google-genai`, `vertexai` |
 | `api_key` | `string` | No | API key, written in plain text in the config file |
 | `base_url` | `string` | No | API base URL |
-| `oauth` | `table` | No | OAuth credential reference (`storage` and `key` fields); injected automatically by the login flow — normally no need to write this by hand |
+| `oauth` | `table` | No | OAuth credential reference (`storage` and `key` fields). `storage = "codex"` is experimental and is restricted to the pinned Codex subscription provider described in [Providers and models](./providers.md#codex-chatgpt-subscription-experimental) |
 | `env` | `table<string, string>` | No | Fallback source for provider credentials; see below |
 | `custom_headers` | `table<string, string>` | No | Custom HTTP headers attached to each request |
 
@@ -248,15 +248,14 @@ In print mode (`kimi -p "<prompt>"`), Kimi Code stays alive after the main agent
 
 `max_edge_px` can be overridden by the `KIMI_IMAGE_MAX_EDGE_PX` environment variable and `read_byte_budget` by `KIMI_IMAGE_READ_BYTE_BUDGET`; both take higher priority than `config.toml`.
 
-<!--
 ## `experimental`
 
-`experimental` stores persistent overrides for experimental-feature flags. Currently, `micro_compaction` is the only user-facing entry and defaults to `false`; set it to `true` to enable automatic trimming of older large tool results.
+`experimental` stores persistent overrides for experimental-feature flags. Every entry defaults to `false`.
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `micro_compaction` | `boolean` | `false` | Trim older large tool results from context while preserving recent conversation |
--->
+| `codex_subscription_auth` | `boolean` | `false` | Allow the pinned `openai_responses` provider to reuse an installed Codex CLI login; see [Codex ChatGPT subscription](./providers.md#codex-chatgpt-subscription-experimental) |
 
 ## `services`
 
@@ -266,7 +265,7 @@ In print mode (`kimi -p "<prompt>"`), Kimi Code stays alive after the main agent
 | --- | --- | --- | --- |
 | `base_url` | `string` | No | Service API URL |
 | `api_key` | `string` | No | API key |
-| `oauth` | `table` | No | OAuth credential reference, same structure as `providers.*.oauth` |
+| `oauth` | `table` | No | OAuth credential reference, same structure as `providers.*.oauth`; `storage = "codex"` is rejected for service credentials |
 | `custom_headers` | `table<string, string>` | No | Custom HTTP headers attached to each request |
 
 ```toml

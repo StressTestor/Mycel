@@ -41,6 +41,7 @@ export interface ProtocolProviderOptions {
   readonly vertexai?: boolean;
   readonly project?: string;
   readonly location?: string;
+  readonly maxOutputTokensSupported?: boolean;
 }
 
 export interface ProtocolAdapterConfig {
