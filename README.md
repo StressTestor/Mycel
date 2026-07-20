@@ -1,6 +1,10 @@
+<div align="center">
+  <img src="docs/assets/mycel-mascot.png" alt="Mycel: a friendly amanita mushroom wearing a 'deny by default' patch, standing on a network of glowing mycelial roots" width="220">
+</div>
+
 # mycel
 
-personal agent harness for coding, built around substrate ecology.
+**deny by default.** personal agent harness for coding, built around substrate ecology.
 
 mycel treats agent runs as living work units inside a local substrate. the first job is substrate memory: remember failures, preserve durable findings, hibernate blocked work, and transfer useful context when an agent dies.
 
