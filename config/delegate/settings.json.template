@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "$HOME/.mycel/bin/mycel-gate --claude --db $HOME/.mycel/substrate/mycel.db" }
+        ]
+      }
+    ]
+  }
+}

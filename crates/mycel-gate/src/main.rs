@@ -26,11 +26,22 @@ struct HookPayload {
 }
 
 fn main() -> ExitCode {
-    match run() {
+    // `--claude` emits the Claude Code hook dialect (exit 2 + stderr reason to
+    // block) instead of the native kimi/mycel dialect (exit 0 + permissionDecision
+    // JSON). Lets one gate govern a `claude -p` subagent as well as Mycel itself.
+    let claude = std::env::args().any(|a| a == "--claude");
+    match run(claude) {
         Ok(code) => code,
         Err(err) => {
             eprintln!("mycel-gate error: {}: {}", err.cause, err.hint);
-            ExitCode::from(err.code)
+            // Under --claude, Claude Code only treats exit 2 as a block; any other
+            // nonzero is a non-blocking error that lets the tool proceed. Keep the
+            // fail-closed guarantee by blocking (exit 2) on every error.
+            if claude {
+                ExitCode::from(2)
+            } else {
+                ExitCode::from(err.code)
+            }
         }
     }
 }
@@ -42,7 +53,7 @@ struct GateError {
     code: u8,
 }
 
-fn run() -> Result<ExitCode, GateError> {
+fn run(claude: bool) -> Result<ExitCode, GateError> {
     let db_path = resolve_db_path()?;
     // SECURITY: never create the db. rusqlite's Connection::open creates-by-default, which would
     // turn `rm mycel.db` into a full gate disarm (a fresh empty store matches nothing -> allows
@@ -114,6 +125,11 @@ fn run() -> Result<ExitCode, GateError> {
                 "{} (source: {})",
                 matched.remediation, matched.source_pointer
             );
+            if claude {
+                // Claude Code dialect: stderr carries the block reason, exit 2 blocks.
+                eprintln!("{reason}");
+                return Ok(ExitCode::from(2));
+            }
             let out = serde_json::json!({
                 "hookSpecificOutput": {
                     "permissionDecision": "deny",

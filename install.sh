@@ -59,6 +59,7 @@ install -m 0755 "$REPO_ROOT/target/release/mycel-gate" "$MYCEL_INSTALL_DIR/bin/m
 install -m 0755 "$REPO_ROOT/target/release/mycel-substrate"  "$MYCEL_INSTALL_DIR/bin/mycel-substrate"
 install -m 0755 "$REPO_ROOT/target/release/mycel-mcp-server" "$MYCEL_INSTALL_DIR/bin/mycel-mcp-server"
 install -m 0755 "$REPO_ROOT/target/release/mycel-observe"     "$MYCEL_INSTALL_DIR/bin/mycel-observe"
+install -m 0755 "$REPO_ROOT/scripts/mycel-delegate"          "$MYCEL_INSTALL_DIR/bin/mycel-delegate"
 
 NODE_BIN="$(command -v node)"
 cat > "$MYCEL_INSTALL_DIR/bin/mycel" <<SHIM
@@ -73,7 +74,28 @@ fi
 exec "$NODE_BIN" "\$ENTRY" "\$@"
 SHIM
 chmod +x "$MYCEL_INSTALL_DIR/bin/mycel"
-_log "installed mycel, mycel-gate, mycel-substrate, mycel-mcp-server, mycel-observe to $MYCEL_INSTALL_DIR/bin"
+_log "installed mycel, mycel-gate, mycel-substrate, mycel-mcp-server, mycel-observe, mycel-delegate to $MYCEL_INSTALL_DIR/bin"
+
+STEP="delegate governance scaffold"
+# Config for governed `claude -p` subagents (mycel-delegate). Always refreshed
+# from the template so a mycel-gate/mycel-mcp path change is picked up; these
+# are generated files, not user-edited, so overwriting is safe.
+mkdir -p "$MYCEL_INSTALL_DIR/delegate"
+sed "s|\$HOME|$HOME|g" "$REPO_ROOT/config/delegate/settings.json.template" > "$MYCEL_INSTALL_DIR/delegate/settings.json"
+sed "s|\$HOME|$HOME|g" "$REPO_ROOT/config/delegate/mcp.json.template" > "$MYCEL_INSTALL_DIR/delegate/mcp.json"
+cp "$REPO_ROOT/config/delegate/subagent-preamble.md" "$MYCEL_INSTALL_DIR/delegate/subagent-preamble.md"
+_log "wrote delegate governance config (subagents run under mycel-gate --claude)"
+
+STEP="agents-md scaffold"
+# ~/.mycel/AGENTS.md is injected into Mycel's system prompt; it tells the agent
+# to prefer mycel-delegate for substantial subagent work. Never overwrite a
+# user-edited one.
+if [ -f "$MYCEL_INSTALL_DIR/AGENTS.md" ]; then
+  _log "kept existing AGENTS.md (not overwritten)"
+else
+  cp "$REPO_ROOT/config/AGENTS.md.template" "$MYCEL_INSTALL_DIR/AGENTS.md"
+  _log "wrote AGENTS.md - default subagent work routes through mycel-delegate when claude is present"
+fi
 
 STEP="config scaffold"
 if [ -f "$MYCEL_INSTALL_DIR/config.toml" ]; then

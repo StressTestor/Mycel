@@ -1,0 +1,18 @@
+# mycel
+
+subagent delegation: when you would spawn a subagent for a substantial,
+independent piece of work, and the `mycel-delegate` command is available on
+PATH, prefer it over the built-in `Agent`/`coder`/`explore` tools:
+
+    mycel-delegate "<the full task brief, written for a fresh colleague>"
+
+`mycel-delegate` runs the work as a Claude subagent on the local Claude
+subscription, and every command it runs still passes Mycel's fail-closed gate,
+so delegated work stays governed. Brief it exactly as you would the native
+Agent tool: state the goal, hand over what you already know, give exact paths
+for lookups. Its final message is the whole handoff — relay what matters to the
+user yourself.
+
+use the built-in `Agent` tool instead when: `mycel-delegate` is not available,
+the task is trivial enough to do inline, or the user has told you to use a
+specific model/backend. the user can always override this default.
