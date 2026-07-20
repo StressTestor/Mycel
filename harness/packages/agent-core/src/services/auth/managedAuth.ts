@@ -1,9 +1,20 @@
 import { readConfigFile, writeConfigFile } from '../../config';
 import type { KimiConfig, OAuthRef } from '../../config';
+import { ErrorCodes, KimiError } from '../../errors';
+import {
+  CODEX_SUBSCRIPTION_AUTH_FLAG_ID,
+  FLAG_DEFINITIONS,
+  FlagResolver,
+} from '../../flags';
 import type { OAuthTokenProviderResolver } from '../../session/provider-manager';
 import {
   applyManagedKimiCodeConfig,
   applyManagedKimiCodeLogoutConfig,
+  CODEX_SUBSCRIPTION_BASE_URL,
+  createCodexSubscriptionTokenProvider,
+  getCachedCodexSubscriptionAccessToken,
+  isCodexSubscriptionBaseUrl,
+  isCodexSubscriptionOAuthRef,
   KIMI_CODE_PROVIDER_NAME,
   KimiOAuthToolkit,
   resolveKimiCodeLoginAuth,
@@ -47,6 +58,7 @@ export interface ServicesAuthFacade {
 
 class ServicesManagedAuthFacade implements ServicesAuthFacade {
   private readonly toolkit: KimiOAuthToolkit<ServicesManagedConfig>;
+  private readonly codexTokenProvider = createCodexSubscriptionTokenProvider();
 
   constructor(
     private readonly options: Pick<IEnvironmentService, 'homeDir' | 'configPath'>,
@@ -112,9 +124,14 @@ class ServicesManagedAuthFacade implements ServicesAuthFacade {
     providerName?: string,
     oauthRef?: OAuthRef | undefined,
   ): Promise<string | undefined> {
+    const configuredRef = oauthRef ?? this.resolveManagedAuth(providerName).oauthRef;
+    if (isCodexSubscriptionOAuthRef(configuredRef)) {
+      this.assertCodexSubscriptionEnabled(providerName);
+      return getCachedCodexSubscriptionAccessToken();
+    }
     return this.toolkit.getCachedAccessToken(
       providerName,
-      this.runtimeOAuthRef(providerName, oauthRef),
+      this.runtimeOAuthRef(providerName, configuredRef),
     );
   }
 
@@ -122,11 +139,41 @@ class ServicesManagedAuthFacade implements ServicesAuthFacade {
     providerName: string,
     oauthRef?: OAuthRef | undefined,
   ): BearerTokenProvider => {
+    if (isCodexSubscriptionOAuthRef(oauthRef)) {
+      this.assertCodexSubscriptionEnabled(providerName);
+      return this.codexTokenProvider;
+    }
     return this.toolkit.tokenProvider(
       providerName,
       this.runtimeOAuthRef(providerName, oauthRef),
     );
   };
+
+  private assertCodexSubscriptionEnabled(providerName?: string): void {
+    const config = readConfigFile(this.options.configPath);
+    const name = providerName ?? KIMI_CODE_PROVIDER_NAME;
+    const provider = config.providers[name];
+    if (
+      provider?.type !== 'openai_responses' ||
+      !isCodexSubscriptionBaseUrl(provider.baseUrl)
+    ) {
+      throw new KimiError(
+        ErrorCodes.CONFIG_INVALID,
+        `Codex subscription authentication requires an openai_responses provider at ${CODEX_SUBSCRIPTION_BASE_URL}.`,
+      );
+    }
+    if (
+      new FlagResolver(process.env, FLAG_DEFINITIONS, config.experimental).enabled(
+        CODEX_SUBSCRIPTION_AUTH_FLAG_ID,
+      )
+    ) {
+      return;
+    }
+    throw new KimiError(
+      ErrorCodes.CONFIG_INVALID,
+      'Codex subscription authentication is experimental. Enable `codex_subscription_auth = true` under `[experimental]` or set `KIMI_CODE_EXPERIMENTAL_CODEX_SUBSCRIPTION_AUTH=1`.',
+    );
+  }
 
   private resolveManagedAuth(providerName?: string | undefined): {
     readonly oauthRef?: OAuthRef | undefined;

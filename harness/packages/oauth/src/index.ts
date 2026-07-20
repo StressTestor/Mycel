@@ -162,7 +162,23 @@ export type {
   KimiOAuthLogoutResult,
   KimiOAuthTokenRef,
   KimiOAuthToolkitOptions,
+  ProviderRequestAuth,
 } from './toolkit';
+
+export {
+  CODEX_SUBSCRIPTION_BASE_URL,
+  CODEX_SUBSCRIPTION_OAUTH_STORAGE,
+  CODEX_SUBSCRIPTION_PROVIDER_NAME,
+  createCodexSubscriptionTokenProvider,
+  getCachedCodexSubscriptionAccessToken,
+  isCodexSubscriptionBaseUrl,
+  isCodexSubscriptionOAuthRef,
+} from './codex-subscription';
+export type {
+  CodexAuthStatus,
+  CodexSubscriptionOAuthRef,
+  CodexSubscriptionTokenProviderOptions,
+} from './codex-subscription';
 
 export { refreshProviderModels } from './refreshProviderModels';
 export type {

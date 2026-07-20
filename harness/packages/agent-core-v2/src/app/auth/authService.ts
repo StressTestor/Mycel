@@ -15,6 +15,7 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  CODEX_SUBSCRIPTION_BASE_URL,
   DeviceCodeTimeoutError,
   KIMI_CODE_PLATFORM_ID,
   KIMI_CODE_PROVIDER_NAME,
@@ -23,7 +24,11 @@ import {
   OAuthError,
   applyManagedKimiCodeConfig,
   clearManagedKimiCodeConfig,
+  createCodexSubscriptionTokenProvider,
   fetchManagedKimiCodeModels,
+  getCachedCodexSubscriptionAccessToken,
+  isCodexSubscriptionBaseUrl,
+  isCodexSubscriptionOAuthRef,
   resolveKimiCodeLoginAuth,
   resolveKimiCodeOAuthRef,
   resolveKimiCodeRuntimeAuth,
@@ -64,6 +69,7 @@ import {
   PROVIDERS_SECTION,
 } from '#/app/provider/provider';
 import { ITelemetryService } from '#/app/telemetry/telemetry';
+import { ErrorCodes, Error2 } from '#/errors';
 
 import {
   AuthModelNotResolvedError,
@@ -74,6 +80,7 @@ import {
   IOAuthService,
   IOAuthToolkit,
 } from './auth';
+import { isCodexSubscriptionAuthEnabled } from './flag';
 
 const TERMINAL_RETENTION_MS = 5 * 60 * 1000;
 const DEFAULT_DEVICE_EXPIRES_IN_SEC = 15 * 60;
@@ -100,9 +107,11 @@ export class OAuthService extends Disposable implements IOAuthService {
   private readonly flows = new Map<string, FlowState>();
 
   private refreshChain: Promise<unknown> = Promise.resolve();
+  private readonly codexTokenProvider = createCodexSubscriptionTokenProvider();
 
   constructor(
     @IOAuthToolkit private readonly toolkit: IOAuthToolkit,
+    @IBootstrapService private readonly bootstrap: IBootstrapService,
     @IProviderService private readonly providerService: IProviderService,
     @IConfigService private readonly config: IConfigService,
     @ITelemetryService private readonly telemetry: ITelemetryService,
@@ -254,11 +263,42 @@ export class OAuthService extends Disposable implements IOAuthService {
   }
 
   resolveTokenProvider(provider: string, oauthRef?: OAuthRef): BearerTokenProvider | undefined {
+    if (isCodexSubscriptionOAuthRef(oauthRef)) {
+      this.assertCodexSubscriptionProvider(provider);
+      return this.codexTokenProvider;
+    }
     return this.toolkit.tokenProvider(provider, this.resolveRuntimeOAuthRef(provider, oauthRef));
   }
 
   getCachedAccessToken(provider: string, oauthRef?: OAuthRef): Promise<string | undefined> {
+    if (isCodexSubscriptionOAuthRef(oauthRef)) {
+      this.assertCodexSubscriptionProvider(provider);
+      return getCachedCodexSubscriptionAccessToken();
+    }
     return this.toolkit.getCachedAccessToken(provider, this.resolveRuntimeOAuthRef(provider, oauthRef));
+  }
+
+  private assertCodexSubscriptionProvider(providerName: string): void {
+    if (!isCodexSubscriptionAuthEnabled({
+      getEnv: (name) => this.bootstrap.getEnv(name),
+      experimental: this.config.get<Record<string, boolean>>('experimental'),
+    })) {
+      throw new Error2(
+        ErrorCodes.CONFIG_INVALID,
+        'Codex subscription authentication is experimental. Enable `codex_subscription_auth = true` under `[experimental]` or set `KIMI_CODE_EXPERIMENTAL_CODEX_SUBSCRIPTION_AUTH=1`.',
+      );
+    }
+    const provider = this.providerService.get(providerName);
+    if (
+      provider?.type === 'openai_responses' &&
+      isCodexSubscriptionBaseUrl(provider.baseUrl)
+    ) {
+      return;
+    }
+    throw new Error2(
+      ErrorCodes.CONFIG_INVALID,
+      `Codex subscription authentication requires an openai_responses provider at ${CODEX_SUBSCRIPTION_BASE_URL}.`,
+    );
   }
 
   refreshOAuthProviderModels(): Promise<RefreshOAuthProviderModelsResponse> {
@@ -629,7 +669,9 @@ export class AuthSummaryService implements IAuthSummaryService {
     });
     if (auth.apiKey !== undefined) return;
     if (auth.oauth !== undefined) {
-      const providerKey = auth.oauthProviderKey ?? providerName;
+      const providerKey = auth.oauth.storage === 'codex'
+        ? providerName
+        : (auth.oauthProviderKey ?? providerName);
       const token = await this.oauth.getCachedAccessToken(providerKey, auth.oauth);
       if (nonEmpty(token) !== undefined) return;
       throw new AuthTokenMissingError(providerKey);

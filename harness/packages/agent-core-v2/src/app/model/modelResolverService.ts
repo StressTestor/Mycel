@@ -15,11 +15,17 @@
  *     the Model itself; no Platform is required.
  */
 
-import { parseKimiCodeCustomHeaders } from '@moonshot-ai/kimi-code-oauth';
+import {
+  CODEX_SUBSCRIPTION_BASE_URL,
+  isCodexSubscriptionBaseUrl,
+  parseKimiCodeCustomHeaders,
+} from '@moonshot-ai/kimi-code-oauth';
 import { InstantiationType } from '#/_base/di/extensions';
 import { Disposable } from '#/_base/di/lifecycle';
 import { LifecycleScope, registerScopedService } from '#/_base/di/scope';
 import { IOAuthService } from '#/app/auth/auth';
+import { isCodexSubscriptionAuthEnabled } from '#/app/auth/flag';
+import { IBootstrapService } from '#/app/bootstrap/bootstrap';
 import { IConfigService } from '#/app/config/config';
 import { ErrorCodes, Error2 } from '#/errors';
 import { type ModelCapability } from '#/app/llmProtocol/capability';
@@ -69,6 +75,7 @@ export class ModelResolverService extends Disposable implements IModelResolver {
     @IPlatformService private readonly platforms: IPlatformService,
     @IModelService private readonly models: IModelService,
     @IOAuthService private readonly oauth: IOAuthService,
+    @IBootstrapService private readonly bootstrap: IBootstrapService,
     @IProtocolAdapterRegistry
     private readonly protocolRegistry: IProtocolAdapterRegistry,
     @IHostRequestHeaders private readonly hostRequestHeaders: IHostRequestHeaders,
@@ -99,6 +106,27 @@ export class ModelResolverService extends Disposable implements IModelResolver {
       providerName,
       getPlatform: (platformId) => this.platforms.get(platformId),
     });
+    if (auth.oauth?.storage === 'codex') {
+      if (
+        providerConfig === undefined ||
+        protocol !== 'openai_responses' ||
+        !isCodexSubscriptionBaseUrl(rawBaseUrl)
+      ) {
+        throw new Error2(
+          ErrorCodes.CONFIG_INVALID,
+          `Codex subscription authentication requires an explicit openai_responses provider at ${CODEX_SUBSCRIPTION_BASE_URL}.`,
+        );
+      }
+      if (!isCodexSubscriptionAuthEnabled({
+        getEnv: (name) => this.bootstrap.getEnv(name),
+        experimental: this.config.get<Record<string, boolean>>('experimental'),
+      })) {
+        throw new Error2(
+          ErrorCodes.CONFIG_INVALID,
+          'Codex subscription authentication is experimental. Enable `codex_subscription_auth = true` under `[experimental]` or set `KIMI_CODE_EXPERIMENTAL_CODEX_SUBSCRIPTION_AUTH=1`.',
+        );
+      }
+    }
     const authProvider = this.buildAuthProvider(providerName, auth);
 
     const providerType = providerConfig?.type ?? protocol;
@@ -131,6 +159,7 @@ export class ModelResolverService extends Disposable implements IModelResolver {
       protocol,
       providerConfig,
       resolvedBaseUrl,
+      auth.oauth?.storage === 'codex',
     );
     const declared = new Set((model.capabilities ?? []).map((c) => c.trim().toLowerCase()));
     const alwaysThinking = declared.has('always_thinking');
@@ -267,7 +296,9 @@ export class ModelResolverService extends Disposable implements IModelResolver {
     }
     if (auth.oauth !== undefined) {
       const oauthRef = auth.oauth;
-      const providerKey = auth.oauthProviderKey ?? providerName;
+      const providerKey = oauthRef.storage === 'codex'
+        ? providerName
+        : (auth.oauthProviderKey ?? providerName);
       const oauthService = this.oauth;
       const loginRequired = (cause?: unknown): Error2 =>
         new Error2(
@@ -280,11 +311,14 @@ export class ModelResolverService extends Disposable implements IModelResolver {
         async getAuth(options): Promise<ProviderRequestAuth | undefined> {
           const tokenProvider = oauthService.resolveTokenProvider(providerKey, oauthRef);
           if (tokenProvider === undefined) throw loginRequired();
-          const apiKey = await tokenProvider.getAccessToken(
-            options?.force === true ? { force: true } : undefined,
-          );
-          if (apiKey.trim().length === 0) throw loginRequired();
-          return { apiKey };
+          const refreshOptions = options?.force === true ? { force: true } : undefined;
+          const requestAuth = tokenProvider.getRequestAuth === undefined
+            ? { apiKey: await tokenProvider.getAccessToken(refreshOptions) }
+            : await tokenProvider.getRequestAuth(refreshOptions);
+          if (requestAuth.apiKey === undefined || requestAuth.apiKey.trim().length === 0) {
+            throw loginRequired();
+          }
+          return requestAuth;
         },
       };
     }
@@ -336,6 +370,7 @@ function buildProtocolProviderOptions(
   protocol: Protocol,
   provider: ProviderConfig | undefined,
   baseUrl: string | undefined,
+  codexSubscriptionAuth: boolean,
 ): ProtocolProviderOptions | undefined {
   const options: MutableProtocolProviderOptions = {};
 
@@ -362,8 +397,10 @@ function buildProtocolProviderOptions(
       if (location !== undefined) options.location = location;
       break;
     }
-    case 'google-genai':
     case 'openai_responses':
+      options.maxOutputTokensSupported = !codexSubscriptionAuth;
+      break;
+    case 'google-genai':
       break;
     default: {
       const exhaustive: never = protocol;

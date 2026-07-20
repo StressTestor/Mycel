@@ -78,13 +78,13 @@ export interface ManagedKimiCodeCleanupResult {
 }
 
 export interface ManagedKimiOAuthRef {
-  readonly storage: 'file' | 'keyring';
+  readonly storage: 'file' | 'keyring' | 'codex';
   readonly key: string;
   readonly oauthHost?: string | undefined;
 }
 
 export interface ManagedKimiOAuthRefInput {
-  readonly storage?: 'file' | 'keyring' | undefined;
+  readonly storage?: 'file' | 'keyring' | 'codex' | undefined;
   readonly key?: string | undefined;
   readonly oauthHost?: string | undefined;
 }
@@ -280,7 +280,7 @@ function persistedOAuthHost(options: {
 function managedOAuthRef(options: {
   readonly key: string;
   readonly oauthHost?: string | undefined;
-  readonly storage?: 'file' | 'keyring' | undefined;
+  readonly storage?: 'file' | 'keyring' | 'codex' | undefined;
 }): ManagedKimiOAuthRef {
   const oauthHost = persistedOAuthHost(options);
   return {

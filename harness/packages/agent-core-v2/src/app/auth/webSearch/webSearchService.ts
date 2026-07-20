@@ -20,6 +20,7 @@
  */
 
 import {
+  isCodexSubscriptionOAuthRef,
   KIMI_CODE_PROVIDER_NAME,
   kimiCodeBaseUrl,
 } from '@moonshot-ai/kimi-code-oauth';
@@ -30,6 +31,7 @@ import { IOAuthService } from '#/app/auth/auth';
 import { IConfigService } from '#/app/config/config';
 import { IHostRequestHeaders } from '#/app/model/hostRequestHeaders';
 import { IProviderService } from '#/app/provider/provider';
+import { Error2, ErrorCodes } from '#/errors';
 
 import { SERVICES_SECTION, type ServicesConfig } from '../configSection';
 import { MoonshotWebSearchProvider } from './providers/moonshot-web-search';
@@ -54,6 +56,12 @@ export class WebSearchProviderService implements IWebSearchProviderService {
     const search = this.config.get<ServicesConfig>(SERVICES_SECTION)?.moonshotSearch;
     if (search?.baseUrl === undefined) {
       return undefined;
+    }
+    if (isCodexSubscriptionOAuthRef(search.oauth)) {
+      throw new Error2(
+        ErrorCodes.CONFIG_INVALID,
+        'Codex subscription authentication cannot be used for service credentials.',
+      );
     }
     const tokenProvider =
       search.oauth === undefined

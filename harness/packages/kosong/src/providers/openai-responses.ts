@@ -344,6 +344,7 @@ export interface OpenAIResponsesOptions {
   baseUrl?: string | undefined;
   model: string;
   maxOutputTokens?: number | undefined;
+  maxOutputTokensSupported?: boolean | undefined;
   httpClient?: unknown;
   defaultHeaders?: Record<string, string>;
   toolMessageConversion?: ToolMessageConversion | undefined;
@@ -1025,6 +1026,7 @@ export class OpenAIResponsesChatProvider implements ChatProvider {
   private _baseUrl: string | undefined;
   private _defaultHeaders: Record<string, string> | undefined;
   private _generationKwargs: OpenAIResponsesGenerationKwargs;
+  private _maxOutputTokensSupported: boolean;
   private _toolMessageConversion: ToolMessageConversion;
   private _client: OpenAI | undefined;
   private _httpClient: unknown;
@@ -1038,11 +1040,12 @@ export class OpenAIResponsesChatProvider implements ChatProvider {
     this._model = options.model;
     this._stream = true; // Responses API always supports streaming
     this._generationKwargs = {};
+    this._maxOutputTokensSupported = options.maxOutputTokensSupported ?? true;
     this._toolMessageConversion = options.toolMessageConversion ?? null;
     this._httpClient = options.httpClient;
     this._clientFactory = options.clientFactory;
 
-    if (options.maxOutputTokens !== undefined) {
+    if (options.maxOutputTokens !== undefined && this._maxOutputTokensSupported) {
       this._generationKwargs.max_output_tokens = options.maxOutputTokens;
     }
 
@@ -1157,10 +1160,12 @@ export class OpenAIResponsesChatProvider implements ChatProvider {
   withGenerationKwargs(kwargs: OpenAIResponsesGenerationKwargs): OpenAIResponsesChatProvider {
     const clone = this._clone();
     clone._generationKwargs = { ...clone._generationKwargs, ...kwargs };
+    if (!clone._maxOutputTokensSupported) delete clone._generationKwargs.max_output_tokens;
     return clone;
   }
 
   withMaxCompletionTokens(maxCompletionTokens: number): OpenAIResponsesChatProvider {
+    if (!this._maxOutputTokensSupported) return this._clone();
     return this.withGenerationKwargs({ max_output_tokens: maxCompletionTokens });
   }
 

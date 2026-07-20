@@ -1,4 +1,9 @@
 import {
+  CODEX_SUBSCRIPTION_AUTH_FLAG_ID,
+  ErrorCodes,
+  FLAG_DEFINITIONS,
+  FlagResolver,
+  KimiError,
   loadRuntimeConfigSafe,
   readConfigFile,
   readConfigFileForUpdate,
@@ -9,6 +14,11 @@ import {
 import {
   applyManagedKimiCodeConfig,
   applyManagedKimiCodeLogoutConfig,
+  CODEX_SUBSCRIPTION_BASE_URL,
+  createCodexSubscriptionTokenProvider,
+  getCachedCodexSubscriptionAccessToken,
+  isCodexSubscriptionBaseUrl,
+  isCodexSubscriptionOAuthRef,
   KIMI_CODE_PROVIDER_NAME,
   KimiOAuthToolkit,
   resolveKimiCodeLoginAuth,
@@ -98,6 +108,7 @@ type SDKManagedConfig = KimiConfig & ManagedKimiConfigShape;
 
 export class KimiAuthFacade {
   private readonly toolkit: KimiOAuthToolkit<SDKManagedConfig>;
+  private readonly codexTokenProvider = createCodexSubscriptionTokenProvider();
 
   constructor(private readonly options: KimiAuthFacadeOptions) {
     this.toolkit = new KimiOAuthToolkit<SDKManagedConfig>({
@@ -119,6 +130,18 @@ export class KimiAuthFacade {
   }
 
   async status(providerName?: string | undefined): Promise<AuthStatus> {
+    const configuredRef = this.resolveManagedAuth(providerName).oauthRef;
+    if (isCodexSubscriptionOAuthRef(configuredRef)) {
+      this.assertCodexSubscriptionEnabled(providerName);
+      return {
+        providers: [
+          {
+            providerName: providerName ?? 'managed:codex',
+            hasToken: (await getCachedCodexSubscriptionAccessToken()) !== undefined,
+          },
+        ],
+      };
+    }
     return this.toolkit.status(providerName, this.resolveRuntimeManagedAuth(providerName).oauthRef);
   }
 
@@ -251,9 +274,14 @@ export class KimiAuthFacade {
     providerName?: string,
     oauthRef?: OAuthRef | undefined,
   ): Promise<string | undefined> {
+    const configuredRef = oauthRef ?? this.resolveManagedAuth(providerName).oauthRef;
+    if (isCodexSubscriptionOAuthRef(configuredRef)) {
+      this.assertCodexSubscriptionEnabled(providerName);
+      return getCachedCodexSubscriptionAccessToken();
+    }
     return this.toolkit.getCachedAccessToken(
       providerName,
-      this.runtimeOAuthRef(providerName, oauthRef),
+      this.runtimeOAuthRef(providerName, configuredRef),
     );
   }
 
@@ -261,6 +289,10 @@ export class KimiAuthFacade {
     providerName: string,
     oauthRef?: OAuthRef | undefined,
   ): BearerTokenProvider => {
+    if (isCodexSubscriptionOAuthRef(oauthRef)) {
+      this.assertCodexSubscriptionEnabled(providerName);
+      return this.codexTokenProvider;
+    }
     const provider = this.toolkit.tokenProvider(
       providerName,
       this.runtimeOAuthRef(providerName, oauthRef),
@@ -275,8 +307,43 @@ export class KimiAuthFacade {
           throw mapOAuthTokenError(error, providerName) ?? error;
         }
       },
+      getRequestAuth: provider.getRequestAuth === undefined
+        ? undefined
+        : async (options) => {
+            try {
+              return await provider.getRequestAuth!(options);
+            } catch (error) {
+              throw mapOAuthTokenError(error, providerName) ?? error;
+            }
+          },
     };
   };
+
+  private assertCodexSubscriptionEnabled(providerName?: string): void {
+    const config = loadRuntimeConfigSafe(this.options.configPath).config;
+    const name = providerName ?? KIMI_CODE_PROVIDER_NAME;
+    const provider = config.providers[name];
+    if (
+      provider?.type !== 'openai_responses' ||
+      !isCodexSubscriptionBaseUrl(provider.baseUrl)
+    ) {
+      throw new KimiError(
+        ErrorCodes.CONFIG_INVALID,
+        `Codex subscription authentication requires an openai_responses provider at ${CODEX_SUBSCRIPTION_BASE_URL}.`,
+      );
+    }
+    if (
+      new FlagResolver(process.env, FLAG_DEFINITIONS, config.experimental).enabled(
+        CODEX_SUBSCRIPTION_AUTH_FLAG_ID,
+      )
+    ) {
+      return;
+    }
+    throw new KimiError(
+      ErrorCodes.CONFIG_INVALID,
+      'Codex subscription authentication is experimental. Enable `codex_subscription_auth = true` under `[experimental]` or set `KIMI_CODE_EXPERIMENTAL_CODEX_SUBSCRIPTION_AUTH=1`.',
+    );
+  }
 
   private resolveManagedAuth(providerName?: string | undefined): {
     readonly oauthRef?: OAuthRef | undefined;

@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { IOAuthService } from '#/app/auth/auth';
+import { IBootstrapService } from '#/app/bootstrap/bootstrap';
 import { IConfigService } from '#/app/config/config';
 import { IModelResolver } from '#/app/model/modelResolver';
 import { createAppScope } from '#/_base/di/scope';
 import { ErrorCodes, Error2 } from '#/errors';
 import '#/index';
+
+import { stubBootstrap } from '../bootstrap/stubs';
 
 function stubConfig(sections: Record<string, unknown>): IConfigService {
   return {
@@ -53,6 +56,7 @@ function createResolver(sections: Record<string, unknown>): IModelResolver {
     extra: [
       [IConfigService, stubConfig(sections)],
       [IOAuthService, stubOAuth()],
+      [IBootstrapService, stubBootstrap()],
     ],
   });
   return scope.accessor.get(IModelResolver);
