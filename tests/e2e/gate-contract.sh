@@ -92,6 +92,17 @@ BENIGN_JSON="{\"tool_name\":\"Write\",\"tool_input\":{\"path\":\"$WORK/notes.txt
 BOUT="$(printf '%s' "$BENIGN_JSON" | "$GATE" --db "$DB" --mycel-home "$MHOME")"
 [ "$BOUT" = "{}" ] && _pass "benign Write allowed" || _fail "benign Write not allowed: $BOUT"
 
+# --- 12. db integrity: a 0-byte (truncated) db must fail closed, not allow-all ---
+ZERO_DB="$WORK/substrate/zero.db"
+: > "$ZERO_DB"   # truncate to 0 bytes
+if printf '{"tool_name":"Bash","tool_input":{"command":"whoami"}}' | "$GATE" --db "$ZERO_DB" >/dev/null 2>&1; then
+  _fail "0-byte db should block (exit 3), got allow"
+else
+  [ "$?" -eq 3 ] && _pass "0-byte db blocks (exit 3, native)" || _fail "0-byte db wrong exit"
+fi
+printf '{"tool_name":"Bash","tool_input":{"command":"whoami"}}' | "$GATE" --claude --db "$ZERO_DB" >/dev/null 2>&1
+[ "$?" -eq 2 ] && _pass "0-byte db blocks (exit 2, --claude)" || _fail "0-byte db wrong --claude exit"
+
 rm -rf "$WORK"
 [ "$FAILED" -eq 0 ] && { printf '\n\033[1;32mGATE CONTRACT E2E: ALL PASS\033[0m\n'; exit 0; }
 printf '\n\033[1;31mGATE CONTRACT E2E: FAILURES\033[0m\n'; exit 1

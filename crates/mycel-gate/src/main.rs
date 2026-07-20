@@ -134,12 +134,14 @@ fn run(claude: bool) -> Result<ExitCode, GateError> {
         }
     }
 
-    // SECURITY: never create the db. rusqlite's Connection::open creates-by-default, which would
-    // turn `rm mycel.db` into a full gate disarm (a fresh empty store matches nothing -> allows
-    // everything). Guard by requiring the file to already exist; a missing db is fail-closed.
-    // This block MUST stay on the non-protected fall-through: a missing/corrupt db now
-    // fail-closed BLOCKS every tool routed here (Read/Grep included) - the whole-toolset
-    // coupling is deliberate, and it is what keeps `rm mycel.db` from disarming plain writes.
+    // SECURITY: a missing OR integrity-broken db must fail closed, never allow.
+    // This block MUST stay on the non-protected fall-through so a missing/corrupt
+    // db BLOCKS every tool routed here (Read/Grep included) - the whole-toolset
+    // coupling is deliberate, and it keeps `rm mycel.db` / `truncate mycel.db`
+    // from disarming plain writes. The existence check gives the precise
+    // "disarmed" diagnostic and guarantees we never create the file; the strict
+    // read-only open below catches a 0-byte / non-SQLite / empty-schema db that
+    // would otherwise present as an empty (allow-all) store.
     if !db_path.exists() {
         return Err(GateError {
             cause: format!("substrate db missing at {}", db_path.display()),
@@ -165,9 +167,9 @@ fn run(claude: bool) -> Result<ExitCode, GateError> {
         scope: SignatureScope::Project,
     };
 
-    let store = AntibodyStore::open(&db_path).map_err(|e| GateError {
+    let store = AntibodyStore::open_readonly_strict(&db_path).map_err(|e| GateError {
         cause: format!("cannot open substrate db at {}: {e}", db_path.display()),
-        hint: "the db may be corrupt or unreadable; check permissions or re-run install.sh"
+        hint: "the db is missing, corrupt, truncated, or has no antibodies table; re-run install.sh to rebuild it"
             .to_string(),
         code: EXIT_DB,
     })?;
@@ -334,7 +336,9 @@ fn resolve_mycel_home() -> PathBuf {
 }
 
 /// Resolve the substrate db path: `--db <path>` wins, then `$MYCEL_HOME/substrate/mycel.db`,
-/// then `$HOME/.mycel/substrate/mycel.db`.
+/// then the legacy `$KIMI_CODE_HOME/substrate/mycel.db`, then `$HOME/.mycel/substrate/mycel.db`.
+/// The env precedence MUST match `resolve_mycel_home` so the floor and the db resolve to the same
+/// tree (a legacy KIMI_CODE_HOME-only install would otherwise split them).
 fn resolve_db_path() -> Result<PathBuf, GateError> {
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -352,6 +356,9 @@ fn resolve_db_path() -> Result<PathBuf, GateError> {
     }
 
     if let Some(home) = std::env::var_os("MYCEL_HOME") {
+        return Ok(Path::new(&home).join("substrate").join("mycel.db"));
+    }
+    if let Some(home) = std::env::var_os("KIMI_CODE_HOME") {
         return Ok(Path::new(&home).join("substrate").join("mycel.db"));
     }
     if let Some(home) = std::env::var_os("HOME") {

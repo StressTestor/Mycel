@@ -484,6 +484,80 @@ fn missing_db_is_never_created_by_the_gate() {
     );
 }
 
+// --- db integrity: a truncated/garbage/empty-schema db must fail closed, not
+// present as an empty (allow-all) store ---
+
+#[test]
+fn zero_byte_db_blocks() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = dir.path().join("mycel.db");
+    std::fs::write(&db, b"").expect("write empty db"); // 0 bytes
+    let (stdout, stderr, code) = run_gate(
+        Some(&db),
+        r#"{"tool_name":"Bash","tool_input":{"command":"whoami"}}"#,
+    );
+    assert_eq!(
+        code, 3,
+        "a 0-byte db must fail closed (exit 3), not allow-all: stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stderr.contains("mycel-gate error"),
+        "must carry a diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn zero_byte_db_blocks_claude() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = dir.path().join("mycel.db");
+    std::fs::write(&db, b"").expect("write empty db");
+    let (_stdout, _stderr, code) = run_gate_args(
+        Some(&db),
+        &["--claude"],
+        r#"{"tool_name":"Bash","tool_input":{"command":"whoami"}}"#,
+    );
+    assert_eq!(code, 2, "claude-mode 0-byte db must fail closed (exit 2)");
+}
+
+#[test]
+fn garbage_bytes_db_blocks() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = dir.path().join("mycel.db");
+    std::fs::write(
+        &db,
+        b"this is definitely not a sqlite database header at all",
+    )
+    .expect("write garbage db");
+    let (stdout, _stderr, code) = run_gate(
+        Some(&db),
+        r#"{"tool_name":"Bash","tool_input":{"command":"whoami"}}"#,
+    );
+    assert_eq!(
+        code, 3,
+        "a non-SQLite db must fail closed (exit 3): stdout={stdout}"
+    );
+}
+
+#[test]
+fn valid_sqlite_without_antibodies_table_blocks() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = dir.path().join("mycel.db");
+    // a real SQLite db, but with no `antibodies` table: an empty schema must not
+    // read as an empty (allow-all) store.
+    let conn = rusqlite::Connection::open(&db).expect("create db");
+    conn.execute("CREATE TABLE unrelated (x INTEGER)", [])
+        .expect("create table");
+    drop(conn);
+    let (stdout, _stderr, code) = run_gate(
+        Some(&db),
+        r#"{"tool_name":"Bash","tool_input":{"command":"whoami"}}"#,
+    );
+    assert_eq!(
+        code, 3,
+        "a valid SQLite db with no antibodies table must fail closed (exit 3): stdout={stdout}"
+    );
+}
+
 #[test]
 fn malformed_stdin_blocks_with_diagnostic() {
     let (_dir, db) = seeded_db();

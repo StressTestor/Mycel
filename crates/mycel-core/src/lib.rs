@@ -6,7 +6,7 @@ use std::{
 
 use chrono::{DateTime, Utc};
 use regex::Regex;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -274,6 +274,28 @@ impl AntibodyStore {
         };
         store.migrate()?;
         Ok(store)
+    }
+
+    /// Open the substrate strictly READ-ONLY for gate evaluation. Unlike
+    /// [`AntibodyStore::open`], this never creates and never migrates the db, and
+    /// it requires the `antibodies` table to exist and be queryable.
+    ///
+    /// SECURITY: `open` uses `Connection::open` (read-write, create-by-default)
+    /// and then `CREATE TABLE IF NOT EXISTS`, so a 0-byte, truncated, or
+    /// empty-schema db silently presents as an empty store - which matches
+    /// nothing and therefore ALLOWS everything. That is a same-session
+    /// self-disarm: truncate the db and the next tool runs ungoverned. Opening
+    /// read-only (no create, no migrate) and forcing a real schema read here
+    /// makes a 0-byte, non-SQLite, or missing-`antibodies`-table db fail rather
+    /// than allow. Install still uses `open` for its auto-create/migrate.
+    pub fn open_readonly_strict(path: impl AsRef<Path>) -> Result<Self> {
+        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        // Force a schema read: a 0-byte/garbage/empty-schema db errors here
+        // instead of masquerading as an empty allow-all store.
+        conn.query_row("SELECT count(*) FROM antibodies", [], |row| {
+            row.get::<_, i64>(0)
+        })?;
+        Ok(Self { conn })
     }
 
     pub fn schema_version(&self) -> Result<u32> {
