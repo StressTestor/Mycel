@@ -232,14 +232,10 @@ fn canonical_from_lexical(lexical: &Path) -> Option<PathBuf> {
             }
             return Some(canon);
         }
-        match cur.file_name() {
-            Some(name) => {
-                tail.push(name.to_os_string());
-                if !cur.pop() {
-                    return None;
-                }
-            }
-            None => return None,
+        let name = cur.file_name()?.to_os_string();
+        tail.push(name);
+        if !cur.pop() {
+            return None;
         }
     }
 }

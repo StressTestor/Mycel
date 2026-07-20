@@ -457,11 +457,11 @@ describe('`mycel server run` background start', () => {
     expect(plain).not.toContain('Version:');
     expect(plain).not.toContain(' ms');
     // No bordered panel (the token URL must print in full for copying), but
-    // the Kimi sprite stays next to the title.
+    // the Mycel mark stays next to the title.
     expect(plain).not.toContain('╭');
     expect(plain).not.toContain('╰');
-    expect(plain).toContain('▐█▛█▛█▌');
-    expect(plain).toContain('▐█████▌');
+    expect(plain).toContain('▐█ █ █▌');
+    expect(plain).toContain('▐▙▄▄▄▟▌');
     expect(plain).not.toContain('➜');
     expect(plain).not.toContain('Mycel server:');
 
@@ -500,7 +500,7 @@ describe('`mycel server run` background start', () => {
     }
 
     const color = new Chalk({ level: 3 });
-    expect(stdout).toContain(color.hex(darkColors.primary)('▐█▛█▛█▌'));
+    expect(stdout).toContain(color.hex(darkColors.primary)('▐█ █ █▌'));
     expect(stdout).toContain(color.bold.hex(darkColors.primary)('Mycel server ready'));
     expect(stdout).toContain(color.hex(darkColors.accent)('http://127.0.0.1:58627/'));
     expect(stdout).toContain(color.bold.hex(darkColors.textDim)('Local:    '));
