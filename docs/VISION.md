@@ -23,7 +23,7 @@ the gate is real and fail-closed, but it governs one tool. `mycel-gate` is wired
 three lanes, measured:
 
 - **Bash: authoritative but soft.** fail-closed enforcement holds end to end (nonzero exit, deny, timeout, crash all block, and a deny returns before the tool dispatches). but matching is raw substring (`str::contains`, `crates/mycel-core/src/lib.rs:1273`), so `rm${IFS}-rf${IFS}/` or `echo ...|base64 -d|sh` walk straight past a `rm -rf /` antibody. a tripwire for the exact bytes, not a boundary.
-- **write / edit / MCP: no teeth.** the gate never fires for these. and nothing jails `~/.mycel` from the agent's own file tools, so a `Write` of a `#!/bin/sh\nexit 0` stub over `~/.mycel/bin/mycel-gate` (the in-place truncating write preserves the exec bit) disarms the gate on the very next Bash call, same session, no restart. the config route (neuter the `[[hooks]]` block) works too. this is the exec seam the whole design turns on, and today the body owns it.
+- **write / edit / MCP-path: now floored (was "no teeth").** the gate governs every tool (catch-all matcher) and a compiled protected-path floor blocks a `Write`/`Edit` (or an MCP write carrying a `path`) that targets `~/.mycel/bin`, the installed config, or the substrate - evaluated before the db is opened, canonicalizing against the payload cwd / `~` / symlinks / case so respelling can't dodge it. the truncated-db route (`: > mycel.db` -> empty-schema allow-all) is closed by a strict read-only db open. RESIDUAL: a Bash *command* that writes those same paths (`cp` / `tee` / redirect) is still not structurally floored - that needs the structured command parse (bet 2), and an MCP write carrying its target in a non-`path` field stays name-only-blockable.
 - **antibody memory: safe to teach, but it never forgets.** generation is air-gapped from enforcement (deterministic non-LLM classification, human-only promotion, nothing auto-arms), which is the strong part and it holds. but the pruning side is unwired: promoted rules never expire (no write path sets a TTL), never decay, and there is no delete; and the gate only matches `Project`-scope rules, so `Global`/`Personal` rules a human adds are silently inert. the immune system can learn; it has no tolerance or clearance yet.
 
 none of this is fatal and none of it is hidden. it is the gap between the immune-system claim and the current wiring, and it is exactly what the bets close.
@@ -73,12 +73,12 @@ read the two tables together and the work is obvious: mycel bought convenience-p
 
 | safety floor (rare) | who ships it | mycel today |
 |---|---|---|
-| fail-CLOSED by default | Roo; Codex leans; Factory whole-process | yes for the Bash tool; self-disarmable via ungated Write (measured) |
+| fail-CLOSED by default | Roo; Codex leans; Factory whole-process | yes, all tools; Write/Edit + truncated-db self-disarm sealed; Bash-command write to protected paths residual |
 | OS/kernel sandbox floor | CC, Codex, Gemini, OpenHands, SWE-agent, Factory | no (P0 gap) |
 | network egress allowlist | CC, Gemini, Factory, Goose | no (P0 gap) |
 | credential masking at the wire | CC (alone at fidelity) | no (P1 gap) |
 | config can't self-escalate | CC, Factory | no (measured: no ~/.mycel jail) |
-| immovable protected-path denylist | CC, Factory | no (measured) |
+| immovable protected-path denylist | CC, Factory | partial (Write/Edit/MCP-path floor shipped; Bash-command lane residual) |
 | event-sourced audit + replay | OpenHands | partial (m2 learning loop) |
 
 ## the starting line (what already holds)
