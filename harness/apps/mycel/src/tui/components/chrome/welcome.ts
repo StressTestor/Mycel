@@ -1,7 +1,8 @@
 /**
  * Compact startup header shown at the top of the TUI.
  * Renders two dim lines: an identity line (mycel, version, work dir) and a
- * status line (model, mcp, session). No border, no logo block.
+ * status line (model, mcp, session). A small hyphal branch mark (┣ / ┗) sits
+ * on the left edge as Mycel's identity - a branch, not a logo block.
  */
 
 import type { Component } from '@moonshot-ai/pi-tui';
@@ -44,19 +45,26 @@ export class WelcomeComponent implements Component {
       ? dim('model ') + warn('not set, run /login or /provider')
       : dim(`model ${modelValue}`);
 
+    // Hyphal branch mark on the left edge: ┣ opens the branch, ┗ closes it.
+    const branchOpen = primaryBold('┣') + ' ';
+    const branchClose = primaryBold('┗') + ' ';
+
     if (safeWidth < 24) {
-      const title = primaryBold('mycel') + ' ' + dim(this.state.version);
-      return ['', title, modelSegment, ''].map((line) => truncateToWidth(line, safeWidth, '…'));
+      const title = branchOpen + primaryBold('mycel') + ' ' + dim(this.state.version);
+      return ['', title, branchClose + modelSegment, ''].map((line) =>
+        truncateToWidth(line, safeWidth, '…'),
+      );
     }
 
-    const line1 = primaryBold('mycel') + ' ' + dim(`${this.state.version}  ${this.state.workDir}`);
+    const line1 =
+      branchOpen + primaryBold('mycel') + ' ' + dim(`${this.state.version}  ${this.state.workDir}`);
 
     const segments = [modelSegment];
     if (this.state.mcpServersSummary) {
       segments.push(dim(`mcp ${this.state.mcpServersSummary}`));
     }
     segments.push(dim(`session ${shortSessionId(this.state.sessionId)}`));
-    const line2 = segments.join(dim(' · '));
+    const line2 = branchClose + segments.join(dim(' · '));
 
     return ['', line1, line2, ''].map((line) => truncateToWidth(line, safeWidth, '…'));
   }
