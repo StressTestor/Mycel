@@ -1,8 +1,8 @@
 /**
  * Compact startup header shown at the top of the TUI.
  * Renders two dim lines: an identity line (mycel, version, work dir) and a
- * status line (model, mcp, session). A small hyphal branch mark (┣ / ┗) sits
- * on the left edge as Mycel's identity - a branch, not a logo block.
+ * status line (model, mcp, session). A small rounded mark (╭ / ╰) hugs the
+ * two lines on the left edge as Mycel's identity - a mark, not a logo block.
  */
 
 import type { Component } from '@moonshot-ai/pi-tui';
@@ -45,9 +45,9 @@ export class WelcomeComponent implements Component {
       ? dim('model ') + warn('not set, run /login or /provider')
       : dim(`model ${modelValue}`);
 
-    // Hyphal branch mark on the left edge: ┣ opens the branch, ┗ closes it.
-    const branchOpen = primaryBold('┣') + ' ';
-    const branchClose = primaryBold('┗') + ' ';
+    // Rounded mark hugging the two header lines: ╭ opens it, ╰ closes it.
+    const branchOpen = primaryBold('╭') + ' ';
+    const branchClose = primaryBold('╰') + ' ';
 
     if (safeWidth < 24) {
       const title = branchOpen + primaryBold('mycel') + ' ' + dim(this.state.version);
