@@ -45,26 +45,27 @@ export class WelcomeComponent implements Component {
       ? dim('model ') + warn('not set, run /login or /provider')
       : dim(`model ${modelValue}`);
 
-    // Rounded mark hugging the two header lines: ╭ opens it, ╰ closes it.
-    const branchOpen = primaryBold('╭') + ' ';
-    const branchClose = primaryBold('╰') + ' ';
+    // Mycel's mark: the mushroom sits on the identity line; the status line
+    // indents to align under the name. deny by default.
+    const mark = '🍄 ';
+    const indent = '   ';
 
     if (safeWidth < 24) {
-      const title = branchOpen + primaryBold('mycel') + ' ' + dim(this.state.version);
-      return ['', title, branchClose + modelSegment, ''].map((line) =>
+      const title = mark + primaryBold('mycel') + ' ' + dim(this.state.version);
+      return ['', title, indent + modelSegment, ''].map((line) =>
         truncateToWidth(line, safeWidth, '…'),
       );
     }
 
     const line1 =
-      branchOpen + primaryBold('mycel') + ' ' + dim(`${this.state.version}  ${this.state.workDir}`);
+      mark + primaryBold('mycel') + ' ' + dim(`${this.state.version}  ${this.state.workDir}`);
 
     const segments = [modelSegment];
     if (this.state.mcpServersSummary) {
       segments.push(dim(`mcp ${this.state.mcpServersSummary}`));
     }
     segments.push(dim(`session ${shortSessionId(this.state.sessionId)}`));
-    const line2 = branchClose + segments.join(dim(' · '));
+    const line2 = indent + segments.join(dim(' · '));
 
     return ['', line1, line2, ''].map((line) => truncateToWidth(line, safeWidth, '…'));
   }

@@ -71,8 +71,8 @@ describe('WelcomeComponent', () => {
     expect(lines).toHaveLength(4);
     expect(lines[0]).toBe('');
     expect(lines[3]).toBe('');
-    expect(plain(lines[1]!)).toBe('╭ mycel 1.2.3  /tmp/project');
-    expect(plain(lines[2]!)).toBe('╰ model kimi-k2 · session 9f08…');
+    expect(plain(lines[1]!)).toBe('🍄 mycel 1.2.3  /tmp/project');
+    expect(plain(lines[2]!)).toBe('   model kimi-k2 · session 9f08…');
   });
 
   it('includes the mcp segment only when a summary is present', () => {
@@ -80,12 +80,12 @@ describe('WelcomeComponent', () => {
       ...appState,
       mcpServersSummary: '2 servers',
     }).render(80);
-    expect(plain(withMcp[2]!)).toBe('╰ model kimi-k2 · mcp 2 servers · session 9f08…');
+    expect(plain(withMcp[2]!)).toBe('   model kimi-k2 · mcp 2 servers · session 9f08…');
   });
 
   it('shows the login warning for the model when logged out', () => {
     const loggedOut = new WelcomeComponent({ ...appState, model: '' }).render(80);
-    expect(plain(loggedOut[2]!)).toBe('╰ model not set, run /login or /provider · session 9f08…');
+    expect(plain(loggedOut[2]!)).toBe('   model not set, run /login or /provider · session 9f08…');
   });
 
   it('renders the header in a small number of theme colors', () => {
