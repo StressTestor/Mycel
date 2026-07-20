@@ -45,8 +45,9 @@ export class WelcomeComponent implements Component {
     const innerWidth = Math.max(1, safeWidth - 4);
     const pad = '  ';
 
-    // Logo + side-by-side text.
-    const logo = ['▐█▛█▛█▌', '▐█████▌'] as const;
+    // Logo + side-by-side text. Mycel's own mark: a friendly block face with
+    // square eyes and a small smile (distinct from the upstream mascot).
+    const logo = ['▐█ █ █▌', '▐▙▄▄▄▟▌'] as const;
     const logoWidth = Math.max(...logo.map((row) => visibleWidth(row)));
     const gap = '  ';
     const textWidth = Math.max(4, innerWidth - logoWidth - gap.length);

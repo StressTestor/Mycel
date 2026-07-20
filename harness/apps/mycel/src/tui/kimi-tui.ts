@@ -32,8 +32,6 @@ import { detectFdPath, ensureFdPath } from '#/utils/process/fd-detect';
 import { quoteShellArg } from '#/utils/shell-quote';
 import { restoreTerminalModes } from '#/utils/terminal-restore';
 
-import { BannerProvider } from './banner/banner-provider';
-import { readBannerDisplayState, writeBannerDisplayState } from './banner/state';
 import {
   BUILTIN_SLASH_COMMANDS,
   buildPluginSlashCommands,
@@ -45,7 +43,6 @@ import {
   type SkillListSession,
 } from './commands';
 import * as slashCommands from './commands/dispatch';
-import { BannerComponent } from './components/chrome/banner';
 import { DeviceCodeBoxComponent } from './components/chrome/device-code-box';
 import { GutterContainer } from './components/chrome/gutter-container';
 import { MoonLoader, type SpinnerStyle } from './components/chrome/moon-loader';
@@ -560,50 +557,10 @@ export class KimiTUI {
   }
 
   private async loadBanner(): Promise<void> {
-    const provider = new BannerProvider(this.state.appState.version);
-    const displayState = await readBannerDisplayState();
-    const now = new Date();
-    const banner = await provider.load(fetch, {
-      state: displayState,
-      now,
-    });
-    this.state.appState.banner = banner;
-    if (banner === null) return;
-
-    this.renderBanner();
-    this.state.ui.requestRender();
-
-    if (banner.display === 'always') return;
-    try {
-      await writeBannerDisplayState({
-        version: 1,
-        shown: {
-          ...displayState.shown,
-          [banner.key]: { lastShownAt: now.toISOString() },
-        },
-      });
-    } catch {
-      // Best-effort: banner display state should never block startup.
-    }
-  }
-
-  private renderBanner(): void {
-    if (this.state.appState.banner === null || this.state.appState.banner === undefined) {
-      return;
-    }
-    if (this.state.transcriptContainer.children.some((child) => child instanceof BannerComponent)) {
-      return;
-    }
-    const welcomeIndex = this.state.transcriptContainer.children.findIndex(
-      (child) => child instanceof WelcomeComponent,
-    );
-    const banner = new BannerComponent(this.state.appState.banner);
-    if (welcomeIndex >= 0) {
-      this.state.transcriptContainer.children.splice(welcomeIndex + 1, 0, banner);
-    } else {
-      this.state.transcriptContainer.children.unshift(banner);
-    }
-    this.state.transcriptContainer.invalidate();
+    // De-vendored: Mycel does not fetch or show the provider's remote marketing
+    // banner (the "Kimi K3 is now ready" feed). Keeping this a no-op suppresses
+    // both the phone-home to the banner feed and the ad on startup. The provider
+    // does not get to advertise inside this harness.
   }
 
   private async initMainTui(): Promise<boolean> {
