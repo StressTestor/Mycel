@@ -3,17 +3,15 @@ import chalk from 'chalk';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { WelcomeComponent } from '#/tui/components/chrome/welcome';
-import { setRainbowDance, type RainbowDanceController } from '#/tui/easter-eggs/dance';
-import { darkColors } from '#/tui/theme/colors';
 import type { AppState } from '#/tui/types';
 
-const TRUECOLOR_PATTERN = /\u001B\[38;2;(\d+);(\d+);(\d+)m/g;
+const TRUECOLOR_PATTERN = /\[38;2;(\d+);(\d+);(\d+)m/g;
 
 const appState: AppState = {
   version: '1.2.3',
   workDir: '/tmp/project',
   additionalDirs: [],
-  sessionId: 'ses-1',
+  sessionId: '9f08abcd-1234',
   sessionTitle: null,
   model: 'kimi-k2',
   permissionMode: 'manual',
@@ -45,20 +43,14 @@ function truecolorCodes(text: string): Set<string> {
   return codes;
 }
 
-/** The two header rows (logo + title) of the rendered welcome box. */
-function headerOf(lines: string[]): string {
-  return [lines[3], lines[4]].join('\n');
+/** Strip ANSI truecolor codes to inspect the plain rendered text. */
+function plain(text: string): string {
+  return text.replace(/\[[0-9;]*m/g, '');
 }
 
-function setDanceView(colored: boolean, phase: number): void {
-  const dance: RainbowDanceController = {
-    colored,
-    phase,
-    start: () => {},
-    stop: () => {},
-    dispose: () => {},
-  };
-  setRainbowDance(dance);
+/** The two header rows (identity + status) of the rendered header. */
+function headerOf(lines: string[]): string {
+  return [lines[1], lines[2]].join('\n');
 }
 
 describe('WelcomeComponent', () => {
@@ -70,29 +62,37 @@ describe('WelcomeComponent', () => {
 
   afterEach(() => {
     chalk.level = previousChalkLevel;
-    setRainbowDance(undefined);
   });
 
-  it('renders the banner in a single brand color by default', () => {
+  it('renders the compact identity and status lines', () => {
+    const lines = new WelcomeComponent(appState).render(80);
+
+    // Blank line above and below the two header lines.
+    expect(lines).toHaveLength(4);
+    expect(lines[0]).toBe('');
+    expect(lines[3]).toBe('');
+    expect(plain(lines[1]!)).toBe('mycel 1.2.3  /tmp/project');
+    expect(plain(lines[2]!)).toBe('model kimi-k2 · session 9f08…');
+  });
+
+  it('includes the mcp segment only when a summary is present', () => {
+    const withMcp = new WelcomeComponent({
+      ...appState,
+      mcpServersSummary: '2 servers',
+    }).render(80);
+    expect(plain(withMcp[2]!)).toBe('model kimi-k2 · mcp 2 servers · session 9f08…');
+  });
+
+  it('shows the login warning for the model when logged out', () => {
+    const loggedOut = new WelcomeComponent({ ...appState, model: '' }).render(80);
+    expect(plain(loggedOut[2]!)).toBe('model not set, run /login or /provider · session 9f08…');
+  });
+
+  it('renders the header in a small number of theme colors', () => {
     const codes = truecolorCodes(headerOf(new WelcomeComponent(appState).render(80)));
 
-    // No rainbow by default — just the brand primary (plus the dim tagline).
+    // Just the brand primary and the dim shade (plus warning only when logged out).
     expect(codes.size).toBeLessThanOrEqual(2);
-  });
-
-  it('paints the banner in rainbow while colored', () => {
-    setDanceView(true, 0);
-    const codes = truecolorCodes(headerOf(new WelcomeComponent(appState).render(80)));
-
-    expect(codes.size).toBeGreaterThanOrEqual(5);
-  });
-
-  it('renders exactly the default banner when not colored', () => {
-    const base = headerOf(new WelcomeComponent(appState).render(80));
-    setDanceView(false, 5);
-    const off = headerOf(new WelcomeComponent(appState).render(80));
-
-    expect(off).toBe(base);
   });
 
   it('keeps every line within the requested width on narrow terminals', () => {

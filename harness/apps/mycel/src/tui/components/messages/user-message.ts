@@ -5,7 +5,7 @@
 import { Spacer, Text, truncateToWidth, visibleWidth, type Component } from '@moonshot-ai/pi-tui';
 
 import { ImageThumbnail } from '#/tui/components/media/image-thumbnail';
-import { USER_MESSAGE_BULLET } from '#/tui/constant/symbols';
+import { USER_ROLE_LABEL, padRoleLabel } from '#/tui/constant/symbols';
 import { currentTheme } from '#/tui/theme';
 import type { ImageAttachment } from '#/tui/utils/image-attachment-store';
 import { isRenderCacheEnabled } from '#/tui/utils/render-cache';
@@ -48,7 +48,10 @@ export class UserMessageComponent implements Component {
       return this.renderCache.lines;
     }
 
-    const marker = this.bullet ?? USER_MESSAGE_BULLET;
+    // Default marker is the "you" role label padded to the fixed gutter so the
+    // body aligns with assistant turns. An explicit bullet still overrides it
+    // (a '$' shell echo replaces the label; an empty string suppresses it).
+    const marker = this.bullet ?? padRoleLabel(USER_ROLE_LABEL);
     const bullet = marker.length > 0 ? currentTheme.boldFg('roleUser', marker) : '';
     const bulletWidth = visibleWidth(bullet);
     const contentWidth = Math.max(1, safeWidth - bulletWidth);

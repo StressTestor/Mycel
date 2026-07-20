@@ -1,14 +1,13 @@
 /**
  * Renders an assistant message using pi-tui Markdown.
  *
- * Displays a white bullet prefix with markdown content indented
- * to align after the bullet.
+ * Displays the "mycel" role label in a fixed-width gutter with markdown
+ * content indented to align in a single column under the label.
  */
 
 import { Container, Markdown, truncateToWidth, visibleWidth, type Component } from '@moonshot-ai/pi-tui';
 
-import { MESSAGE_INDENT } from '#/tui/constant/rendering';
-import { STATUS_BULLET } from '#/tui/constant/symbols';
+import { ASSISTANT_ROLE_LABEL, ROLE_GUTTER, padRoleLabel } from '#/tui/constant/symbols';
 import { currentTheme } from '#/tui/theme';
 import { createMarkdownTheme } from '#/tui/theme/pi-tui-theme';
 import { isRenderCacheEnabled } from '#/tui/utils/render-cache';
@@ -104,14 +103,18 @@ export class AssistantMessageComponent implements Component {
       return this.renderCache.lines;
     }
 
-    const prefix = this.showBullet ? STATUS_BULLET : MESSAGE_INDENT;
+    // The "mycel" role label sits in a fixed gutter; continuation lines indent
+    // by the same gutter width so wrapped content aligns under the body.
+    const gutterIndent = ' '.repeat(ROLE_GUTTER);
+    const label = padRoleLabel(ASSISTANT_ROLE_LABEL);
+    const prefix = this.showBullet ? label : gutterIndent;
     const contentWidth = Math.max(1, safeWidth - visibleWidth(prefix));
     const contentLines = this.contentContainer.render(contentWidth);
 
     const lines: string[] = [''];
     for (let i = 0; i < contentLines.length; i++) {
       const p =
-        i === 0 && this.showBullet ? currentTheme.fg('text', STATUS_BULLET) : MESSAGE_INDENT;
+        i === 0 && this.showBullet ? currentTheme.fg('text', label) : gutterIndent;
       lines.push(p + contentLines[i]);
     }
     const rendered = lines.map((line) => truncateToWidth(line, safeWidth, '…'));
