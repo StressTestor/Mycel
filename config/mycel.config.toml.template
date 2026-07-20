@@ -54,11 +54,19 @@ telemetry = false
 # capabilities = [ "thinking", "image_in", "tool_use" ]
 
 # --- immunity gate (fail-closed) --------------------------------------------
-# blocks shell commands matching active antibodies in the substrate.
-# gate crashed, hung, or missing db = command BLOCKED. that is the point.
+# blocks tool calls matching active antibodies in the substrate, AND blocks any
+# write that targets the gate's own binary dir, installed config, or substrate
+# (the compiled protected-path floor) so the gate cannot be self-disarmed in the
+# same session.
+#
+# matcher is catch-all ("") on purpose: the gate governs EVERY tool, not just
+# Bash. the whole-toolset coupling is deliberate - a missing/corrupt substrate db
+# now fail-closed BLOCKS every routed tool (Read/Grep included), because a deleted
+# db means the guard was disarmed. gate crashed, hung, or missing db = BLOCKED.
+# that is the point.
 [[hooks]]
 event = "PreToolUse"
-matcher = "Bash"
+matcher = ""
 command = "$HOME/.mycel/bin/mycel-gate"
 timeout = 10
 fail_mode = "closed"

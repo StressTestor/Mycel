@@ -71,6 +71,27 @@ echo "$CERR" | grep -q "curated deterministic-e2e antibody" && _pass "--claude r
 printf '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}' | "$GATE" --claude --db "$DB" >/dev/null 2>&1
 [ "$?" -eq 0 ] && _pass "--claude allow exits 0" || _fail "--claude allow non-zero"
 
+# --- 10. protected-path floor: a Write over the gate's own binary is denied ---
+# lay out a fake mycel home so the floor targets the fixture, not the real ~/.mycel.
+MHOME="$WORK/mhome"
+mkdir -p "$MHOME/bin" "$MHOME/substrate"
+cp "$GATE" "$MHOME/bin/mycel-gate"
+PROTECTED="$MHOME/bin/mycel-gate"
+FLOOR_JSON="{\"tool_name\":\"Write\",\"tool_input\":{\"path\":\"$PROTECTED\",\"content\":\"stub\"}}"
+
+FOUT="$(printf '%s' "$FLOOR_JSON" | "$GATE" --db "$DB" --mycel-home "$MHOME")"
+echo "$FOUT" | grep -q '"permissionDecision":"deny"' && _pass "native: write over gate binary denied" || _fail "floor did not deny (native): $FOUT"
+echo "$FOUT" | grep -q 'protected-path-floor' && _pass "native: floor source pointer surfaced" || _fail "no floor source: $FOUT"
+
+FERR="$(printf '%s' "$FLOOR_JSON" | "$GATE" --claude --db "$DB" --mycel-home "$MHOME" 2>&1 1>/dev/null)"; FCODE=$?
+[ "$FCODE" -eq 2 ] && _pass "--claude: write over gate binary exits 2" || _fail "--claude floor exit was $FCODE"
+echo "$FERR" | grep -q 'protected-path-floor' && _pass "--claude: floor reason on stderr" || _fail "no floor reason on stderr: $FERR"
+
+# --- 11. a benign Write to a normal file is still allowed ---
+BENIGN_JSON="{\"tool_name\":\"Write\",\"tool_input\":{\"path\":\"$WORK/notes.txt\",\"content\":\"hi\"}}"
+BOUT="$(printf '%s' "$BENIGN_JSON" | "$GATE" --db "$DB" --mycel-home "$MHOME")"
+[ "$BOUT" = "{}" ] && _pass "benign Write allowed" || _fail "benign Write not allowed: $BOUT"
+
 rm -rf "$WORK"
 [ "$FAILED" -eq 0 ] && { printf '\n\033[1;32mGATE CONTRACT E2E: ALL PASS\033[0m\n'; exit 0; }
 printf '\n\033[1;31mGATE CONTRACT E2E: FAILURES\033[0m\n'; exit 1
