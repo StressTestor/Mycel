@@ -48,11 +48,6 @@ function plain(text: string): string {
   return text.replace(/\[[0-9;]*m/g, '');
 }
 
-/** The two header rows (identity + status) of the rendered header. */
-function headerOf(lines: string[]): string {
-  return [lines[1], lines[2]].join('\n');
-}
-
 describe('WelcomeComponent', () => {
   const previousChalkLevel = chalk.level;
 
@@ -64,46 +59,47 @@ describe('WelcomeComponent', () => {
     chalk.level = previousChalkLevel;
   });
 
-  it('renders the identity, status, tagline, tip, and command hints', () => {
-    const lines = new WelcomeComponent(appState).render(80);
+  it('renders a bordered card with identity, status, voice, and hints below', () => {
+    const body = plain(new WelcomeComponent(appState).render(80).join('\n'));
 
-    // identity + status, then a blank, the voice block, a blank, hints, a blank.
-    expect(lines).toHaveLength(9);
-    expect(lines[0]).toBe('');
-    expect(plain(lines[1]!)).toBe('🍄 mycel 1.2.3  /tmp/project');
-    expect(plain(lines[2]!)).toBe('   model kimi-k2 · session 9f08…');
-    expect(lines[3]).toBe('');
-    expect(plain(lines[4]!)).toBe(' ▎ deny by default.');
-    expect(LAUNCH_TIPS as readonly string[]).toContain(plain(lines[5]!).trim());
-    expect(lines[6]).toBe('');
-    expect(plain(lines[7]!)).toBe('   /help  ·  /status  ·  /model');
-    expect(lines[8]).toBe('');
+    // rounded card border, then all the content inside it.
+    expect(body).toContain('╭');
+    expect(body).toContain('╰');
+    expect(body).toContain('🍄 mycel 1.2.3  /tmp/project');
+    expect(body).toContain('model kimi-k2 · session 9f08…');
+    expect(body).toContain('deny by default.');
+    expect(LAUNCH_TIPS.some((tip) => body.includes(tip))).toBe(true);
+    // command hints, below the card.
+    expect(body).toContain('/help');
+    expect(body).toContain('/status');
+    expect(body).toContain('/model');
   });
 
   it('picks a stable tip for a given session id', () => {
-    const a = new WelcomeComponent(appState).render(80)[5];
-    const b = new WelcomeComponent(appState).render(80)[5];
+    const a = plain(new WelcomeComponent(appState).render(80).join('\n'));
+    const b = plain(new WelcomeComponent(appState).render(80).join('\n'));
     expect(a).toBe(b);
   });
 
   it('includes the mcp segment only when a summary is present', () => {
-    const withMcp = new WelcomeComponent({
-      ...appState,
-      mcpServersSummary: '2 servers',
-    }).render(80);
-    expect(plain(withMcp[2]!)).toBe('   model kimi-k2 · mcp 2 servers · session 9f08…');
+    const withMcp = plain(
+      new WelcomeComponent({ ...appState, mcpServersSummary: '2 servers' }).render(80).join('\n'),
+    );
+    expect(withMcp).toContain('mcp 2 servers');
+    const without = plain(new WelcomeComponent(appState).render(80).join('\n'));
+    expect(without).not.toContain('mcp ');
   });
 
   it('shows the login warning for the model when logged out', () => {
-    const loggedOut = new WelcomeComponent({ ...appState, model: '' }).render(80);
-    expect(plain(loggedOut[2]!)).toBe('   model not set, run /login or /provider · session 9f08…');
+    const loggedOut = plain(
+      new WelcomeComponent({ ...appState, model: '' }).render(80).join('\n'),
+    );
+    expect(loggedOut).toContain('not set, run /login or /provider');
   });
 
-  it('renders the header in a small number of theme colors', () => {
-    const codes = truecolorCodes(headerOf(new WelcomeComponent(appState).render(80)));
-
-    // Just the brand primary and the dim shade (plus warning only when logged out).
-    expect(codes.size).toBeLessThanOrEqual(2);
+  it('uses more than one theme color (brand primary and amanita red)', () => {
+    const codes = truecolorCodes(new WelcomeComponent(appState).render(80).join('\n'));
+    expect(codes.size).toBeGreaterThanOrEqual(2);
   });
 
   it('keeps every line within the requested width on narrow terminals', () => {
