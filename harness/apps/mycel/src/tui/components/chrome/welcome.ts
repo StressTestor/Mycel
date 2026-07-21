@@ -1,12 +1,12 @@
 /**
- * Startup header shown at the top of the TUI. An identity line (🍄 mycel,
- * version, work dir) and a status line (model, mcp, session), then Mycel's
- * voice: a red "deny by default" tagline, a rotating on-brand tip, and command
- * hints. Compact, no border, but not lifeless.
+ * Startup card shown at the top of the TUI. A rounded panel holding an identity
+ * line (🍄 mycel, version, work dir), a status line (model, mcp, session), and
+ * Mycel's voice: a red "deny by default" tagline and a rotating on-brand tip.
+ * Command hints sit just below the card.
  */
 
 import type { Component } from '@moonshot-ai/pi-tui';
-import { truncateToWidth } from '@moonshot-ai/pi-tui';
+import { truncateToWidth, visibleWidth } from '@moonshot-ai/pi-tui';
 import chalk from 'chalk';
 
 import { effectiveModelAlias } from '@moonshot-ai/kimi-code-sdk';
@@ -92,15 +92,28 @@ export class WelcomeComponent implements Component {
     segments.push(dim(`session ${shortSessionId(this.state.sessionId)}`));
     const line2 = indent + segments.join(dim(' · '));
 
-    // voice: a red accent stripe + tagline, a rotating on-brand tip, and
-    // command hints. this is what keeps the launch screen from reading dead.
+    // voice inside the card: a red accent stripe + tagline and a rotating tip.
     const tagline = ' ' + red('▎') + ' ' + redBold('deny by default.');
     const tip = indent + dim(tipForSession(this.state.sessionId));
+    const content = [line1, line2, '', tagline, tip];
+
+    // rounded card. dim border so the colorful content (mushroom, blue name,
+    // red tagline) carries the screen; the frame just holds it together.
+    const innerWidth = Math.max(1, safeWidth - 4);
+    const pad = '  ';
+    const lines: string[] = ['', dim('╭' + '─'.repeat(safeWidth - 2) + '╮')];
+    for (const c of content) {
+      const truncated = truncateToWidth(c, innerWidth, '…');
+      const rightPad = Math.max(0, innerWidth - visibleWidth(truncated));
+      lines.push(dim('│') + pad + truncated + ' '.repeat(rightPad) + dim('│'));
+    }
+    lines.push(dim('╰' + '─'.repeat(safeWidth - 2) + '╯'));
+
+    // command hints below the card.
     const hint =
       indent + [primary('/help'), primary('/status'), primary('/model')].join(dim('  ·  '));
+    lines.push('', hint, '');
 
-    return ['', line1, line2, '', tagline, tip, '', hint, ''].map((line) =>
-      truncateToWidth(line, safeWidth, '…'),
-    );
+    return lines.map((line) => truncateToWidth(line, safeWidth, '…'));
   }
 }
