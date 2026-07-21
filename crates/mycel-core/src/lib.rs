@@ -468,6 +468,28 @@ impl AntibodyStore {
         Ok(count)
     }
 
+    /// Derive an antibody candidate for every stored sentinel audit event.
+    ///
+    /// These are the "learned, not yet trusted" lessons: gate events recorded in
+    /// the substrate that no human has signed into a trusted antibody. Each event
+    /// is mapped through the same `into_candidate` derivation `ingest` uses, so
+    /// this is a read-only view of what ingest already stored (nothing is
+    /// inserted). Rows arrive oldest-first (`ORDER BY timestamp, id`); the caller
+    /// re-sorts for display.
+    pub fn list_candidates(&self, now: DateTime<Utc>) -> Result<Vec<SentinelAntibodyCandidate>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, timestamp, tool_name, action, mode, reason, matched_rule
+            FROM sentinel_audit_events
+            ORDER BY timestamp, id",
+        )?;
+        let rows = stmt.query_map([], sentinel_event_from_row)?;
+        let events = collect_rows(rows)?;
+        Ok(events
+            .into_iter()
+            .map(|event| event.into_candidate(now))
+            .collect())
+    }
+
     pub fn sentinel_events_for_matched_rule(
         &self,
         matched_rule: &str,

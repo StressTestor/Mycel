@@ -38,6 +38,15 @@ import {
 } from './config';
 import { handleGoalCommand } from './goal';
 import { showMcpServers, showStatusReport, showUsage } from './info';
+import {
+  handleDelegateCommand,
+  handleDenyCommand,
+  handlePromoteCommand,
+  showCandidates,
+  showGateStatus,
+  showImmunity,
+  showSubstrateStatus,
+} from './mycel';
 import { handleAddDirCommand } from './add-dir';
 import { parseSlashInput } from './parse';
 import { handlePluginsCommand } from './plugins';
@@ -80,6 +89,15 @@ export {
 } from './config';
 export { handleSwarmCommand } from './swarm';
 export { showMcpServers, showStatusReport, showUsage } from './info';
+export {
+  handleDelegateCommand,
+  handleDenyCommand,
+  handlePromoteCommand,
+  showCandidates,
+  showGateStatus,
+  showImmunity,
+  showSubstrateStatus,
+} from './mycel';
 export { handlePluginsCommand } from './plugins';
 export { handleReloadCommand, handleReloadTuiCommand } from './reload';
 export { handleGoalCommand } from './goal';
@@ -320,6 +338,27 @@ async function handleBuiltInSlashCommand(
       return;
     case 'status':
       void showStatusReport(host);
+      return;
+    case 'immunity':
+      void showImmunity(host);
+      return;
+    case 'gate':
+      void showGateStatus(host);
+      return;
+    case 'substrate':
+      void showSubstrateStatus(host);
+      return;
+    case 'candidates':
+      void showCandidates(host);
+      return;
+    case 'promote':
+      await handlePromoteCommand(host, args);
+      return;
+    case 'deny':
+      await handleDenyCommand(host, args);
+      return;
+    case 'delegate':
+      await handleDelegateCommand(host, args);
       return;
     case 'btw':
       await handleBtwCommand(host, args);

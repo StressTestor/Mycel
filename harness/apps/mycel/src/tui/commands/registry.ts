@@ -5,6 +5,7 @@ import { basename, dirname, join, relative, resolve } from 'pathe';
 import type { AutocompleteItem } from '@moonshot-ai/pi-tui';
 
 import { completeLeadingArg, type ArgCompletionSpec } from './complete-args';
+import { MYCEL_SLASH_COMMANDS } from './mycel';
 import type { KimiSlashCommand, SlashCommandAvailability } from './types';
 
 /** Subcommands offered when autocompleting `/goal <…>`. */
@@ -404,6 +405,10 @@ export const BUILTIN_SLASH_COMMANDS = [
     priority: 20,
     availability: 'always',
   },
+  // Mycel command family (immunity/gate/substrate/candidates/promote/deny/delegate).
+  // Aggregated in ./mycel and spread once here so the family stays cohesive; the
+  // spread keeps the literal names, so they extend BuiltinSlashCommandName below.
+  ...MYCEL_SLASH_COMMANDS,
 ] as const satisfies readonly KimiSlashCommand[];
 
 export type BuiltinSlashCommand = (typeof BUILTIN_SLASH_COMMANDS)[number];
