@@ -71,7 +71,7 @@ export class WelcomeComponent implements Component {
       : dim(`model ${modelValue}`);
 
     // narrow fallback: no room for the logo card, keep it to id + status.
-    if (safeWidth < 34) {
+    if (safeWidth < 40) {
       const title = '🍄 ' + primaryBold('mycel') + ' ' + dim(this.state.version);
       return ['', title, '   ' + modelSegment, ''].map((line) =>
         truncateToWidth(line, safeWidth, '…'),
@@ -84,17 +84,28 @@ export class WelcomeComponent implements Component {
     }
     segments.push(dim(`session ${shortSessionId(this.state.sessionId)}`));
 
-    // Mycel's logo: a block mushroom, cap in amanita red, stem in cream. Each
-    // row is 8 cells wide so the text column stays aligned.
+    // Mycel's logo: a block mushroom (designed with kimi-k3). Rows are raw and
+    // colored at render - a domed cap in amanita red with cream spots, a cream
+    // stem. Every row is LOGO_W cells wide so the text column stays aligned.
     const cream = chalk.hex('#e8d8b0');
-    const logo = [
-      red(' ▄████▄ '),
-      red('████████'),
-      red('▀██████▀'),
-      cream('  ▐██▌  '),
-      cream('  ▐██▌  '),
+    const SPOTS = new Set(['▒', '░', '▓']);
+    const LOGO_W = 10;
+    const mushroom: ReadonlyArray<{ cells: string; cap: boolean }> = [
+      { cells: '  ▗▄▄▄▄▖  ', cap: true },
+      { cells: ' ▟██████▙ ', cap: true },
+      { cells: '▟██▒██▒██▙', cap: true },
+      { cells: '▜████████▛', cap: true },
+      { cells: ' ▝▀▀▀▀▀▀▘ ', cap: true },
+      { cells: '   ▐██▌   ', cap: false },
+      { cells: '   ▝▀▀▘   ', cap: false },
     ];
-    const LOGO_W = 8;
+    const logo = mushroom.map(({ cells, cap }) =>
+      cap
+        ? [...cells]
+            .map((ch) => (ch === ' ' ? ' ' : SPOTS.has(ch) ? cream('█') : red(ch)))
+            .join('')
+        : cream(cells),
+    );
 
     // text column: identity, status, a blank, the tagline, and a rotating tip.
     const textRows = [
@@ -106,12 +117,14 @@ export class WelcomeComponent implements Component {
     ];
 
     // rounded card: logo on the left, text on the right - the way the field does
-    // it (Claude, Codex, Kimi, Grok all lead with a logo). dim border so the
-    // color comes from the mushroom, the blue name, and the red tagline.
+    // it (Claude, Codex, Kimi, Grok all lead with a logo). the text is centered
+    // against the taller logo. dim border so the color comes from the mushroom.
     const textWidth = Math.max(1, safeWidth - (2 + 2 + LOGO_W + 2));
+    const textOffset = Math.floor((logo.length - textRows.length) / 2);
     const lines: string[] = ['', dim('╭' + '─'.repeat(safeWidth - 2) + '╮')];
     for (let i = 0; i < logo.length; i++) {
-      const truncated = truncateToWidth(textRows[i] ?? '', textWidth, '…');
+      const row = textRows[i - textOffset] ?? '';
+      const truncated = truncateToWidth(row, textWidth, '…');
       const rightPad = Math.max(0, textWidth - visibleWidth(truncated));
       lines.push(dim('│') + '  ' + logo[i] + '  ' + truncated + ' '.repeat(rightPad) + dim('│'));
     }
