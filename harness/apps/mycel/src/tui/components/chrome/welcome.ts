@@ -71,7 +71,7 @@ export class WelcomeComponent implements Component {
       : dim(`model ${modelValue}`);
 
     // narrow fallback: no room for the logo card, keep it to id + status.
-    if (safeWidth < 40) {
+    if (safeWidth < 44) {
       const title = '🍄 ' + primaryBold('mycel') + ' ' + dim(this.state.version);
       return ['', title, '   ' + modelSegment, ''].map((line) =>
         truncateToWidth(line, safeWidth, '…'),
@@ -84,27 +84,35 @@ export class WelcomeComponent implements Component {
     }
     segments.push(dim(`session ${shortSessionId(this.state.sessionId)}`));
 
-    // Mycel's logo: a block mushroom (designed with kimi-k3). Rows are raw and
-    // colored at render - a domed cap in amanita red with cream spots, a cream
-    // stem. Every row is LOGO_W cells wide so the text column stays aligned.
-    const cream = chalk.hex('#e8d8b0');
-    const SPOTS = new Set(['▒', '░', '▓']);
-    const LOGO_W = 10;
-    const mushroom: ReadonlyArray<{ cells: string; cap: boolean }> = [
-      { cells: '  ▗▄▄▄▄▖  ', cap: true },
-      { cells: ' ▟██████▙ ', cap: true },
-      { cells: '▟██▒██▒██▙', cap: true },
-      { cells: '▜████████▛', cap: true },
-      { cells: ' ▝▀▀▀▀▀▀▘ ', cap: true },
-      { cells: '   ▐██▌   ', cap: false },
-      { cells: '   ▝▀▀▘   ', cap: false },
+    // Mycel's logo: a shaded block mushroom (designed with kimi-k3). Each cell
+    // is painted by a parallel color map - H highlight, R red, D dark-red on the
+    // domed cap, O white spots, S stem cream, d stem shadow. This is what gives
+    // it the 3D look. Every row is LOGO_W cells wide so the text stays aligned.
+    const LOGO_W = 14;
+    const shade: Record<string, (s: string) => string> = {
+      H: chalk.hex('#f5877e'), // cap highlight (light red)
+      R: red, // cap main (amanita red)
+      D: chalk.hex('#be3b3b'), // cap shadow (dark red)
+      O: chalk.hex('#fbf5e9'), // white spot
+      S: chalk.hex('#e8d8b0'), // stem cream
+      d: chalk.hex('#c2b084'), // stem shadow
+    };
+    const mushroom: ReadonlyArray<{ cells: string; map: string }> = [
+      { cells: '    ▗▄▄▄▄▖    ', map: '    HHRRRR    ' },
+      { cells: '  ▟████████▙  ', map: '  HHHHRRRRRD  ' },
+      { cells: ' ▟██████████▙ ', map: ' HHRRRRRRROOD ' },
+      { cells: '▜████████████▛', map: 'RHHOORRRRRRRRD' },
+      { cells: '▝▀▀▀▀▀▀▀▀▀▀▀▀▘', map: 'DDDDDDDDDDDDDD' },
+      { cells: '    ▐████▌    ', map: '    SSSSSd    ' },
+      { cells: '    ▝▀▀▀▀▘    ', map: '    dddddd    ' },
     ];
-    const logo = mushroom.map(({ cells, cap }) =>
-      cap
-        ? [...cells]
-            .map((ch) => (ch === ' ' ? ' ' : SPOTS.has(ch) ? cream('█') : red(ch)))
-            .join('')
-        : cream(cells),
+    const logo = mushroom.map(({ cells, map }) =>
+      [...cells]
+        .map((ch, j) => {
+          const paint = shade[map[j] ?? ' '];
+          return ch === ' ' || paint === undefined ? ch : paint(ch);
+        })
+        .join(''),
     );
 
     // text column: identity, status, a blank, the tagline, and a rotating tip.
