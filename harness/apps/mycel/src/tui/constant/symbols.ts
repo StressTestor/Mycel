@@ -13,7 +13,8 @@ export const FAILURE_MARK = '✗ ';
 // constants above (STATUS_BULLET, USER_MESSAGE_BULLET) are still used by
 // other components (tool calls, status rows, panels) and must stay intact.
 export const USER_ROLE_LABEL = 'you';
-export const ASSISTANT_ROLE_LABEL = 'mycel';
+// The mushroom marks mycel's turns in the transcript (the mascot is the voice).
+export const ASSISTANT_ROLE_LABEL = '🍄';
 export const ROLE_GUTTER = 8;
 
 // Left-align a role label in the fixed gutter so every message body starts

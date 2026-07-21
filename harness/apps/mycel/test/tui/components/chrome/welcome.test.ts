@@ -62,10 +62,11 @@ describe('WelcomeComponent', () => {
   it('renders a bordered card with identity, status, voice, and hints below', () => {
     const body = plain(new WelcomeComponent(appState).render(80).join('\n'));
 
-    // rounded card border, then all the content inside it.
+    // rounded card border + the block mushroom logo, then all the content.
     expect(body).toContain('╭');
     expect(body).toContain('╰');
-    expect(body).toContain('🍄 mycel 1.2.3  /tmp/project');
+    expect(body).toContain('████'); // the block-art mushroom logo
+    expect(body).toContain('mycel 1.2.3  /tmp/project');
     expect(body).toContain('model kimi-k2 · session 9f08…');
     expect(body).toContain('deny by default.');
     expect(LAUNCH_TIPS.some((tip) => body.includes(tip))).toBe(true);
