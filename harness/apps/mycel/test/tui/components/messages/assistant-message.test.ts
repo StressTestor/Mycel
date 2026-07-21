@@ -26,14 +26,14 @@ describe('AssistantMessageComponent', () => {
     expect(visibleWidth(STATUS_BULLET)).toBe(2);
   });
 
-  it('labels the turn with the mycel role label in the fixed gutter', () => {
+  it('labels the turn with the mushroom marker in the fixed gutter', () => {
     const component = new AssistantMessageComponent();
 
     component.updateContent('abcdef');
 
-    // Gutter is 8 columns: 'mycel' + 3 pad spaces, then the body at column 8.
+    // Gutter is 8 columns: the 🍄 marker (2 cells) + padding, body at column 8.
     const lines = component.render(14).map(strip);
-    expect(lines).toEqual(['', 'mycel   abcdef']);
+    expect(lines).toEqual(['', '🍄      abcdef']);
     expect(visibleWidth(lines[1] ?? '')).toBe(14);
   });
 

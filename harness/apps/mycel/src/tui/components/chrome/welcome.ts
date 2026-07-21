@@ -1,8 +1,8 @@
 /**
- * Startup card shown at the top of the TUI. A rounded panel holding an identity
- * line (🍄 mycel, version, work dir), a status line (model, mcp, session), and
- * Mycel's voice: a red "deny by default" tagline and a rotating on-brand tip.
- * Command hints sit just below the card.
+ * Startup card shown at the top of the TUI. A rounded panel with a block-art
+ * mushroom logo on the left and, on the right, an identity line (mycel, version,
+ * work dir), a status line (model, mcp, session), a red "deny by default"
+ * tagline, and a rotating on-brand tip. Command hints sit just below the card.
  */
 
 import type { Component } from '@moonshot-ai/pi-tui';
@@ -26,12 +26,12 @@ function shortSessionId(sessionId: string): string {
  * the session id, so it is stable within a session and rotates across launches.
  */
 export const LAUNCH_TIPS = [
-  'a deleted substrate reads as a disarmed guard. it blocks, never resets.',
-  'the brain outlives the body. swap the model, keep the memory.',
-  'learned rules stay inert until you promote them. no autoimmune surprises.',
-  'friendly to use, poisonous to anything trying to disarm the gate.',
-  'the gate blocks first and asks never. fail-closed, always.',
-  "a write over the gate's own binary is denied. it won't disarm itself.",
+  'a deleted substrate blocks by default. it never resets.',
+  'the brain outlives the body: swap models, keep memory.',
+  'learned rules stay inert until a human promotes them.',
+  'friendly to use, poisonous to anything that disarms it.',
+  'the gate blocks first and asks never. fail-closed.',
+  "a write over the gate's own binary is denied.",
 ] as const;
 
 function tipForSession(sessionId: string): string {
@@ -70,48 +70,56 @@ export class WelcomeComponent implements Component {
       ? dim('model ') + warn('not set, run /login or /provider')
       : dim(`model ${modelValue}`);
 
-    // Mycel's mark: the mushroom sits on the identity line; the status line
-    // indents to align under the name. deny by default.
-    const mark = '🍄 ';
-    const indent = '   ';
-
-    if (safeWidth < 24) {
-      const title = mark + primaryBold('mycel') + ' ' + dim(this.state.version);
-      return ['', title, indent + modelSegment, ''].map((line) =>
+    // narrow fallback: no room for the logo card, keep it to id + status.
+    if (safeWidth < 34) {
+      const title = '🍄 ' + primaryBold('mycel') + ' ' + dim(this.state.version);
+      return ['', title, '   ' + modelSegment, ''].map((line) =>
         truncateToWidth(line, safeWidth, '…'),
       );
     }
-
-    const line1 =
-      mark + primaryBold('mycel') + ' ' + dim(`${this.state.version}  ${this.state.workDir}`);
 
     const segments = [modelSegment];
     if (this.state.mcpServersSummary) {
       segments.push(dim(`mcp ${this.state.mcpServersSummary}`));
     }
     segments.push(dim(`session ${shortSessionId(this.state.sessionId)}`));
-    const line2 = indent + segments.join(dim(' · '));
 
-    // voice inside the card: a red accent stripe + tagline and a rotating tip.
-    const tagline = ' ' + red('▎') + ' ' + redBold('deny by default.');
-    const tip = indent + dim(tipForSession(this.state.sessionId));
-    const content = [line1, line2, '', tagline, tip];
+    // Mycel's logo: a block mushroom, cap in amanita red, stem in cream. Each
+    // row is 8 cells wide so the text column stays aligned.
+    const cream = chalk.hex('#e8d8b0');
+    const logo = [
+      red(' ▄████▄ '),
+      red('████████'),
+      red('▀██████▀'),
+      cream('  ▐██▌  '),
+      cream('  ▐██▌  '),
+    ];
+    const LOGO_W = 8;
 
-    // rounded card. dim border so the colorful content (mushroom, blue name,
-    // red tagline) carries the screen; the frame just holds it together.
-    const innerWidth = Math.max(1, safeWidth - 4);
-    const pad = '  ';
+    // text column: identity, status, a blank, the tagline, and a rotating tip.
+    const textRows = [
+      primaryBold('mycel') + ' ' + dim(`${this.state.version}  ${this.state.workDir}`),
+      segments.join(dim(' · ')),
+      '',
+      redBold('deny by default.'),
+      dim(tipForSession(this.state.sessionId)),
+    ];
+
+    // rounded card: logo on the left, text on the right - the way the field does
+    // it (Claude, Codex, Kimi, Grok all lead with a logo). dim border so the
+    // color comes from the mushroom, the blue name, and the red tagline.
+    const textWidth = Math.max(1, safeWidth - (2 + 2 + LOGO_W + 2));
     const lines: string[] = ['', dim('╭' + '─'.repeat(safeWidth - 2) + '╮')];
-    for (const c of content) {
-      const truncated = truncateToWidth(c, innerWidth, '…');
-      const rightPad = Math.max(0, innerWidth - visibleWidth(truncated));
-      lines.push(dim('│') + pad + truncated + ' '.repeat(rightPad) + dim('│'));
+    for (let i = 0; i < logo.length; i++) {
+      const truncated = truncateToWidth(textRows[i] ?? '', textWidth, '…');
+      const rightPad = Math.max(0, textWidth - visibleWidth(truncated));
+      lines.push(dim('│') + '  ' + logo[i] + '  ' + truncated + ' '.repeat(rightPad) + dim('│'));
     }
     lines.push(dim('╰' + '─'.repeat(safeWidth - 2) + '╯'));
 
     // command hints below the card.
     const hint =
-      indent + [primary('/help'), primary('/status'), primary('/model')].join(dim('  ·  '));
+      '   ' + [primary('/help'), primary('/status'), primary('/model')].join(dim('  ·  '));
     lines.push('', hint, '');
 
     return lines.map((line) => truncateToWidth(line, safeWidth, '…'));
