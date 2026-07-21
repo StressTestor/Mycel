@@ -193,6 +193,12 @@ promoted antibodies need a TTL, a decay path, and a delete, plus scope enforceme
 - proven by: the metaphor itself (immune tolerance and clearance are what stop adaptive immunity from turning autoimmune over time); the existing `runs` decay engine is the substrate to extend.
 - why it's the spine: fail-closed plus monotonic accumulation converges on a gate that denies too much and gets switched off. clearance is what keeps the persistent brain from becoming a persistent grudge. cheap relative to the P0 bets; arguably belongs in "next."
 
+**13. the session inbox + the reflector (model-driven candidate mining).**
+a named async inbox on a live session, built on the existing event bus, that any out-of-band actor can post a reviewable message to, rendered inline. the first sender is the reflector: a pass that reads the substrate's raw material (the `mycel-observe` audit log, the session transcript, diffs) with the *configured/default* model and proposes candidate antibodies AND durable memory notes, each with rationale. its output lands as INERT candidates - the human still signs (`/candidates` -> `/promote`). cadence is policy: start end-of-session, add a live reflex and a cross-session sweep later, all through the same inbox.
+- proven by: the named agent-mailbox pattern - async, injects into a live loop - which is a universal actor/message-passing design (e.g. Claude Code's subagent mailbox) for the channel; the shipped m2 loop already provides the observe -> candidate -> human-promote spine this feeds. kimi's swarm is fire-and-return with no mailbox; openclaude and the rest of the field ship detached task-runners plus static repo maps, not a reflector wired to a fail-closed substrate.
+- why it's the spine: adaptive immunity made real - a model that reflects on what happened and proposes what to remember - without breaking the invariant that keeps it from autoimmunity: the model proposes, the human signs. inert candidates, same gate as everything else.
+- honest notes: the inbox is net-new plumbing in mycel (kimi's swarm has no mailbox) but built ON the existing event bus, not from scratch, and it also gives mycel real subagent->parent messaging for free. the model pass costs tokens, so cadence + a confidence gate + rate-limiting are load-bearing (immune tolerance: don't inflame at every speck). memory candidates need a small "durable finding" candidate type feeding the same sign-off. the mailbox is a universal pattern, not adopted code - the implementation is mycel's own. depends on the m2 loop; composes with bet 9 (event-sourced audit) and bet 12 (lifecycle/clearance).
+
 ## non-goals
 
 what mycel deliberately will not do.
@@ -232,4 +238,4 @@ the tell: someone picks mycel over an equally capable harness, and when you ask 
 
 ---
 
-last updated 2026-07-20. this is a direction, not a shipped feature list. the fail-closed gate and the m2 learning loop exist; most of the bets don't yet. we'll keep this honest about that.
+last updated 2026-07-21. this is a direction, not a shipped feature list. the fail-closed gate and the m2 learning loop exist; most of the bets don't yet. we'll keep this honest about that.
