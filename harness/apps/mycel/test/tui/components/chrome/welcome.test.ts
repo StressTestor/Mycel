@@ -2,7 +2,7 @@ import { visibleWidth } from '@moonshot-ai/pi-tui';
 import chalk from 'chalk';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { WelcomeComponent } from '#/tui/components/chrome/welcome';
+import { LAUNCH_TIPS, WelcomeComponent } from '#/tui/components/chrome/welcome';
 import type { AppState } from '#/tui/types';
 
 const TRUECOLOR_PATTERN = /\[38;2;(\d+);(\d+);(\d+)m/g;
@@ -64,15 +64,26 @@ describe('WelcomeComponent', () => {
     chalk.level = previousChalkLevel;
   });
 
-  it('renders the compact identity and status lines', () => {
+  it('renders the identity, status, tagline, tip, and command hints', () => {
     const lines = new WelcomeComponent(appState).render(80);
 
-    // Blank line above and below the two header lines.
-    expect(lines).toHaveLength(4);
+    // identity + status, then a blank, the voice block, a blank, hints, a blank.
+    expect(lines).toHaveLength(9);
     expect(lines[0]).toBe('');
-    expect(lines[3]).toBe('');
     expect(plain(lines[1]!)).toBe('🍄 mycel 1.2.3  /tmp/project');
     expect(plain(lines[2]!)).toBe('   model kimi-k2 · session 9f08…');
+    expect(lines[3]).toBe('');
+    expect(plain(lines[4]!)).toBe(' ▎ deny by default.');
+    expect(LAUNCH_TIPS as readonly string[]).toContain(plain(lines[5]!).trim());
+    expect(lines[6]).toBe('');
+    expect(plain(lines[7]!)).toBe('   /help  ·  /status  ·  /model');
+    expect(lines[8]).toBe('');
+  });
+
+  it('picks a stable tip for a given session id', () => {
+    const a = new WelcomeComponent(appState).render(80)[5];
+    const b = new WelcomeComponent(appState).render(80)[5];
+    expect(a).toBe(b);
   });
 
   it('includes the mcp segment only when a summary is present', () => {
