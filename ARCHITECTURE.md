@@ -67,6 +67,8 @@ Mycel/
     sentinel-guard/
   harness/                   grafted kimi-code fork (TS), the agent body
     apps/mycel/              bin name: mycel
+      src/tui/commands/mycel/  Mycel slash-command family (immunity/gate/substrate/
+                               candidates/promote/deny/delegate) + substrate-runner + panel
     packages/                agent-core, agent-core-v2, kosong, oauth, ...
   adapters/
     hermes/
@@ -96,9 +98,9 @@ publication path for non-Mycel users.
 | subsystem | role |
 | --- | --- |
 | `mycel-core` | substrate, antibodies, deterministic proposed-run evaluation, audit/projection runtime |
-| `mycel-mcp` | McpTools lib + `mycel-mcp-server` stdio MCP bin (evaluate_run, list_antibodies, propose_antibody - proposals are inert until promoted) |
+| `mycel-mcp` | McpTools lib + `mycel-mcp-server` stdio MCP bin (evaluate_run, list_antibodies, propose_antibody - proposals are inert until promoted). Lib also exposes read-only `sentinel_event_count` + `list_candidates` for the CLI status/candidates surfaces |
 | `mycel-observe` | `PostToolUseFailure` hook bin: appends each failed/blocked tool call to the substrate audit log as a `SentinelAuditEvent`. Observation-only, always exits 0. The capture half of the m2 learning loop |
-| `mycel-cli` | local command surface (bin `mycel-substrate`): ingest, evaluate, list-antibodies, antibody-add, maintain |
+| `mycel-cli` | local command surface (bin `mycel-substrate`): ingest, evaluate, list-antibodies, antibody-add, maintain, import-promptpressure, plus read-only `list-candidates` (derives a candidate per stored sentinel event) and `status --db` (one JSON blob: antibody + candidate counts, audit-trail size, last maintenance). Both require an existing db and never auto-create it |
 | `mycel-gate` | `PreToolUse` hook bin (catch-all matcher: governs every tool, not just Bash). For a write-class tool it extracts + canonicalizes the target path and runs a compiled protected-path floor (blocks writes to its own `bin`/`config.toml`/`substrate`) BEFORE the db is opened. Opens the substrate read-only + strict, so a 0-byte/truncated/empty-schema db fail-closes instead of allow-all; never creates the db (a deleted db reads as guard-disarmed -> block). Then runs the evaluation engine, emits a fail-closed allow/deny. Seals the Write/Edit + truncated-db self-disarm; a Bash-*command* write to a protected path is a documented residual (needs structured shell parsing) |
 | `mycel-tests` | external black-box adversarial suite for v0.1 fail-pattern immunity |
 | `sentinel-guard` | always-on runtime defense and shared policy evaluator |
@@ -158,6 +160,32 @@ Claude generates and drives; Mycel keeps governance. `mycel-gate --claude`
 speaks Claude Code's hook dialect (exit 2 blocks) instead of the native
 `permissionDecision` JSON, so one gate governs both Mycel itself and delegated
 `claude -p` subagents. Live proof: `tests/e2e/delegate-live.sh`.
+
+### TUI command family (immune-system surface)
+
+The harness TUI ships a cohesive family of Mycel slash commands under
+`harness/apps/mycel/src/tui/commands/mycel/`. They share one launcher
+(`substrate-runner.ts`: resolves the managed binaries + db/audit/proposals paths
+from MYCEL_HOME and runs a subcommand via `execFile` with an argv array, never a
+shell string) and one panel renderer (`panel.ts`: theme painters, severity/mode
+colors, whitespace-fold, `mountPanel`). `index.ts` aggregates the seven
+`KimiSlashCommand` objects into `MYCEL_SLASH_COMMANDS`, spread once into
+`registry.ts`; handlers wire into `dispatch.ts`. Every command fails SOFT — a
+missing db/binary/empty result renders a clear panel/message, never a crash.
+
+| command | alias | kind | source |
+| --- | --- | --- | --- |
+| `/immunity` | `/antibodies` | panel | `mycel-substrate list-antibodies` — active antibodies grouped by severity |
+| `/gate` | `/guard`, `/doorman` | panel | config.toml hook wiring + db presence + antibody count -> derived arming state |
+| `/substrate` | `/marrow` | panel | `mycel-substrate status --json` — antibody/candidate counts, audit size, last maintenance |
+| `/candidates` | `/candidate`, `/learned` | panel | `mycel-substrate list-candidates` — captured lessons not yet signed |
+| `/promote <id>` | `/sign` | action | reads `proposals.jsonl`, shells `antibody-add` to sign a proposal |
+| `/deny <pattern>` | `/refuse`, `/block` | action | shells `antibody-add` (refuse/hard) to teach the gate a refusal |
+| `/delegate <task>` | `/handoff` | action | spawns `mycel-delegate` (governed `claude -p` subagent), streams the result |
+
+Injection safety: `/deny`, `/promote`, and `/delegate` pass user/agent-authored
+text (pattern, remediation, task) as a single argv element to `execFile`/`spawn`
+with no shell, so shell metacharacters are inert.
 
 ### env vars
 
@@ -328,11 +356,18 @@ mycel harness
 mycel ingest --jsonl <path>
 mycel evaluate --tool-name <name>
 mycel list-antibodies
+mycel list-candidates --db <path>
+mycel status --db <path>
 mycel import-promptpressure --db <path> --jsonl <path> [--now <ts>]
 mycel maintain --db <path> --workspace <dir> [--now <ts>]
+cd harness/apps/mycel && pnpm run typecheck
+cd harness/apps/mycel && pnpm exec vitest run
+cd harness/apps/mycel && pnpm run build
 git status --short
 git log --oneline
 ```
+
+(`mycel` above = the `mycel-substrate` bin.)
 
 note: `cargo fmt --all` walks into `crates/sentinel-guard/` (submodule) and reformats code we don't own. always scope fmt to the four mycel crates.
 
@@ -340,4 +375,4 @@ implementation commands do not exist yet.
 
 ## last updated
 
-2026-07-20
+2026-07-21 — added the TUI Mycel command family (immunity/gate/substrate/candidates/promote/deny/delegate) + the read-only `list-candidates` and `status` substrate subcommands

@@ -4,8 +4,8 @@ use anyhow::{bail, Result};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use mycel_core::{
-    Antibody, AntibodySource, Confidence, Db, PromptPressureRecord, ProposedRun, RefusalMode,
-    Severity, Signature, SignatureScope,
+    Antibody, AntibodySource, AuditLog, Confidence, Db, PromptPressureRecord, ProposedRun,
+    RefusalMode, Severity, Signature, SignatureScope,
 };
 use mycel_mcp::McpTools;
 use serde_json::json;
@@ -40,6 +40,19 @@ enum Command {
     ListAntibodies {
         #[arg(long)]
         db: Option<PathBuf>,
+    },
+    /// List captured sentinel events as antibody candidates ("learned, not yet trusted").
+    ListCandidates {
+        /// Path to the substrate db. Must already exist; never auto-created.
+        #[arg(long)]
+        db: PathBuf,
+    },
+    /// Emit a single read-only JSON status blob for the substrate (antibodies,
+    /// candidates, audit-trail size, last maintenance). Never creates the db.
+    Status {
+        /// Path to the substrate db. Must already exist; never auto-created.
+        #[arg(long)]
+        db: PathBuf,
     },
     /// Insert one fully-specified, curated antibody into an existing substrate.
     AntibodyAdd {
@@ -133,6 +146,34 @@ fn main() -> Result<()> {
             println!(
                 "{}",
                 serde_json::to_string_pretty(&tools.list_antibodies()?)?
+            );
+        }
+        Command::ListCandidates { db } => {
+            // Never auto-create: a missing db means the substrate was never
+            // initialized (or was deleted). Fail loudly, consistent with the gate.
+            require_existing_db(&db)?;
+            let tools = McpTools::open(&db)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&tools.list_candidates(Utc::now())?)?
+            );
+        }
+        Command::Status { db } => {
+            require_existing_db(&db)?;
+            let tools = McpTools::open(&db)?;
+            let antibody_count = tools.list_antibodies()?.len();
+            let sentinel_event_count = tools.sentinel_event_count()?;
+            let last_maintenance = last_maintenance_entry(&db)?;
+            let (audit_bytes, audit_lines) = audit_trail_stats(&db)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "antibody_count": antibody_count,
+                    "sentinel_event_count": sentinel_event_count,
+                    "audit_bytes": audit_bytes,
+                    "audit_lines": audit_lines,
+                    "last_maintenance": last_maintenance,
+                }))?
             );
         }
         Command::AntibodyAdd {
@@ -255,6 +296,62 @@ fn open_tools(db: Option<PathBuf>) -> Result<McpTools> {
         Some(path) => Ok(McpTools::open(path)?),
         None => Ok(McpTools::open_in_memory()?),
     }
+}
+
+/// Fail loudly when the substrate db is absent. Read/query subcommands never
+/// auto-create the db (only install.sh does), consistent with the gate's rule.
+fn require_existing_db(db: &std::path::Path) -> Result<()> {
+    if !db.exists() {
+        bail!(
+            "substrate db missing at {}: run install.sh to initialize (never auto-created)",
+            db.display()
+        );
+    }
+    Ok(())
+}
+
+/// Newest `maintenance` audit entry rendered as a flat JSON object, or JSON null
+/// when maintenance has never run. `AuditLog::list` is ordered ascending by ts,
+/// so the last matching entry is the most recent.
+fn last_maintenance_entry(db: &std::path::Path) -> Result<serde_json::Value> {
+    let substrate_db = Db::open(db)?;
+    let entries = AuditLog::new(&substrate_db).list()?;
+    let Some(entry) = entries
+        .into_iter()
+        .rfind(|entry| entry.event == "maintenance")
+    else {
+        return Ok(serde_json::Value::Null);
+    };
+    let field = |key: &str| entry.payload.get(key).and_then(|v| v.as_u64()).unwrap_or(0);
+    Ok(json!({
+        "ts": entry.ts,
+        "retained": field("retained"),
+        "distilled": field("distilled"),
+        "decayed": field("decayed"),
+        "preserved": field("preserved"),
+        "skipped_live": field("skipped_live"),
+    }))
+}
+
+/// Size and non-empty line count of the raw gate trail `audit.jsonl`, which lives
+/// beside the db. Missing file reports (0, 0) rather than erroring.
+fn audit_trail_stats(db: &std::path::Path) -> Result<(u64, u64)> {
+    let Some(parent) = db.parent() else {
+        return Ok((0, 0));
+    };
+    let audit_path = parent.join("audit.jsonl");
+    if !audit_path.exists() {
+        return Ok((0, 0));
+    }
+    let bytes = std::fs::metadata(&audit_path)?.len();
+    let file = File::open(&audit_path)?;
+    let mut lines = 0u64;
+    for line in BufReader::new(file).lines() {
+        if !line?.trim().is_empty() {
+            lines += 1;
+        }
+    }
+    Ok((bytes, lines))
 }
 
 fn parse_scope(scope: &str) -> SignatureScope {

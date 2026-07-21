@@ -92,6 +92,38 @@ fn sentinel_actions_map_to_severity_and_refusal_mode() {
 }
 
 #[test]
+fn list_candidates_derives_one_candidate_per_stored_event() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = AntibodyStore::open(dir.path().join("mycel.sqlite")).expect("open store");
+    let now = Utc.with_ymd_and_hms(2026, 5, 28, 9, 0, 0).unwrap();
+
+    // Fresh store has no events, so no candidates.
+    assert!(store.list_candidates(now).expect("list empty").is_empty());
+
+    store
+        .ingest_sentinel_audit_jsonl(fixture_jsonl().as_bytes(), now)
+        .expect("ingest sentinel jsonl");
+
+    let candidates = store.list_candidates(now).expect("list candidates");
+    assert_eq!(candidates.len(), 10);
+
+    // Oldest-first, matching the ORDER BY timestamp, id in the query.
+    let first = &candidates[0];
+    assert_eq!(first.source.tool_name, "shell");
+    assert_eq!(first.source.action, SentinelAction::Block);
+    assert_eq!(first.antibody.severity, Severity::Refuse);
+    assert_eq!(first.antibody.refusal_mode, RefusalMode::Hard);
+
+    // A block event derives a would-refuse candidate; an allow event a log-only one.
+    let allow = candidates
+        .iter()
+        .find(|candidate| candidate.source.action == SentinelAction::Allow)
+        .expect("allow candidate");
+    assert_eq!(allow.antibody.severity, Severity::Info);
+    assert_eq!(allow.antibody.refusal_mode, RefusalMode::LogOnly);
+}
+
+#[test]
 fn matched_rule_metadata_is_queryable_from_an_indexed_column() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let store = AntibodyStore::open(dir.path().join("mycel.sqlite")).expect("open store");

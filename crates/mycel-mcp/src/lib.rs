@@ -50,6 +50,18 @@ impl McpTools {
         self.store.list_antibodies()
     }
 
+    /// Count of stored sentinel audit events (the raw gate trail).
+    pub fn sentinel_event_count(&self) -> Result<u32> {
+        self.store.sentinel_event_count()
+    }
+
+    /// Derive an antibody candidate per stored sentinel audit event. Read-only:
+    /// mirrors `list_antibodies`, but over the un-signed "learned, not yet
+    /// trusted" lessons rather than the trusted antibody table.
+    pub fn list_candidates(&self, now: DateTime<Utc>) -> Result<Vec<SentinelAntibodyCandidate>> {
+        self.store.list_candidates(now)
+    }
+
     pub fn run_harness(&self, now: DateTime<Utc>) -> Result<HarnessMetrics> {
         mycel_core::run_v0_1_harness(now)
     }
