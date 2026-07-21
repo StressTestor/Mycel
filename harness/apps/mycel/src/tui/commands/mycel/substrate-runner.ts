@@ -4,7 +4,7 @@
  * Resolves the `mycel-substrate` / `mycel-gate` / `mycel-delegate` binaries and
  * the substrate db/audit/proposals paths from MYCEL_HOME (via the app's
  * getDataDir/getBinDir), then runs a substrate subcommand through `execFile`
- * with an ARGV ARRAY — never a shell string. Agent- and user-authored text
+ * with an ARGV ARRAY - never a shell string. Agent- and user-authored text
  * (patterns, remediation, tasks) rides as a single argv element, so shell
  * metacharacters are inert: no injection is possible.
  *
@@ -110,7 +110,7 @@ export function runSubstrate(
       ok: false,
       failure: {
         kind: 'missing-binary',
-        message: `mycel-substrate not found at ${binPath} — run install.sh (drive unmounted?).`,
+        message: `mycel-substrate not found at ${binPath} - run install.sh (drive unmounted?).`,
       },
     });
   }
@@ -135,7 +135,7 @@ export function runSubstrate(
             ok: false,
             failure: {
               kind: 'missing-binary',
-              message: `mycel-substrate could not be launched at ${binPath} — run install.sh.`,
+              message: `mycel-substrate could not be launched at ${binPath} - run install.sh.`,
             },
           });
           return;

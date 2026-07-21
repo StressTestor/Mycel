@@ -3,7 +3,7 @@
  *
  * Every builder returns a `string[]` where each element is exactly ONE boxed row
  * (see UsagePanelComponent.render). Dynamic values must be folded to a single
- * line first — an embedded newline drops trailing text to column 0 and punches
+ * line first - an embedded newline drops trailing text to column 0 and punches
  * through the rounded border. Colors follow the app theme: `error` (reaper red)
  * for refuse/severity, `success` (mint) for healthy/allow, `warning` (amber) for
  * degraded, `textDim`/`textMuted` for meta.

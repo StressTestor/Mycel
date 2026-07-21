@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -35,6 +35,13 @@ vi.mock('#/tui/commands/mycel/substrate-runner', () => ({
   runSubstrate: runner.runSubstrate,
   runSubstrateJson: runner.runSubstrateJson,
   resolveSubstratePaths: runner.resolveSubstratePaths,
+}));
+
+// Preserve real fs (the suite writes temp files) but stub existsSync so the
+// substrate-db presence checks are controllable. Defaults to present.
+vi.mock('node:fs', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs')>()),
+  existsSync: vi.fn(() => true),
 }));
 
 import { showCandidates } from '#/tui/commands/mycel/candidates';
@@ -96,6 +103,15 @@ describe('showImmunity', () => {
     await showImmunity(host);
     expect(panels).toHaveLength(0);
     expect(host.showError).toHaveBeenCalledWith(expect.stringContaining('mycel-substrate not found'));
+  });
+
+  it('soft-errors on a missing db without creating it (reads as disarmed)', async () => {
+    vi.mocked(existsSync).mockReturnValueOnce(false);
+    const { host, panels } = makeHost();
+    await showImmunity(host);
+    expect(panels).toHaveLength(0);
+    expect(runner.runSubstrateJson).not.toHaveBeenCalled();
+    expect(host.showError).toHaveBeenCalledWith(expect.stringContaining('not initialized'));
   });
 
   it('soft-errors on a non-array payload', async () => {

@@ -2,7 +2,7 @@
  * TypeScript mirrors of the `mycel-substrate` JSON contract.
  *
  * These are parsed from the substrate CLI's stdout (serde_json). They are NOT
- * imported from Rust — they intentionally track the wire shape, so a version
+ * imported from Rust - they intentionally track the wire shape, so a version
  * drift shows up as a parse/shape mismatch the panels degrade on rather than a
  * type error here.
  */

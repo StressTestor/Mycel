@@ -109,7 +109,7 @@ describe('handleDelegateCommand', () => {
     child.emit('close', 0);
     await pending;
 
-    expect(spinner.stop).toHaveBeenCalledWith({ ok: true, label: 'Handed off · gate held.' });
+    expect(spinner.stop).toHaveBeenCalledWith({ ok: true, label: 'handed off · gate held.' });
     expect(panels).toHaveLength(1);
     const rendered = panels[0]!.render(80).join('\n');
     expect(rendered).toContain('hello');

@@ -6,7 +6,7 @@
  *
  * Read-only panels: /immunity, /gate, /substrate, /candidates.
  * Actions: /promote, /deny, /delegate.
- * All fail SOFT — a missing db/binary/empty result renders a clear message,
+ * All fail SOFT - a missing db/binary/empty result renders a clear message,
  * never a crash.
  */
 
@@ -20,21 +20,21 @@ export const MYCEL_SLASH_COMMANDS = [
   {
     name: 'immunity',
     aliases: ['antibodies'],
-    description: 'Show active antibodies — what the gate will refuse',
+    description: 'Show active antibodies - what the gate will refuse',
     priority: FAMILY_PRIORITY,
     availability: 'always',
   },
   {
     name: 'gate',
     aliases: ['guard', 'doorman'],
-    description: 'Show guard status — the doorman: fail-closed, deny by default',
+    description: 'Show guard status - the doorman: fail-closed, deny by default',
     priority: FAMILY_PRIORITY,
     availability: 'always',
   },
   {
     name: 'substrate',
     aliases: ['marrow'],
-    description: 'Show substrate health — the marrow that persists across sessions',
+    description: 'Show substrate health - the marrow that persists across sessions',
     priority: FAMILY_PRIORITY,
     availability: 'always',
   },
@@ -48,7 +48,7 @@ export const MYCEL_SLASH_COMMANDS = [
   {
     name: 'promote',
     aliases: ['sign'],
-    description: 'Sign a proposed antibody into the substrate — you sign what the body learns',
+    description: 'Sign a proposed antibody into the substrate - you sign what the body learns',
     priority: FAMILY_PRIORITY,
     availability: 'always',
     argumentHint: '<id> [severity] [refusal-mode]',

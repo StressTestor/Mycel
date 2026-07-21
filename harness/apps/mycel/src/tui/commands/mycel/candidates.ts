@@ -1,5 +1,5 @@
 /**
- * `/candidates` (aliases `/candidate`, `/learned`) — read-only panel of lessons
+ * `/candidates` (aliases `/candidate`, `/learned`) - read-only panel of lessons
  * the learning loop captured but no human has signed yet: "learned, not yet
  * trusted". Sourced from `mycel-substrate list-candidates` (derived from the
  * stored sentinel gate events).

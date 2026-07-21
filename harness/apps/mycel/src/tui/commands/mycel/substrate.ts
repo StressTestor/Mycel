@@ -1,6 +1,6 @@
 /**
- * `/substrate` (alias `/marrow`) — read-only health panel for the Mycel
- * substrate: "the marrow — what persists across sessions". Shows active
+ * `/substrate` (alias `/marrow`) - read-only health panel for the Mycel
+ * substrate: "the marrow - what persists across sessions". Shows active
  * antibodies, pending candidates (un-distilled sentinel events), audit-trail
  * size, and the last maintenance pass. Sourced from `mycel-substrate status`.
  */
@@ -28,7 +28,7 @@ export function buildSubstrateStatusReportLines(options: SubstrateStatusReportOp
   const label = (text: string): string => muted(text.padEnd(LABEL_WIDTH));
   const dbShort = homeRelative(options.dbPath);
 
-  const lines: string[] = [accent('>_ Substrate  (the marrow — what persists across sessions)'), ''];
+  const lines: string[] = [accent('>_ Substrate  (the marrow - what persists across sessions)'), ''];
 
   if (options.error !== undefined) {
     lines.push(`  ${error(options.error)}`);
@@ -78,7 +78,7 @@ export function buildSubstrateStatusReportLines(options: SubstrateStatusReportOp
 function failureCopy(kind: string, message: string): string {
   switch (kind) {
     case 'missing-binary':
-      return 'substrate binary not found — run install.sh';
+      return 'substrate binary not found - run install.sh';
     case 'timeout':
       return 'substrate status timed out';
     case 'malformed-output':
@@ -86,7 +86,7 @@ function failureCopy(kind: string, message: string): string {
     case 'nonzero-exit':
       // The CLI prints a clear "substrate db missing … run install.sh" here.
       return message.includes('db missing')
-        ? 'substrate not initialized — run install.sh'
+        ? 'substrate not initialized - run install.sh'
         : `could not read substrate status: ${message}`;
     default:
       return `could not read substrate status: ${message}`;

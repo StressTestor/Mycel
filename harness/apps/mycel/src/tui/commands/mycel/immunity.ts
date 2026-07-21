@@ -1,7 +1,9 @@
 /**
- * `/immunity` (alias `/antibodies`) — read-only panel of the ACTIVE antibodies
+ * `/immunity` (alias `/antibodies`) - read-only panel of the ACTIVE antibodies
  * in the substrate: what the gate will refuse, grouped by severity.
  */
+
+import { existsSync } from 'node:fs';
 
 import type { SlashCommandHost } from '../dispatch';
 import {
@@ -60,11 +62,11 @@ export function buildImmunityReportLines(options: ImmunityReportOptions): string
   const nowMs = options.nowMs ?? Date.now();
   const antibodies = options.antibodies;
 
-  const lines: string[] = [accent('Your immune system — what the body will refuse')];
+  const lines: string[] = [accent('your immune system - what the body will refuse')];
 
   if (antibodies.length === 0) {
     lines.push(
-      muted('  No antibodies yet. The body has learned nothing to refuse — every command passes.'),
+      muted('  No antibodies yet. The body has learned nothing to refuse - every command passes.'),
     );
     lines.push('');
     lines.push(`  ${muted('Curate with')} ${value('mycel-substrate antibody-add')}`);
@@ -113,7 +115,7 @@ export function buildImmunityReportLines(options: ImmunityReportOptions): string
   lines.push('');
   lines.push(
     `  ${value(`${counts.refuse} refuse · ${counts.warn} warn · ${counts.info} info`)}${muted(
-      ` — ${antibodies.length} antibodies active`,
+      ` - ${antibodies.length} antibodies active`,
     )}`,
   );
   lines.push(`  ${muted('Curate with')} ${value('mycel-substrate antibody-add')}`);
@@ -122,6 +124,16 @@ export function buildImmunityReportLines(options: ImmunityReportOptions): string
 
 export async function showImmunity(host: SlashCommandHost): Promise<void> {
   const { dbPath } = resolveSubstratePaths();
+
+  // read-only: never create the db as a side effect of a status panel. a
+  // missing db reads as a disarmed guard, not an empty immune system.
+  if (!existsSync(dbPath)) {
+    host.showError(
+      'immunity: substrate not initialized (no db) - run install.sh. a missing db reads as a disarmed guard.',
+    );
+    return;
+  }
+
   const result = await runSubstrateJson<Antibody[]>('list-antibodies', ['--db', dbPath]);
 
   if (!result.ok) {

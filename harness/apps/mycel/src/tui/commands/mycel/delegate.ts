@@ -1,5 +1,5 @@
 /**
- * `/delegate <task>` (alias `/handoff`) — hand a task to a governed `claude -p`
+ * `/delegate <task>` (alias `/handoff`) - hand a task to a governed `claude -p`
  * subagent; the gate stays closed. The task rides as a SINGLE argv element to a
  * `spawn` (no shell), so quotes/backticks/`$()` in the task are inert bytes.
  * Governance = every Bash the subagent runs passes mycel-gate --claude
@@ -18,6 +18,9 @@ import { resolveSubstratePaths } from './substrate-runner';
 const MAX_BODY_LINES = 40;
 /** Bound a chatty subagent so it can't OOM the TUI. */
 const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+/** Backstop so a hung delegate can't run forever with no exit. Generous - a
+ * real delegated task can take minutes; this only kills a genuine hang. */
+const DELEGATE_TIMEOUT_MS = 10 * 60 * 1000;
 
 export interface DelegateResultOptions {
   readonly task: string;
@@ -29,9 +32,9 @@ export interface DelegateResultOptions {
 function decodeExitReason(exitCode: number, stderr: string): string {
   switch (exitCode) {
     case 2:
-      return 'claude not on PATH — install Claude Code to delegate';
+      return 'claude not on PATH - install Claude Code to delegate';
     case 3:
-      return 'governance config missing — run install.sh (refuses to spawn ungoverned)';
+      return 'governance config missing - run install.sh (refuses to spawn ungoverned)';
     case 1:
       return 'no task reached the subagent';
     default:
@@ -42,15 +45,15 @@ function decodeExitReason(exitCode: number, stderr: string): string {
 export function buildDelegateResultLines(options: DelegateResultOptions): string[] {
   const { accent, value, muted, error } = painters();
   const lines: string[] = [
-    accent('Delegate'),
+    accent('delegate'),
     `  ${muted('task    ')}${value(foldLine(options.task))}`,
     `  ${muted('gate    ')}${value('mycel-gate --claude')} ${muted('· fail-closed')}`,
-    `  ${muted('—')}`,
+    `  ${muted('-')}`,
   ];
 
   if (options.exitCode !== 0) {
     lines.push(`  ${error(decodeExitReason(options.exitCode, options.stderr ?? ''))}`);
-    lines.push(`  ${muted('—')}`);
+    lines.push(`  ${muted('-')}`);
     lines.push(`  ${muted('delegation failed')}`);
     return lines;
   }
@@ -71,7 +74,7 @@ export function buildDelegateResultLines(options: DelegateResultOptions): string
     }
   }
 
-  lines.push(`  ${muted('—')}`);
+  lines.push(`  ${muted('-')}`);
   lines.push(`  ${muted(`done · subagent returned ${bodyLines.length} lines`)}`);
   return lines;
 }
@@ -85,7 +88,7 @@ export function handleDelegateCommand(host: SlashCommandHost, args: string): Pro
 
   const { delegateBinPath } = resolveSubstratePaths();
   if (!existsSync(delegateBinPath)) {
-    host.showError(`mycel-delegate not found at ${delegateBinPath} — run install.sh (drive unmounted?)`);
+    host.showError(`mycel-delegate not found at ${delegateBinPath} - run install.sh (drive unmounted?)`);
     return Promise.resolve();
   }
 
@@ -108,9 +111,11 @@ export function handleDelegateCommand(host: SlashCommandHost, args: string): Pro
       child = spawn(delegateBinPath, [task], {
         env: process.env,
         stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: DELEGATE_TIMEOUT_MS,
+        killSignal: 'SIGTERM',
       });
     } catch (spawnError) {
-      spinner.stop({ ok: false, label: 'Could not launch mycel-delegate.' });
+      spinner.stop({ ok: false, label: 'could not launch mycel-delegate.' });
       host.showError(formatErrorMessage(spawnError));
       finish();
       return;
@@ -138,18 +143,21 @@ export function handleDelegateCommand(host: SlashCommandHost, args: string): Pro
     });
 
     child.on('error', (childError) => {
-      spinner.stop({ ok: false, label: 'Could not launch mycel-delegate.' });
+      spinner.stop({ ok: false, label: 'could not launch mycel-delegate.' });
       host.showError(formatErrorMessage(childError));
       finish();
     });
 
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       if (settled) return;
+      const timedOut = code === null && signal === 'SIGTERM';
       const exitCode = code ?? 1;
-      if (exitCode === 0) {
-        spinner.stop({ ok: true, label: 'Handed off · gate held.' });
+      if (timedOut) {
+        spinner.stop({ ok: false, label: 'delegate timed out - killed after 10m.' });
+      } else if (exitCode === 0) {
+        spinner.stop({ ok: true, label: 'handed off · gate held.' });
       } else {
-        spinner.stop({ ok: false, label: 'Delegation failed.' });
+        spinner.stop({ ok: false, label: 'delegation failed.' });
       }
       const body = truncated ? `${stdout}\n…(output truncated)` : stdout;
       mountPanel(host, ' Delegate ', () =>

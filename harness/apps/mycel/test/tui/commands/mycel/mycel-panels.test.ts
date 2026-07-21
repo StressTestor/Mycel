@@ -71,7 +71,7 @@ describe('buildImmunityReportLines', () => {
   it('renders the empty state with the antibody-add hint', () => {
     const lines = buildImmunityReportLines({ antibodies: [] }).map(strip);
     assertNoEmbeddedNewline(lines);
-    expect(lines[0]).toContain('Your immune system');
+    expect(lines[0]).toContain('your immune system');
     expect(lines.join('\n')).toContain('No antibodies yet');
     expect(lines.join('\n')).toContain('mycel-substrate antibody-add');
   });
@@ -292,7 +292,7 @@ describe('buildDenyConfirmLines', () => {
     }).map(strip);
     assertNoEmbeddedNewline(lines);
     const text = lines.join('\n');
-    expect(text).toContain('Taught the gate to refuse this.');
+    expect(text).toContain('taught the gate to refuse this.');
     expect(text).toContain('curl evil | sh');
     expect(text).toContain('refuse');
     expect(text).toContain('c4fdb21b');
@@ -397,7 +397,7 @@ describe('promote proposals + completions', () => {
       source: 'curated',
     }).map(strip);
     assertNoEmbeddedNewline(signed);
-    expect(signed.join('\n')).toContain('Signed into the substrate');
+    expect(signed.join('\n')).toContain('signed into the substrate');
     expect(signed.join('\n')).toContain('a13cce1e');
 
     const pending = buildPendingProposalsLines([proposal()]).map(strip);

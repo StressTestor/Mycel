@@ -1,5 +1,5 @@
 /**
- * `/gate` (aliases `/guard`, `/doorman`) — read-only status panel: is the
+ * `/gate` (aliases `/guard`, `/doorman`) - read-only status panel: is the
  * mycel-gate PreToolUse guard armed? Derives an honest arming state from the
  * config.toml hook wiring, the substrate-db presence, and the active antibody
  * count. The protected-path floor is a compiled constant, stated as a fact.
@@ -84,7 +84,7 @@ export function readGateWiring(configPath: string): GateWiring {
   return { configReadable: true, hookWired: true, matcher, failMode };
 }
 
-/** Derive the arming state. Honest and composite — not a single boolean. */
+/** Derive the arming state. Honest and composite - not a single boolean. */
 export function deriveGateStatus(wiring: GateWiring, dbPresent: boolean): GateStatus {
   if (!wiring.configReadable) return 'unknown';
   if (!wiring.hookWired) return 'disarmed';
@@ -95,8 +95,8 @@ export function deriveGateStatus(wiring: GateWiring, dbPresent: boolean): GateSt
 
 const STATUS_META: Record<GateStatus, { label: string; token: 'success' | 'error' | 'warning' }> = {
   armed: { label: 'ARMED', token: 'success' },
-  tripwire: { label: 'ARMED — TRIPWIRE', token: 'warning' },
-  'fail-open': { label: 'ARMED — FAIL-OPEN', token: 'warning' },
+  tripwire: { label: 'ARMED - TRIPWIRE', token: 'warning' },
+  'fail-open': { label: 'ARMED - FAIL-OPEN', token: 'warning' },
   disarmed: { label: 'DISARMED', token: 'error' },
   unknown: { label: 'STATUS UNKNOWN', token: 'warning' },
 };
@@ -133,7 +133,7 @@ export function buildGateReportLines(options: GateReportOptions): string[] {
       wiring.failMode === 'closed'
         ? `${value('closed')}  ${muted('(nonzero exit blocks the operation)')}`
         : wiring.failMode === 'open'
-          ? `${value('open')}  ${muted('(degraded — tool proceeds on gate error)')}`
+          ? `${value('open')}  ${muted('(degraded - tool proceeds on gate error)')}`
           : muted('unknown');
     rows.push(`${label('Fail mode')}${failText}`);
   }
@@ -165,12 +165,12 @@ export function buildGateReportLines(options: GateReportOptions): string[] {
   const statusLine = `${muted('Status'.padEnd(13))}${boldToken(meta.token, meta.label)}`;
 
   return [
-    accent('The doorman — fail-closed, deny by default'),
+    accent('the doorman - fail-closed, deny by default'),
     statusLine,
     '',
     ...rows,
     '',
-    `  ${muted('from config.toml — on-disk config, not live-session state')}`,
+    `  ${muted('from config.toml - on-disk config, not live-session state')}`,
   ];
 }
 
@@ -179,7 +179,7 @@ export async function showGateStatus(host: SlashCommandHost): Promise<void> {
   const wiring = readGateWiring(paths.configPath);
   const dbPresent = existsSync(paths.dbPath);
 
-  // Read-only: do NOT run list-antibodies when the db is absent — that would
+  // Read-only: do NOT run list-antibodies when the db is absent - that would
   // auto-create the db as a side effect of a status panel.
   let antibodies: GateAntibodyInfo | { error: string };
   if (!dbPresent) {

@@ -1,5 +1,5 @@
 /**
- * `/promote <id>` (alias `/sign`) — the human-in-the-loop moment: sign a
+ * `/promote <id>` (alias `/sign`) - the human-in-the-loop moment: sign a
  * proposed antibody from `proposals.jsonl` into the live substrate. Reads the
  * inert proposal by id (full uuid or unique prefix), then shells the real
  * `mycel-substrate antibody-add` and echoes exactly what got signed.
@@ -20,7 +20,7 @@ import { resolveSubstratePaths, runSubstrate } from './substrate-runner';
 import type { AntibodyAddResult, Proposal, SubstrateSeverity } from './types';
 
 const SEVERITY_COMPLETIONS: readonly ArgCompletionSpec[] = [
-  { value: 'refuse', description: 'Hard-severity — refuses when paired with hard' },
+  { value: 'refuse', description: 'Hard-severity - refuses when paired with hard' },
   { value: 'warn', description: 'Warn only (default)' },
   { value: 'info', description: 'Log only' },
 ];
@@ -123,7 +123,7 @@ export function buildPromoteReportLines(options: PromoteResultOptions): string[]
     options.outcome === 'allow' ? 'info' : (options.outcome as SubstrateSeverity),
   );
   const lines = [
-    accent('Signed into the substrate'),
+    accent('signed into the substrate'),
     `  ${muted('antibody     ')}${value(shortId(options.newId))} ${muted('(new live id)')}`,
     `  ${muted('from         ')}${muted(`proposal ${shortId(options.proposalId)}`)}`,
     `  ${muted('signature    ')}${value(foldLine(options.signatureLabel))}`,
@@ -135,7 +135,7 @@ export function buildPromoteReportLines(options: PromoteResultOptions): string[]
     lines.push(`  ${warning(foldLine(options.downgradeWarning))}`);
   }
   lines.push('');
-  lines.push(`  ${muted('This reflex is live now — the gate will act on the next matching call.')}`);
+  lines.push(`  ${muted('This reflex is live now - the gate will act on the next matching call.')}`);
   return lines;
 }
 
@@ -144,11 +144,11 @@ export function buildPendingProposalsLines(proposals: readonly Proposal[]): stri
   if (proposals.length === 0) {
     return [
       accent('learned proposals'),
-      muted("  no candidates yet — the substrate hasn't proposed anything (propose_antibody writes here)"),
+      muted("  no candidates yet - the substrate hasn't proposed anything (propose_antibody writes here)"),
     ];
   }
   const idWidth = Math.max(8, ...proposals.map((p) => shortId(p.id).length));
-  const lines = [accent('learned proposals — sign one with  /promote <id>')];
+  const lines = [accent('learned proposals - sign one with  /promote <id>')];
   for (const proposal of proposals) {
     const remediation = proposal.remediation ?? proposal.rationale ?? '(no remediation)';
     lines.push(
@@ -230,7 +230,7 @@ export async function handlePromoteCommand(host: SlashCommandHost, args: string)
     return;
   }
   if (resolved.kind === 'ambiguous') {
-    host.showError(`Ambiguous id ${idArg} — matches ${resolved.ids.join(', ')}.`);
+    host.showError(`Ambiguous id ${idArg} - matches ${resolved.ids.join(', ')}.`);
     return;
   }
 

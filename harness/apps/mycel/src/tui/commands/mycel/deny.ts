@@ -1,5 +1,5 @@
 /**
- * `/deny <command-pattern>` (aliases `/refuse`, `/block`) — teach the gate to
+ * `/deny <command-pattern>` (aliases `/refuse`, `/block`) - teach the gate to
  * refuse a command now by writing a curated hard-refuse antibody into the
  * substrate. Everything after `/deny ` is one raw value passed as a single
  * `--command-pattern` argv element (no shell, no injection).
@@ -23,7 +23,7 @@ export function buildDenyConfirmLines(options: DenyConfirmOptions): string[] {
   const { accent, value, muted, error } = painters();
   const shortId = options.id.length > 8 ? options.id.slice(0, 8) : options.id;
   return [
-    accent('Taught the gate to refuse this.'),
+    accent('taught the gate to refuse this.'),
     '',
     `  ${muted('pattern   ')}${value(foldLine(options.pattern))}`,
     `  ${muted('verdict   ')}${error('refuse')} ${muted('· hard refusal (fails closed)')}`,
