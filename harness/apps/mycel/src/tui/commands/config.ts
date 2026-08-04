@@ -427,15 +427,15 @@ export function showModelPicker(host: SlashCommandHost, selectedValue: string = 
   );
 }
 
-async function performModelSwitch(
+export async function performModelSwitch(
   host: SlashCommandHost,
   alias: string,
   effort: ThinkingEffort,
   persist: boolean,
-): Promise<void> {
+): Promise<boolean> {
   if (host.state.appState.streamingPhase !== 'idle') {
     host.showError('Cannot switch models while streaming — press Esc or Ctrl-C first.');
-    return;
+    return false;
   }
 
   const prevModel = host.state.appState.model;
@@ -464,7 +464,7 @@ async function performModelSwitch(
   } catch (error) {
     const msg = formatErrorMessage(error);
     host.showError(`Failed to switch model: ${msg}`);
-    return;
+    return false;
   }
 
   if (session === undefined) {
@@ -498,7 +498,7 @@ async function performModelSwitch(
     } catch (error) {
       const msg = formatErrorMessage(error);
       host.showError(`Switched to ${displayName}, but failed to save default: ${msg}`);
-      return;
+      return false;
     }
   }
 
@@ -517,6 +517,7 @@ async function performModelSwitch(
     status = `Already using ${displayName} with thinking ${effectiveEffort}.`;
   }
   host.showStatus(status, 'success');
+  return true;
 }
 
 async function persistModelSelection(

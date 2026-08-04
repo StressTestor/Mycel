@@ -24,6 +24,7 @@ tools:
   - WebSearch
   - Agent
   - AgentSwarm
+  - Workflow
   - FetchURL
   - AskUserQuestion
   - EnterPlanMode

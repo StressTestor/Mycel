@@ -559,6 +559,16 @@ export class TasksBrowserApp extends Container implements Focusable {
         lines.push(`${label('Tool call:')}${currentTheme.fg('textMuted', task.toolCallId)}`);
       }
     }
+    if (task.kind === 'workflow') {
+      lines.push(`${label('Workflow:')}${value(task.workflowName)}`);
+      lines.push(`${label('Run ID:')}${currentTheme.fg('textMuted', task.runId)}`);
+      lines.push(
+        `${label('Plan:')}${currentTheme.fg('textMuted', `${String(task.phaseCount)} phases · ${String(task.agentCount)} agents`)}`,
+      );
+      if (task.manifestPath !== undefined) {
+        lines.push(`${label('Manifest:')}${currentTheme.fg('textMuted', task.manifestPath)}`);
+      }
+    }
     const timing =
       task.status === 'running'
         ? `running ${formatRelativeTime(task.startedAt)}`

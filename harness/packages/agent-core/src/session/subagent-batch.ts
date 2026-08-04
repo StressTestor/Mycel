@@ -49,8 +49,12 @@ type BaseQueuedSubagentTask<T> = {
   readonly swarmIndex?: number;
   readonly swarmItem?: string;
   readonly runInBackground: boolean;
+  /** Keep the child alive when the parent turn ends without presenting it as a standalone task. */
+  readonly detachFromParent?: boolean;
   readonly timeout?: number;
   readonly signal?: AbortSignal;
+  /** Tool names removed from this child after its profile is applied. */
+  readonly disabledTools?: readonly string[];
 };
 
 export type SpawnQueuedSubagentTask<T = unknown> = BaseQueuedSubagentTask<T> & {
@@ -306,11 +310,13 @@ export class SubagentBatch<T> {
       description: task.description,
       swarmIndex: task.swarmIndex,
       runInBackground: task.runInBackground,
+      detachFromParent: task.detachFromParent,
       signal: attempt.controller.signal,
       onReady: () => {
         this.markAttemptReady(attempt);
       },
       suppressRateLimitFailureEvent: true,
+      disabledTools: task.disabledTools,
     };
 
     let handle: SubagentHandle;

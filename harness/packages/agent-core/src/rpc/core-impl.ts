@@ -189,7 +189,15 @@ export interface KimiCoreOptions {
    * `applyPrintModeConfigDefaults` (user-set values still win).
    */
   readonly uiMode?: string | undefined;
+  /**
+   * Enable the reduced programmatic Workflow surface. Programmatic workflows
+   * are hard-capped at three worker subagents; the parent Mycel agent is not
+   * counted. Print mode enables this automatically.
+   */
+  readonly programmaticWorkflows?: boolean | undefined;
 }
+
+export const PROGRAMMATIC_WORKFLOW_MAX_AGENTS = 3;
 
 export class KimiCore implements PromisableMethods<CoreAPI> {
   readonly sdk: Promise<SDKRPC>;
@@ -218,6 +226,7 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
   private readonly experimentalFlags: FlagResolver;
   /** `true` when the host runs `mycel -p` (v1 print mode); see `withPrintModeDefaults`. */
   private readonly printMode: boolean;
+  private readonly workflowMaxAgents: number | undefined;
   /** Owner-scoped [image] limits; reload pushes the new config via setConfig. */
   readonly imageLimits: ImageLimits;
 
@@ -239,6 +248,10 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
     this.telemetry = options.telemetry ?? noopTelemetryClient;
     this.appVersion = options.appVersion;
     this.printMode = options.uiMode === 'print';
+    this.workflowMaxAgents =
+      this.printMode || options.programmaticWorkflows === true
+        ? PROGRAMMATIC_WORKFLOW_MAX_AGENTS
+        : undefined;
     ensureKimiHome(this.homeDir);
     // Schema errors degrade (invalid sections are dropped with warnings) so a
     // typo cannot prevent startup, but a file that cannot be used at all —
@@ -371,6 +384,7 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
       skills: this.resolveSessionSkillConfig(config),
       mcpConfig,
       experimentalFlags: this.experimentalFlags,
+      workflowMaxAgents: this.workflowMaxAgents,
       imageLimits: this.imageLimits,
       telemetry: sessionTelemetry,
       pluginSessionStarts,
@@ -516,6 +530,7 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
       skills: this.resolveSessionSkillConfig(config),
       mcpConfig,
       experimentalFlags: this.experimentalFlags,
+      workflowMaxAgents: this.workflowMaxAgents,
       imageLimits: this.imageLimits,
       telemetry: withTelemetryContext(this.telemetry, { sessionId: summary.id }),
       initializeMainAgent: false,

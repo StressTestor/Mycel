@@ -50,6 +50,8 @@
 | `/plan clear` | — | 清除当前 plan 方案 | 否 |
 | `/swarm on\|off` | — | 开启或关闭 swarm mode，但不发送提示词。 | 是 |
 | `/swarm <task>` | — | 先开启 swarm mode，再把 `<task>` 作为普通提示词发送。如果该轮次正常完成，swarm mode 会自动关闭。若当前是 `manual` 权限模式，启动前会提示是否切换到 `auto` 或 `yolo`。 | 否 |
+| `/hyphae on\|off` | — | 开启或关闭 Hyphae 编排。开启时为当前会话选择 `xhigh` Thinking 强度并启用 swarm mode 授权；关闭时保留当前 Thinking 强度。 | 否 |
+| `/hyphae <task>` | — | 选择 `xhigh`，为一个轮次启用编排，并将 `<task>` 作为普通提示词发送。 | 否 |
 | `/goal [...]` | — | 开始或管理目标模式 | 见下文 |
 
 ::: warning 注意

@@ -53,6 +53,7 @@ export function registerAcpCommand(parent: Command): void {
       const harness = createKimiHarness({
         identity,
         uiMode: 'acp',
+        programmaticWorkflows: true,
       });
       // Forward the home env (if set) into `authMethods[0].env` so the
       // `mycel login` subprocess clients spawn for terminal-auth writes its

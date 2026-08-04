@@ -45,6 +45,7 @@ export type {
   BackgroundTaskStatus,
   ProcessBackgroundTaskInfo,
   QuestionBackgroundTaskInfo,
+  WorkflowBackgroundTaskInfo,
 } from './agent/background';
 export type { CronTaskSnapshot } from './agent/cron';
 export type { ToolServices } from './tools/support/services';

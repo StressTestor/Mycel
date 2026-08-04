@@ -429,6 +429,33 @@ describe('SessionSubagentHost', () => {
     await expect(execution).resolves.toMatchObject({ output: 'moon-result' });
   });
 
+  it('removes structurally disabled tools after applying and inheriting a child profile', async () => {
+    const parent = testAgent();
+    parent.configure();
+    const summary =
+      'Completed the bounded workflow task without delegating further work. The requested implementation was inspected, changed, and verified, and this handoff contains enough detail for the workflow parent to continue safely.';
+    const child = testAgent();
+    child.mockNextResponse({ type: 'text', text: summary });
+    const host = new SessionSubagentHost(fakeSession(parent.agent, child.agent), 'main');
+
+    const handle = await host.spawn({
+      profileName: 'coder',
+      parentToolCallId: 'call_workflow',
+      prompt: 'Implement one bounded workflow task',
+      description: 'Implement task',
+      runInBackground: true,
+      disabledTools: ['Agent', 'AgentSwarm', 'Workflow'],
+      signal,
+    });
+
+    await expect(handle.completion).resolves.toMatchObject({ result: summary });
+    const toolNames = child.llmCalls[0]?.tools.map((tool) => tool.name) ?? [];
+    expect(toolNames).toContain('Write');
+    expect(toolNames).not.toContain('Agent');
+    expect(toolNames).not.toContain('AgentSwarm');
+    expect(toolNames).not.toContain('Workflow');
+  });
+
   it('falls back to bundled subagent profiles when the parent profile is missing', async () => {
     const parent = testAgent();
     parent.configure();
@@ -714,6 +741,39 @@ describe('SessionSubagentHost', () => {
         args: expect.objectContaining({ turnId: 0 }),
       }),
     );
+  });
+
+  it('reports workflow-detached children as active background agents', async () => {
+    const parent = testAgent();
+    parent.configure();
+    parent.newEvents();
+
+    const workflowController = new AbortController();
+    const child = testAgent();
+    child.mockNextResponse({ type: 'text', text: 'I will run Bash.' }, bashCall());
+    const session = fakeSession(parent.agent, child.agent);
+    const host = new SessionSubagentHost(session, 'main');
+
+    const handle = await host.spawn({
+      profileName: 'explore',
+      parentToolCallId: 'call_workflow',
+      prompt: 'Keep working for the workflow',
+      description: 'Workflow task',
+      runInBackground: false,
+      detachFromParent: true,
+      signal: workflowController.signal,
+    });
+
+    await child.untilApprovalRequest();
+    expect(host.activeBackgroundAgentIds()).toEqual(['agent-0']);
+
+    host.cancelAll();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(child.agent.turn.hasActiveTurn).toBe(true);
+
+    workflowController.abort();
+    await expect(handle.completion).rejects.toThrow('Aborted');
+    expect(host.activeBackgroundAgentIds()).toEqual([]);
   });
 
   it('re-prompts the child when the first summary is too short', async () => {

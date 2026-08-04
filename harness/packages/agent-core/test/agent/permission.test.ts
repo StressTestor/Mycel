@@ -24,6 +24,7 @@ import { FallbackAskPermissionPolicy } from '../../src/agent/permission/policies
 import { createPermissionDecisionPolicies } from '../../src/agent/permission/policies';
 import { SwarmModeAgentSwarmApprovePermissionPolicy } from '../../src/agent/permission/policies/swarm-mode-agent-swarm-approve';
 import { YoloModeApprovePermissionPolicy } from '../../src/agent/permission/policies/yolo-mode-approve';
+import { WorkflowExclusiveDenyPermissionPolicy } from '../../src/agent/permission/policies/workflow-exclusive-deny';
 import { ToolAccesses } from '../../src/loop';
 import type { ToolInputDisplay } from '../../src/tools/display';
 import {
@@ -751,6 +752,7 @@ describe('Permission policy chain', () => {
     expect(createPermissionDecisionPolicies({} as Agent).map((policy) => policy.name)).toEqual([
       'pre-tool-call-hook',
       'agent-swarm-exclusive-deny',
+      'workflow-exclusive-deny',
       'auto-mode-ask-user-question-deny',
       'plan-mode-guard-deny',
       'user-configured-deny',
@@ -862,7 +864,7 @@ describe('Simple permission policy direct behavior', () => {
     expect(policy.evaluate()).toEqual({ kind: 'approve' });
   });
 
-  it('approves only AgentSwarm when swarm mode is active', () => {
+  it('approves orchestration tools only when swarm mode is active', () => {
     const swarmMode = { isActive: false };
     const agent = { swarmMode } as unknown as Agent;
     const policy = new SwarmModeAgentSwarmApprovePermissionPolicy(agent);
@@ -873,6 +875,9 @@ describe('Simple permission policy direct behavior', () => {
     Object.assign(swarmMode, { isActive: true });
     expect(
       policy.evaluate(hookContext({ id: 'call_agent_swarm_active', toolName: 'AgentSwarm' })),
+    ).toEqual({ kind: 'approve' });
+    expect(
+      policy.evaluate(hookContext({ id: 'call_workflow_active', toolName: 'Workflow' })),
     ).toEqual({ kind: 'approve' });
     expect(
       policy.evaluate(hookContext({ id: 'call_agent_active', toolName: 'Agent' })),
@@ -967,6 +972,37 @@ describe('Simple permission policy direct behavior', () => {
           id: 'call_agent_swarm',
           toolName: 'AgentSwarm',
           toolCalls: [agentSwarmCall],
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it('denies Workflow mixed with other tool calls and allows one launch alone', () => {
+    const policy = new WorkflowExclusiveDenyPermissionPolicy();
+    const workflowCall = toolCall('call_workflow', 'Workflow', {
+      plan: { version: 1, name: 'review', description: 'Review', phases: [] },
+    });
+    const readCall = toolCall('call_read', 'Read', { path: 'src/a.ts' });
+
+    expect(
+      policy.evaluate(
+        hookContext({
+          id: 'call_workflow',
+          toolName: 'Workflow',
+          toolCalls: [workflowCall, readCall],
+        }),
+      ),
+    ).toMatchObject({
+      kind: 'deny',
+      message: expect.stringContaining('Workflow must be the only tool call'),
+      reason: { workflow_tool_calls: 1, tool_calls: 2 },
+    });
+    expect(
+      policy.evaluate(
+        hookContext({
+          id: 'call_workflow',
+          toolName: 'Workflow',
+          toolCalls: [workflowCall],
         }),
       ),
     ).toBeUndefined();

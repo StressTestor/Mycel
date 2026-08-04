@@ -109,6 +109,7 @@ export interface TestAgentOptions {
   readonly telemetry?: TelemetryClient | undefined;
   readonly log?: Logger;
   readonly experimentalFlags?: AgentOptions['experimentalFlags'];
+  readonly workflowMaxAgents?: AgentOptions['workflowMaxAgents'];
 }
 
 interface ConfigureOptions {
@@ -197,6 +198,7 @@ export class AgentTestContext {
       telemetry: options.telemetry,
       log: options.log,
       experimentalFlags: options.experimentalFlags,
+      workflowMaxAgents: options.workflowMaxAgents,
     });
     if (options.goal !== undefined) {
       (this.agent as unknown as { goal: GoalMode }).goal = options.goal;

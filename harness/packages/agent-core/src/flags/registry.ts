@@ -45,6 +45,15 @@ export const FLAG_DEFINITIONS = [
     default: false,
     surface: 'core',
   },
+  {
+    id: 'dynamic_workflows',
+    title: 'Dynamic workflows',
+    description:
+      'Enable declarative, phased multi-agent workflows and saved workflow plans.',
+    env: 'KIMI_CODE_EXPERIMENTAL_DYNAMIC_WORKFLOWS',
+    default: false,
+    surface: 'core',
+  },
 ] as const satisfies readonly FlagDefinitionInput[];
 
 /** Literal union of registered flag ids. */

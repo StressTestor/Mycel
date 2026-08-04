@@ -48,6 +48,8 @@ export { ProcessBackgroundTask } from './process-task';
 export type { ProcessBackgroundTaskInfo } from './process-task';
 export { QuestionBackgroundTask } from './question-task';
 export type { QuestionBackgroundTaskInfo } from './question-task';
+export { WorkflowBackgroundTask } from './workflow-task';
+export type { WorkflowBackgroundTaskInfo } from './workflow-task';
 export { BackgroundTaskPersistence } from './persist';
 export type {
   BackgroundTaskInfo,
@@ -649,14 +651,18 @@ export class BackgroundManager {
     for (const [id, info] of this.ghosts) {
       // Any non-terminal ghost is lost.
       if (TERMINAL_STATUSES.has(info.status)) continue;
+      const endedAt = info.endedAt ?? Date.now();
       const updated: BackgroundTaskInfo = {
         ...info,
         status: 'lost',
-        endedAt: info.endedAt ?? Date.now(),
+        endedAt,
       };
       this.ghosts.set(id, updated);
       if (persistence !== undefined) {
         await persistence.writeTask(updated);
+        if (updated.kind === 'workflow') {
+          await persistence.markWorkflowManifestLost(updated.runId, endedAt);
+        }
       }
       lostInfo.push(updated);
     }

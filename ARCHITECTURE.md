@@ -69,7 +69,10 @@ Mycel/
     apps/mycel/              bin name: mycel
       src/tui/commands/mycel/  Mycel slash-command family (immunity/gate/substrate/
                                candidates/promote/deny/delegate) + substrate-runner + panel
+      src/tui/commands/hyphae.ts  session-only xhigh + swarm orchestration command
     packages/                agent-core, agent-core-v2, kosong, oauth, ...
+      agent-core/src/tools/builtin/collaboration/workflow*.{ts,md}
+                              experimental declarative Workflow tool and plan validator
   adapters/
     hermes/
     openclaw/
@@ -105,6 +108,7 @@ publication path for non-Mycel users.
 | `mycel-tests` | external black-box adversarial suite for v0.1 fail-pattern immunity |
 | `sentinel-guard` | always-on runtime defense and shared policy evaluator |
 | `harness/apps/mycel` | the agent body (bin `mycel`): TUI, sessions, subagents, providers, hooks |
+| `harness/packages/agent-core` Workflow runtime | phased orchestration: validated JSON plans, parallel tasks inside sequential phases, durable background task output/manifests, structural recursion limits, and a reduced three-worker programmatic surface |
 | `mycel-delegate` | script: runs a governed `claude -p` subagent on the Claude subscription. Claude generates + drives; every Bash command still passes `mycel-gate --claude` (fail-closed), so delegated work stays under the immunity gate. Preferred for subagent work via `~/.mycel/AGENTS.md` when `claude` is present |
 | `harness/packages/oauth` | managed credential adapters, including the experimental Codex app-server bridge |
 
@@ -187,6 +191,49 @@ Injection safety: `/deny`, `/promote`, and `/delegate` pass user/agent-authored
 text (pattern, remediation, task) as a single argv element to `execFile`/`spawn`
 with no shell, so shell metacharacters are inert.
 
+### dynamic workflows and Hyphae mode
+
+`KIMI_CODE_EXPERIMENTAL_DYNAMIC_WORKFLOWS=1` exposes the main-agent-only
+`Workflow` tool. The tool accepts exactly one inline plan or saved workflow name.
+Saved plans live at `<MYCEL_HOME>/workflows/<name>.json` and are read and hashed
+fresh on every call. Plans are declarative JSON rather than executable JavaScript:
+phases run sequentially, tasks inside a phase run in parallel, and later phases
+may interpolate completed earlier results with `{{result:task_id}}`. Call arguments
+use `{{arg:key}}`.
+
+One `Workflow` call becomes one detached background task. Its children are
+detached from parent-turn cancellation but remain visually grouped under that
+workflow. Worker profiles cannot receive `Agent`, `AgentSwarm`, or `Workflow`, so
+the direct 128-task ceiling cannot be bypassed through recursive fan-out. Any
+failed or aborted task stops later phases. Whole-workflow timeout is 12 hours by
+default and can be set up to 24 hours. Task state uses the public `workflow`
+background-task kind; full output is kept in the task log and an auxiliary 0600
+manifest is written to `<session>/workflows/<run-id>.json`. Restart reconciliation
+marks an interrupted workflow and its running manifest `lost`. Session shutdown
+treats active workflow children as background agents, so
+`background.keep_alive_on_exit = true` preserves their turns with the parent
+workflow instead of canceling them as foreground work.
+
+`/hyphae on` is a session-only Mycel orchestration mode: it switches to xhigh
+effort without persisting the model setting and enables existing swarm-mode
+orchestration authorization. `/hyphae <task>` enables the same one-shot mode
+and immediately submits the task. `/hyphae off` disables swarm mode; it does
+not restore the previous effort level.
+
+Programmatic v1 hosts can expose the same `Workflow` tool independently of the
+interactive experiment flag. `mycel -p` and ACP enable this reduced surface
+automatically; in-process Node SDK hosts opt in with
+`createKimiHarness({ programmaticWorkflows: true })`. Each programmatic workflow
+is hard-capped at three worker tasks across all phases. Because one plan task
+maps to one child agent, that is a maximum of three subagents in total; the
+parent Mycel agent is not counted. Worker agents still cannot receive `Agent`,
+`AgentSwarm`, or `Workflow`, so they cannot recursively expand the cap. Normal
+approval policy still applies in hosts that do not autoapprove tools.
+
+This programmatic surface currently belongs to the v1 `agent-core` paths used
+by print mode, ACP, and the Node SDK. The experimental `agent-core-v2` /
+`kap-server` REST path does not expose it yet.
+
 ### env vars
 
 | var | meaning |
@@ -195,6 +242,7 @@ with no shell, so shell metacharacters are inert.
 | `MYCEL_INSTALL_DIR` | installer target (default `~/.mycel`) |
 | `MYCEL_NO_MODIFY_PATH` | skip the installer's shell-rc PATH edit |
 | `KIMI_CODE_EXPERIMENTAL_CODEX_SUBSCRIPTION_AUTH` | enable the experimental Codex subscription provider without a config override |
+| `KIMI_CODE_EXPERIMENTAL_DYNAMIC_WORKFLOWS` | expose the experimental main-agent `Workflow` tool; live flag reload updates tool visibility |
 
 ### gotchas
 
@@ -303,7 +351,8 @@ the roadmap success criteria.
 
 ## environment variables
 
-no environment variables are required yet.
+no environment variables are required. experimental harness features can be
+enabled with the optional variables documented above.
 
 future cloud or model provider variables must be optional unless an ADR says otherwise. **confidence: directional. load-bearing.**
 
@@ -337,6 +386,11 @@ OpenClaw and Hermes are useful references for interop design, but Mycel-specific
   so compatibility is version-sensitive and failures must remain explicit. It
   also requires `[experimental] codex_subscription_auth = true` or the matching
   environment flag.
+- `Workflow` plans are intentionally not source-compatible with Claude Code's
+  executable workflow scripts. Mycel uses a bounded JSON contract so a saved
+  plan cannot run arbitrary host JavaScript.
+- `/hyphae off` leaves xhigh effort active. Select another effort explicitly
+  if the session should return to its earlier setting.
 
 generated projections can overwrite manual edits unless an override policy exists. **confidence: directional. load-bearing.**
 
@@ -352,6 +406,10 @@ cargo clippy --workspace --all-targets -- -D warnings
 cd harness && pnpm --filter @moonshot-ai/kimi-code-oauth typecheck
 cd harness && pnpm --filter @moonshot-ai/agent-core typecheck
 cd harness && pnpm --filter @moonshot-ai/agent-core-v2 typecheck
+cd harness && pnpm --filter @moonshot-ai/protocol typecheck
+cd harness && pnpm --filter mycel typecheck
+cd harness && pnpm --filter @moonshot-ai/agent-core test
+cd harness && pnpm --filter mycel test
 mycel harness
 mycel ingest --jsonl <path>
 mycel evaluate --tool-name <name>
@@ -375,4 +433,7 @@ implementation commands do not exist yet.
 
 ## last updated
 
-2026-07-21 — added the TUI Mycel command family (immunity/gate/substrate/candidates/promote/deny/delegate) + the read-only `list-candidates` and `status` substrate subcommands
+2026-08-04 — added experimental declarative dynamic workflows, durable workflow
+background-task/manifests, TUI workflow rendering, the session-only `/hyphae`
+xhigh + swarm orchestration command, and a three-worker programmatic surface for
+v1 print, ACP, and opt-in Node SDK hosts

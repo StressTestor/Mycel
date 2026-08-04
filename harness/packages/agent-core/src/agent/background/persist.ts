@@ -12,7 +12,7 @@
  * background-specific shape and the output.log helpers together.
  */
 
-import { appendFile, mkdir, open, stat } from 'node:fs/promises';
+import { appendFile, mkdir, open, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'pathe';
 
 import { createPerIdJsonStore, type PerIdJsonStore } from '../../utils/per-id-json-store';
@@ -27,6 +27,7 @@ import type { BackgroundTaskInfo, BackgroundTaskStatus } from './task';
  * kinds do not need persistence-layer changes.
  */
 const VALID_TASK_ID: RegExp = /^[a-z0-9]+(?:-[a-z0-9]+)*-[0-9a-z]{8}$/;
+const MAX_WORKFLOW_MANIFEST_BYTES = 2 * 1024 * 1024;
 
 type PersistedTask = BackgroundTaskInfo;
 
@@ -163,6 +164,30 @@ export class BackgroundTaskPersistence {
   async listTasks(): Promise<readonly PersistedTask[]> {
     const tasks = await this.store.list();
     return tasks.map(normalizePersistedTask);
+  }
+
+  /** Reconcile a workflow manifest with its authoritative lost task record. */
+  async markWorkflowManifestLost(runId: string, endedAt: number): Promise<void> {
+    if (!/^wf-[0-9a-f-]{36}$/.test(runId)) return;
+    const path = join(this.sessionDir, 'workflows', `${runId}.json`);
+    let value: unknown;
+    try {
+      const manifestStat = await stat(path);
+      if (!manifestStat.isFile() || manifestStat.size > MAX_WORKFLOW_MANIFEST_BYTES) return;
+      value = JSON.parse(await readFile(path, 'utf8'));
+    } catch {
+      return;
+    }
+    if (!isRecord(value) || value['runId'] !== runId || value['status'] !== 'running') return;
+    const updated = { ...value, status: 'lost', endedAt, currentPhase: null };
+    const tempPath = `${path}.${String(process.pid)}.tmp`;
+    try {
+      await writeFile(tempPath, `${JSON.stringify(updated, null, 2)}\n`, { mode: 0o600 });
+      await rename(tempPath, path);
+    } catch {
+      // The background task record remains authoritative if the auxiliary
+      // manifest is missing, corrupt, or no longer writable.
+    }
   }
 }
 

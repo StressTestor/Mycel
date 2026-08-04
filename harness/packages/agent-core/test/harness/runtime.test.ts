@@ -1235,6 +1235,11 @@ describe('KimiCore print-mode defaults', () => {
     expect(main?.kimiConfig?.subagent?.timeoutMs).toBe(0);
     expect(main?.kimiConfig?.background?.bashTaskTimeoutS).toBe(0);
     expect(main?.kimiConfig?.loopControl?.maxStepsPerTurn).toBe(0);
+    expect(main?.workflowMaxAgents).toBe(3);
+    expect(main?.workflowsEnabled).toBe(true);
+    expect(main?.tools.loopTools.find((tool) => tool.name === 'Workflow')?.description).toContain(
+      'at most 3 workflow subagents',
+    );
 
     // The raw user config is left untouched so config reads/writes still
     // round-trip the user's file values.
@@ -1277,6 +1282,9 @@ timeout_ms = 5000
     const main = core.sessions.get(created.id)?.getReadyAgent('main');
     expect(main?.kimiConfig?.subagent).toBeUndefined();
     expect(main?.kimiConfig?.loopControl).toBeUndefined();
+    expect(main?.workflowMaxAgents).toBeUndefined();
+    expect(main?.workflowsEnabled).toBe(false);
+    expect(main?.tools.loopTools.some((tool) => tool.name === 'Workflow')).toBe(false);
   });
 
   it('applies print-mode defaults when a session is reloaded', async () => {
@@ -1296,6 +1304,31 @@ timeout_ms = 5000
     expect(main?.kimiConfig?.subagent?.timeoutMs).toBe(0);
     expect(main?.kimiConfig?.background?.bashTaskTimeoutS).toBe(0);
     expect(main?.kimiConfig?.loopControl?.maxStepsPerTurn).toBe(0);
+    expect(main?.workflowMaxAgents).toBe(3);
+    expect(main?.workflowsEnabled).toBe(true);
+  });
+
+  it('enables the reduced workflow surface for explicit programmatic SDK hosts', async () => {
+    const { homeDir, workDir } = await setupDirs(baseModelConfig());
+    const [coreRpc, sdkRpc] = createRPC<CoreAPI, SDKAPI>();
+    const core = new KimiCore(coreRpc, { homeDir, programmaticWorkflows: true });
+    const rpc = await sdkRpc({
+      emitEvent: vi.fn(),
+      requestApproval: vi.fn(async (): Promise<ApprovalResponse> => ({ decision: 'rejected' })),
+      requestQuestion: vi.fn(async () => null),
+      toolCall: vi.fn(async () => ({ output: '' })),
+    });
+
+    const created = await rpc.createSession({
+      id: 'ses_programmatic_workflows',
+      workDir,
+      model: 'default-mock',
+    });
+    const main = core.sessions.get(created.id)?.getReadyAgent('main');
+
+    expect(main?.workflowMaxAgents).toBe(3);
+    expect(main?.workflowsEnabled).toBe(true);
+    expect(main?.tools.loopTools.some((tool) => tool.name === 'Workflow')).toBe(true);
   });
 });
 

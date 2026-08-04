@@ -113,9 +113,12 @@ export interface RunSubagentOptions {
   readonly description: string;
   readonly swarmIndex?: number;
   readonly runInBackground: boolean;
+  /** Survive parent cancellation while remaining grouped under the parent orchestration tool. */
+  readonly detachFromParent?: boolean;
   readonly signal: AbortSignal;
   readonly onReady?: () => void;
   readonly suppressRateLimitFailureEvent?: boolean;
+  readonly disabledTools?: readonly string[];
 }
 
 export interface SpawnSubagentOptions extends RunSubagentOptions {
@@ -161,7 +164,7 @@ export class SessionSubagentHost {
     const completion = this.runWithActiveChild(id, options, async (runOptions) => {
       this.emitSubagentSpawned(parent, id, profile.name, runOptions);
       try {
-        await this.configureChild(parent, agent, profile);
+        await this.configureChild(parent, agent, profile, options);
         return await this.runPromptTurn(parent, id, agent, profile.name, runOptions);
       } catch (error) {
         this.emitSubagentFailed(parent, id, runOptions, error);
@@ -291,6 +294,13 @@ export class SessionSubagentHost {
     if (child !== undefined) child.runInBackground = true;
   }
 
+  /** Child turns that must survive parent or session foreground cancellation. */
+  activeBackgroundAgentIds(): readonly string[] {
+    return Array.from(this.activeChildren)
+      .filter(([, child]) => child.runInBackground)
+      .map(([agentId]) => agentId);
+  }
+
   async getProfileName(agentId: string): Promise<string | undefined> {
     const metadata = this.session.metadata.agents[agentId];
     if (metadata?.type !== 'sub' || metadata.parentAgentId !== this.ownerAgentId) {
@@ -326,7 +336,7 @@ export class SessionSubagentHost {
     const unlinkAbortSignal = linkAbortSignal(options.signal, controller);
     this.activeChildren.set(childId, {
       controller,
-      runInBackground: options.runInBackground,
+      runInBackground: options.runInBackground || options.detachFromParent === true,
     });
 
     return run({ ...options, signal: controller.signal }).finally(() => {
@@ -400,6 +410,7 @@ export class SessionSubagentHost {
     parent: Agent,
     child: Agent,
     profile: ResolvedAgentProfile,
+    options: RunSubagentOptions,
   ): Promise<void> {
     // A subagent always inherits the parent agent's model.
     child.config.update({
@@ -415,6 +426,10 @@ export class SessionSubagentHost {
     );
     child.useProfile(profile, context, this.session.options.kimiHomeDir);
     child.tools.inheritUserTools(parent.tools);
+    if (options.disabledTools !== undefined) {
+      const disabled = new Set(options.disabledTools);
+      child.tools.setActiveTools(profile.tools.filter((name) => !disabled.has(name)));
+    }
   }
 
   /**
