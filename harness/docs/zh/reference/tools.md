@@ -86,6 +86,7 @@ Plan 模式是一种受约束的工作状态：进入后 `Write` 与 `Edit` 只�
 | --- | --- | --- |
 | `Agent` | 自动放行 | 派生子 Agent 执行子任务 |
 | `AgentSwarm` | swarm mode 中自动放行，否则需审批 | 启动基于 item 的子 Agent，或恢复已有子 Agent |
+| `Workflow` | swarm mode 中自动放行，否则需审批 | 在后台启动分阶段的多 Agent 工作流 |
 | `AskUserQuestion` | 自动放行 | 向用户提问以获取结构化输入 |
 | `Skill` | 自动放行 | 调用已注册的 inline Skill |
 
@@ -93,13 +94,15 @@ Plan 模式是一种受约束的工作状态：进入后 `Write` 与 `Edit` 只�
 
 **`AgentSwarm`** 可以从共享的 `prompt_template` 和 `items` 数组启动子 Agent，也可以通过 `resume_agent_ids` 恢复已有子 Agent，或在一次调用中同时使用两者。模板必须包含 `{{item}}` 占位符；每个 item 会替换该占位符，并启动一个新的子 Agent。传入 `subagent_type` 可以指定整个 swarm 中所有新启动的子 Agent 使用的 profile；省略时默认使用 `coder`。不传 `resume_agent_ids` 时，本工具要求至少 2 个 item；传入 `resume_agent_ids` 时，可以恢复 1 个或多个已有子 Agent。本工具最多支持 128 个子 Agent，会等待全部子 Agent 完成，并返回聚合报告。在 TUI 中，前台 swarm 会在输入框上方显示实时 `Agent swarm` 进度面板。若一次模型响应调用 `AgentSwarm`，该调用必须是该响应中的唯一工具调用；如需运行多个 swarm，应先调用一个 `AgentSwarm` 并等待结果，再调用下一个，若单个模板可以覆盖这些工作，也可以合并为一个 swarm。在 `manual` 权限模式下，未处于 swarm mode 时调用 `AgentSwarm` 会触发审批，除非已有权限规则允许；swarm mode 已开启时，`AgentSwarm` 本身会自动放行。权限规则只能按工具名 `AgentSwarm` 匹配，不支持 `AgentSwarm(swarm)` 这类参数模式。默认情况下，本工具会逐步提升并发且不设上限（立即启动 5 个子 Agent，之后每 700 毫秒再启动 1 个）；将 `KIMI_CODE_AGENT_SWARM_MAX_CONCURRENCY` 设为正整数可限制该阶段同时运行的子 Agent 数量，不设置则表示不限制。若设置为非正整数的值，本次 AgentSwarm 调用会立即失败。
 
+**`Workflow`** 将声明式 JSON 计划作为可持久化的后台任务运行。各阶段按顺序执行，同一阶段内的任务并行执行；后续阶段可通过 <code v-pre>{{result:task_id}}</code> 引用先前结果，调用参数使用 <code v-pre>{{arg:key}}</code>。调用时传入 inline `plan`，或传入保存在 `<MYCEL_HOME>/workflows/<name>.json` 的计划名称。交互式会话在设置 `KIMI_CODE_EXPERIMENTAL_DYNAMIC_WORKFLOWS=1` 后开放此实验工具；`/hyphae` 将 `xhigh` Thinking 与 swarm mode 授权组合起来。print 模式（`mycel -p`）和 ACP 会自动开放缩减版功能，Node SDK 宿主则通过 `createKimiHarness({ programmaticWorkflows: true })` 选择启用。程序化工作流在所有阶段合计最多允许 3 个执行子 Agent，父 Agent 不计入上限。模型响应中的 `Workflow` 必须是唯一工具调用，工作流子 Agent 不能嵌套启动 Agent、swarm 或工作流。
+
 **`AskUserQuestion`** 以结构化多选题的形式向用户提问，适用于需要消歧或选择方案的场景。`questions` 参数接受 1–4 道题，每道题需提供 `question`（以 `?` 结尾）、`options`（2–4 个选项，每项含 `label` 和 `description`）以及可选的 `header`（最多 12 字符）和 `multi_select`（默认 false）。系统自动附加"其他"选项。`background` 为 true 时启动后台问题任务并立即返回任务 ID。宿主未实现交互式提问能力时返回失败提示，Agent 应改为在文本回复中直接提问。
 
 **`Skill`** 允许 Agent 主动调用已注册的 inline 类型 Skill。接受 `skill`（Skill 名称）和可选的 `args`（附加参数文本）。只有 `type = "inline"` 的 Skill 能通过此工具调用；`disableModelInvocation: true` 的 Skill 会被拒绝。嵌套调用深度上限 3 层。Skill 体系细节见 [Agent Skills](../customization/skills.md)。
 
 ## 后台任务
 
-后台任务工具用于管理通过 `Bash`、`Agent` 或 `AskUserQuestion` 启动的后台任务。任务进入终止状态时会自动把状态和已保存的输出路径送回 Agent；如需提前检查进度，使用 `TaskOutput`。
+后台任务工具用于管理通过 `Bash`、`Agent`、`Workflow` 或 `AskUserQuestion` 启动的后台任务。任务进入终止状态时会自动把状态和已保存的输出路径送回 Agent；如需提前检查进度，使用 `TaskOutput`。
 
 | 工具 | 默认审批 | 说明 |
 | --- | --- | --- |

@@ -271,6 +271,40 @@ describe('Agent tools', () => {
     expect(ctx.agent.tools.loopTools.some((tool) => tool.name === 'AgentSwarm')).toBe(true);
   });
 
+  it('gates Workflow exposure live behind the dynamic_workflows flag', () => {
+    const experimentalFlags = new FlagResolver({}, FLAG_DEFINITIONS);
+    const ctx = testAgent({
+      subagentHost: {} as unknown as SessionSubagentHost,
+      experimentalFlags,
+    });
+    ctx.configure({ tools: ['Workflow'] });
+
+    expect(ctx.agent.tools.data()).toContainEqual(
+      expect.objectContaining({ name: 'Workflow', active: false }),
+    );
+    expect(ctx.agent.tools.loopTools.some((tool) => tool.name === 'Workflow')).toBe(false);
+
+    experimentalFlags.setConfigOverrides({ dynamic_workflows: true });
+
+    expect(ctx.agent.tools.data()).toContainEqual(
+      expect.objectContaining({ name: 'Workflow', active: true }),
+    );
+    expect(ctx.agent.tools.loopTools.some((tool) => tool.name === 'Workflow')).toBe(true);
+  });
+
+  it('exposes a three-worker Workflow surface for bounded programmatic agents', () => {
+    const ctx = testAgent({
+      subagentHost: {} as unknown as SessionSubagentHost,
+      experimentalFlags: new FlagResolver({}, FLAG_DEFINITIONS),
+      workflowMaxAgents: 3,
+    });
+    ctx.configure({ tools: ['Workflow'] });
+
+    const workflow = ctx.agent.tools.loopTools.find((tool) => tool.name === 'Workflow');
+    expect(ctx.agent.workflowsEnabled).toBe(true);
+    expect(workflow?.description).toContain('at most 3 workflow subagents');
+  });
+
   it('self-heals the builtin tool table when the provider becomes resolvable after construction', () => {
     // The ProviderManager reads this live config; it starts with no model or
     // provider, so hasProvider is false at Agent construction and

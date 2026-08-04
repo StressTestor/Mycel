@@ -43,6 +43,8 @@ export interface SDKRpcClientOptions {
    * `'print'`.
    */
   readonly uiMode?: string;
+  /** Enable the reduced three-worker Workflow surface for programmatic hosts. */
+  readonly programmaticWorkflows?: boolean;
 }
 
 export class SDKRpcClient extends SDKRpcClientBase {
@@ -85,6 +87,7 @@ export class SDKRpcClient extends SDKRpcClientBase {
       telemetry: this.telemetry,
       appVersion: this.identity?.version,
       uiMode: options.uiMode,
+      programmaticWorkflows: options.programmaticWorkflows,
     });
     this.ready = sdkRpc(new ClientAPI(this));
   }

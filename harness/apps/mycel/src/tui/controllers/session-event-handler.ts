@@ -1085,7 +1085,7 @@ export class SessionEventHandler {
         });
       }
       if (!this.backgroundTaskTranscriptedTerminal.has(info.taskId)) {
-        if (info.kind === 'process' || info.kind === 'question') {
+        if (info.kind !== 'agent') {
           this.appendBackgroundTaskEntry(info);
         }
         this.backgroundTaskTranscriptedTerminal.add(info.taskId);
@@ -1129,7 +1129,7 @@ export class SessionEventHandler {
       ) {
         continue;
       }
-      if (info.kind === 'agent') {
+      if (info.kind === 'agent' || info.kind === 'workflow') {
         agentTasks += 1;
       } else {
         bashTasks += 1;

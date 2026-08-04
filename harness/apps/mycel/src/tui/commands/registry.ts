@@ -50,6 +50,11 @@ export function swarmArgumentCompletions(argumentPrefix: string): AutocompleteIt
   return completeLeadingArg(SWARM_ARG_COMPLETIONS, argumentPrefix);
 }
 
+/** Argument autocompletion for the `/hyphae` command. */
+export function hyphaeArgumentCompletions(argumentPrefix: string): AutocompleteItem[] | null {
+  return completeLeadingArg(SWARM_ARG_COMPLETIONS, argumentPrefix);
+}
+
 /** Argument autocompletion for the `/add-dir` command. */
 export function addDirArgumentCompletions(argumentPrefix: string): AutocompleteItem[] | null {
   if (isPathLikeAddDirArgument(argumentPrefix)) {
@@ -176,6 +181,15 @@ export const BUILTIN_SLASH_COMMANDS = [
     priority: 100,
     argumentHint: '[on|off] | <task>',
     completeArgs: swarmArgumentCompletions,
+    availability: 'idle-only',
+  },
+  {
+    name: 'hyphae',
+    aliases: [],
+    description: 'Use xhigh reasoning with standing or one-shot multi-agent orchestration',
+    priority: 100,
+    argumentHint: '[on|off] | <task>',
+    completeArgs: hyphaeArgumentCompletions,
     availability: 'idle-only',
   },
   {

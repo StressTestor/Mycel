@@ -57,6 +57,7 @@ export type {
   ProviderConfig,
   ProviderType,
   QuestionBackgroundTaskInfo,
+  WorkflowBackgroundTaskInfo,
   ReloadSummary,
   ResumedAgentState,
   ServicesConfig,
@@ -94,6 +95,11 @@ export interface KimiHarnessOptions {
   readonly telemetry?: TelemetryClient | undefined;
   readonly onOAuthRefresh?: ((outcome: OAuthRefreshOutcome) => void) | undefined;
   readonly sessionStartedProperties?: TelemetryProperties;
+  /**
+   * Enable Workflow for SDK/programmatic sessions with a hard ceiling of
+   * three worker subagents per workflow. The parent Mycel agent is not counted.
+   */
+  readonly programmaticWorkflows?: boolean | undefined;
 }
 
 export interface CreateSessionOptions {

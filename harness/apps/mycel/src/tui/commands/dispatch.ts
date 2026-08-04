@@ -62,6 +62,7 @@ import {
   handleTitleCommand,
 } from './session';
 import { handleSwarmCommand } from './swarm';
+import { handleHyphaeCommand } from './hyphae';
 import { handleUndoCommand } from './undo';
 import { handleWebCommand } from './web';
 
@@ -88,6 +89,7 @@ export {
   showSettingsSelector,
 } from './config';
 export { handleSwarmCommand } from './swarm';
+export { handleHyphaeCommand } from './hyphae';
 export { showMcpServers, showStatusReport, showUsage } from './info';
 export {
   handleDelegateCommand,
@@ -377,6 +379,9 @@ async function handleBuiltInSlashCommand(
       return;
     case 'swarm':
       await handleSwarmCommand(host, args);
+      return;
+    case 'hyphae':
+      await handleHyphaeCommand(host, args);
       return;
     case 'compact':
       await handleCompactCommand(host, args);

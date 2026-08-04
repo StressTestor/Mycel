@@ -78,6 +78,8 @@ export interface SessionOptions {
   readonly pluginCommands?: readonly PluginCommandDef[];
   readonly appVersion?: string;
   readonly experimentalFlags?: ExperimentalFlagResolver;
+  /** Programmatic workflow worker ceiling; the main agent is not counted. */
+  readonly workflowMaxAgents?: number;
   /** Owner-scoped [image] limits, threaded from the owning core into every agent. */
   readonly imageLimits?: ImageLimits;
   readonly additionalDirs?: readonly string[];
@@ -424,6 +426,9 @@ export class Session {
         if (task.kind === 'agent' && task.agentId !== undefined && task.detached !== false) {
           agentIds.add(task.agentId);
         }
+      }
+      for (const agentId of agent.subagentHost?.activeBackgroundAgentIds() ?? []) {
+        agentIds.add(agentId);
       }
     }
     return agentIds;
@@ -946,6 +951,7 @@ export class Session {
       pluginSessionStarts: type === 'main' ? this.options.pluginSessionStarts : undefined,
       pluginCommands: type === 'main' ? this.options.pluginCommands : undefined,
       experimentalFlags: this.experimentalFlags,
+      workflowMaxAgents: type === 'main' ? this.options.workflowMaxAgents : undefined,
       imageLimits: this.imageLimits,
       additionalDirs: parentAgent?.getAdditionalDirs() ?? this.additionalDirs,
       systemPromptContextProvider: () =>

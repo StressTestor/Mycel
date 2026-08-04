@@ -650,7 +650,8 @@ export class ToolManager {
         // select_tools is always registered but only offered while the
         // disclosure gate is open (see loopTools); report that live state.
         active:
-          this.enabledTools.has(tool.name) ||
+          (this.enabledTools.has(tool.name) &&
+            (tool.name !== 'Workflow' || this.agent.workflowsEnabled)) ||
           (tool.name === b.SELECT_TOOLS_TOOL_NAME && this.agent.toolSelectEnabled),
         source: 'builtin',
       };
@@ -764,6 +765,16 @@ export class ToolManager {
             this.agent.swarmMode,
             resolveSubagentTimeoutMs(this.agent.kimiConfig?.subagent?.timeoutMs),
           ),
+        this.agent.type === 'main' &&
+          this.agent.subagentHost &&
+          new b.WorkflowTool(this.agent.subagentHost, background, {
+            kimiHomeDir: this.agent.brandHomeDir,
+            sessionDir: this.agent.homedir,
+            maxAgents: this.agent.workflowMaxAgents,
+            subagentTimeoutMs: resolveSubagentTimeoutMs(
+              this.agent.kimiConfig?.subagent?.timeoutMs,
+            ),
+          }),
         toolServices?.webSearcher && new b.WebSearchTool(toolServices.webSearcher),
         toolServices?.urlFetcher && new b.FetchURLTool(toolServices.urlFetcher),
       ]
@@ -880,6 +891,9 @@ export class ToolManager {
       // surface it in inline mode (it was silently dropped back when
       // registration itself was gated; keep that contract).
       .filter((name) => disclosure || name !== b.SELECT_TOOLS_TOOL_NAME)
+      .filter(
+        (name) => name !== 'Workflow' || this.agent.workflowsEnabled,
+      )
       .map((name) => {
         const tool =
           this.userTools.get(name) ??

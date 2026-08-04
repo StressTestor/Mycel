@@ -6,6 +6,9 @@
  */
 
 import { Readable, type Writable } from 'node:stream';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'pathe';
 
 import type { Kaos, KaosProcess } from '@moonshot-ai/kaos';
 import { describe, expect, it, vi } from 'vitest';
@@ -38,11 +41,19 @@ import { BashInputSchema, BashTool } from '../../src/tools/builtin/shell/bash';
 import type { WorkspaceConfig } from '../../src/tools/support/workspace';
 import { createFakeKaos } from './fixtures/fake-kaos';
 import { executeTool } from './fixtures/execute-tool';
-import { createBackgroundManager } from '../agent/background/helpers';
+import { createBackgroundManager, waitForTerminal } from '../agent/background/helpers';
 import {
   AgentSwarmTool,
   AgentSwarmToolInputSchema,
 } from '../../src/tools/builtin/collaboration/agent-swarm';
+import {
+  WorkflowTool,
+  WorkflowToolInputSchema,
+} from '../../src/tools/builtin/collaboration/workflow';
+import {
+  resolveWorkflowPlan,
+  WorkflowPlanSchema,
+} from '../../src/tools/builtin/collaboration/workflow-plan';
 
 vi.mock('../../src/tools/support/rg-locator', () => ({
   ensureRgPath: vi.fn(async () => ({ path: '/mock/rg', source: 'system-path' })),
@@ -897,6 +908,358 @@ describe('current builtin collaboration tools', () => {
       '</agent_swarm_result>',
     ].join('\n'));
     expect(result.isError).toBeUndefined();
+  });
+
+  it('Workflow launches phased work in the background and passes prior results forward', async () => {
+    const runQueued = vi.fn(
+      async <T>(
+        tasks: readonly QueuedSubagentTask<T>[],
+      ): Promise<Array<QueuedSubagentRunResult<T>>> =>
+        tasks.map((task, index) => ({
+          task,
+          agentId: `agent-${String(index + 1)}`,
+          status: 'completed' as const,
+          result: task.prompt.includes('Use inventory result')
+            ? 'synthesis used inventory'
+            : 'inventory result',
+        })),
+    );
+    const host = mockSubagentHost({
+      runQueued: runQueued as unknown as SessionSubagentHost['runQueued'],
+    });
+    const { manager } = createBackgroundManager();
+    const tool = new WorkflowTool(host, manager, {
+      kimiHomeDir: '/unused',
+      subagentTimeoutMs: 5_000,
+      workflowTimeoutMs: 30_000,
+    });
+    const input = {
+      plan: {
+        version: 1 as const,
+        name: 'review-change',
+        description: 'Review and synthesize a change',
+        phases: [
+          {
+            title: 'Inspect',
+            tasks: [
+              {
+                id: 'inventory',
+                description: 'Inspect change',
+                prompt: 'Inspect {{arg:target}}',
+                subagent_type: 'explore',
+              },
+            ],
+          },
+          {
+            title: 'Synthesize',
+            tasks: [
+              {
+                id: 'synthesis',
+                description: 'Synthesize findings',
+                prompt: 'Use {{result:inventory}} and produce a verdict.',
+              },
+            ],
+          },
+        ],
+      },
+      args: { target: 'src/example.ts' },
+    };
+
+    expect(WorkflowToolInputSchema.safeParse(input).success).toBe(true);
+    const launch = await executeTool(tool, context(input, 'call_workflow'));
+    expect(launch.isError).toBeUndefined();
+    expect(launch.output).toContain('Workflow "review-change" launched in the background.');
+    if (typeof launch.output !== 'string') {
+      throw new TypeError('Expected a text workflow launch result.');
+    }
+    const taskId = launch.output.match(/^task_id: (\S+)$/m)?.[1];
+    expect(taskId).toMatch(/^workflow-/);
+    const terminal = await waitForTerminal(manager, taskId!);
+
+    expect(terminal).toMatchObject({
+      kind: 'workflow',
+      status: 'completed',
+      workflowName: 'review-change',
+      phaseCount: 2,
+      agentCount: 2,
+      source: 'inline',
+    });
+    expect(runQueued).toHaveBeenCalledTimes(2);
+    expect(runQueued.mock.calls[0]?.[0]?.[0]).toMatchObject({
+      profileName: 'explore',
+      parentToolCallId: 'call_workflow',
+      description: 'Inspect change',
+      runInBackground: false,
+      detachFromParent: true,
+      disabledTools: ['Agent', 'AgentSwarm', 'Workflow'],
+      timeout: 5_000,
+    });
+    expect(runQueued.mock.calls[0]?.[0]?.[0]?.prompt).toContain('Inspect src/example.ts');
+    expect(runQueued.mock.calls[1]?.[0]?.[0]?.prompt).toContain(
+      'Use inventory result and produce a verdict.',
+    );
+    expect(await manager.readOutput(taskId!)).toContain(
+      '<workflow_result name="review-change">',
+    );
+  });
+
+  it('Workflow rejects invalid references and silent argument fallthrough', async () => {
+    const forwardReference = {
+      version: 1 as const,
+      name: 'invalid-forward-reference',
+      description: 'Invalid plan',
+      phases: [
+        {
+          title: 'First',
+          tasks: [
+            {
+              id: 'first',
+              description: 'Run first',
+              prompt: 'Use {{result:second}}.',
+            },
+          ],
+        },
+        {
+          title: 'Second',
+          tasks: [{ id: 'second', description: 'Run second', prompt: 'Run.' }],
+        },
+      ],
+    };
+    expect(WorkflowPlanSchema.safeParse(forwardReference).success).toBe(false);
+    expect(
+      WorkflowPlanSchema.safeParse({
+        version: 1,
+        name: 'malformed-placeholder',
+        description: 'Invalid plan',
+        phases: [
+          {
+            title: 'Only',
+            tasks: [
+              { id: 'run', description: 'Run task', prompt: 'Use {{result:UPPER}}.' },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(false);
+
+    const host = mockSubagentHost({ runQueued: vi.fn() });
+    const tool = new WorkflowTool(host, createBackgroundManager().manager);
+    const result = await executeTool(
+      tool,
+      context({
+        plan: {
+          version: 1,
+          name: 'strict-args',
+          description: 'Reject unused args',
+          phases: [
+            {
+              title: 'Only',
+              tasks: [{ id: 'run', description: 'Run task', prompt: 'Run the task.' }],
+            },
+          ],
+        },
+        args: { ignored: true },
+      }),
+    );
+    expect(result).toMatchObject({ isError: true });
+    expect(result.output).toContain('Unused workflow argument: ignored.');
+    expect(host.runQueued).not.toHaveBeenCalled();
+  });
+
+  it('Workflow enforces a reduced programmatic worker ceiling across all phases', async () => {
+    const host = mockSubagentHost({ runQueued: vi.fn() });
+    const tool = new WorkflowTool(host, createBackgroundManager().manager, { maxAgents: 3 });
+    const result = await executeTool(
+      tool,
+      context({
+        plan: {
+          version: 1,
+          name: 'too-many-workers',
+          description: 'Exceed the programmatic worker ceiling',
+          phases: [
+            {
+              title: 'First',
+              tasks: [
+                { id: 'one', description: 'One', prompt: 'One.' },
+                { id: 'two', description: 'Two', prompt: 'Two.' },
+              ],
+            },
+            {
+              title: 'Second',
+              tasks: [
+                { id: 'three', description: 'Three', prompt: 'Three.' },
+                { id: 'four', description: 'Four', prompt: 'Four.' },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(result).toMatchObject({ isError: true });
+    expect(result.output).toContain('at most 3 workflow subagents');
+    expect(result.output).toContain('declares 4');
+    expect(host.runQueued).not.toHaveBeenCalled();
+  });
+
+  it('Workflow fails closed and does not launch later phases after a task failure', async () => {
+    const runQueued = vi.fn(
+      async <T>(tasks: readonly QueuedSubagentTask<T>[]): Promise<Array<QueuedSubagentRunResult<T>>> =>
+        tasks.map((task) => ({
+          task,
+          agentId: 'agent-failed',
+          status: 'failed' as const,
+          error: 'Verifier timed out.',
+        })),
+    );
+    const host = mockSubagentHost({
+      runQueued: runQueued as unknown as SessionSubagentHost['runQueued'],
+    });
+    const { manager } = createBackgroundManager();
+    const tool = new WorkflowTool(host, manager);
+    const launch = await executeTool(
+      tool,
+      context({
+        plan: {
+          version: 1,
+          name: 'fail-closed',
+          description: 'Stop after failed verification',
+          phases: [
+            {
+              title: 'Verify',
+              tasks: [{ id: 'verify', description: 'Verify', prompt: 'Verify the change.' }],
+            },
+            {
+              title: 'Approve',
+              tasks: [{ id: 'approve', description: 'Approve', prompt: 'Approve it.' }],
+            },
+          ],
+        },
+      }),
+    );
+    if (typeof launch.output !== 'string') {
+      throw new TypeError('Expected a text workflow launch result.');
+    }
+    const taskId = launch.output.match(/^task_id: (\S+)$/m)?.[1];
+    const terminal = await waitForTerminal(manager, taskId!);
+
+    expect(terminal).toMatchObject({ kind: 'workflow', status: 'failed' });
+    expect(terminal?.stopReason).toContain('Workflow stopped after phase 1 (Verify)');
+    expect(runQueued).toHaveBeenCalledTimes(1);
+    expect(await manager.readOutput(taskId!)).toContain('status="failed"');
+  });
+
+  it(
+    'Workflow aborts its active subagent batch when the whole-workflow deadline expires',
+    async () => {
+      const sessionDir = await mkdtemp(join(tmpdir(), 'mycel-workflow-timeout-'));
+      const runQueued = vi.fn(
+        <T>(tasks: readonly QueuedSubagentTask<T>[]): Promise<Array<QueuedSubagentRunResult<T>>> =>
+          new Promise((_resolve, reject) => {
+            const taskSignal = tasks[0]?.signal;
+            if (taskSignal === undefined) {
+              reject(new Error('missing workflow abort signal'));
+              return;
+            }
+            taskSignal.addEventListener(
+              'abort',
+              () => {
+                reject(taskSignal.reason);
+              },
+              { once: true },
+            );
+          }),
+      );
+      const host = mockSubagentHost({
+        runQueued: runQueued as unknown as SessionSubagentHost['runQueued'],
+      });
+      const { manager } = createBackgroundManager({ sessionDir });
+      const tool = new WorkflowTool(host, manager, { sessionDir, workflowTimeoutMs: 10 });
+      try {
+        const launch = await executeTool(
+          tool,
+          context({
+            plan: {
+              version: 1,
+              name: 'deadline-check',
+              description: 'Exercise the whole-workflow deadline',
+              phases: [
+                {
+                  title: 'Wait',
+                  tasks: [{ id: 'wait', description: 'Wait forever', prompt: 'Wait.' }],
+                },
+              ],
+            },
+          }),
+        );
+        if (typeof launch.output !== 'string') {
+          throw new TypeError('Expected a text workflow launch result.');
+        }
+        const taskId = launch.output.match(/^task_id: (\S+)$/m)?.[1];
+        const manifestPath = launch.output.match(/^manifest: (.+)$/m)?.[1];
+        const terminal = await waitForTerminal(manager, taskId!);
+
+        expect(terminal).toMatchObject({ kind: 'workflow', status: 'timed_out' });
+        expect(runQueued).toHaveBeenCalledTimes(1);
+        expect(runQueued.mock.calls[0]?.[0]?.[0]?.signal?.aborted).toBe(true);
+        expect(JSON.parse(await readFile(manifestPath!, 'utf8'))).toMatchObject({
+          status: 'timed_out',
+          endedAt: expect.any(Number),
+        });
+      } finally {
+        await rm(sessionDir, { recursive: true, force: true });
+      }
+    },
+    15_000,
+  );
+
+  it('reloads saved Workflow plans by content instead of caching by name', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mycel-workflows-'));
+    const workflowDir = join(root, 'workflows');
+    const workflowPath = join(workflowDir, 'saved-review.json');
+    await mkdir(workflowDir, { recursive: true });
+    try {
+      const first = {
+        version: 1 as const,
+        name: 'saved-review',
+        description: 'First version',
+        phases: [
+          {
+            title: 'Review',
+            tasks: [{ id: 'review', description: 'Review', prompt: 'Review v1.' }],
+          },
+        ],
+      };
+      await writeFile(workflowPath, JSON.stringify(first));
+      const firstResolved = await resolveWorkflowPlan({
+        name: 'saved-review',
+        kimiHomeDir: root,
+      });
+
+      await writeFile(
+        workflowPath,
+        JSON.stringify({
+          ...first,
+          description: 'Second version',
+          phases: [
+            {
+              title: 'Review',
+              tasks: [{ id: 'review', description: 'Review', prompt: 'Review v2.' }],
+            },
+          ],
+        }),
+      );
+      const secondResolved = await resolveWorkflowPlan({
+        name: 'saved-review',
+        kimiHomeDir: root,
+      });
+
+      expect(firstResolved.plan.description).toBe('First version');
+      expect(secondResolved.plan.description).toBe('Second version');
+      expect(secondResolved.contentSha256).not.toBe(firstResolved.contentSha256);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('Skill exposes parameters and reports unknown skills as tool errors', async () => {

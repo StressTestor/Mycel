@@ -361,10 +361,21 @@ export interface QuestionTaskInfo extends TaskInfoBase {
   readonly toolCallId?: string;
 }
 
+export interface WorkflowTaskInfo extends TaskInfoBase {
+  readonly kind: 'workflow';
+  readonly runId: string;
+  readonly workflowName: string;
+  readonly phaseCount: number;
+  readonly agentCount: number;
+  readonly source: 'inline' | 'saved';
+  readonly manifestPath?: string;
+}
+
 export type TaskInfo =
   | ProcessTaskInfo
   | AgentTaskInfo
-  | QuestionTaskInfo;
+  | QuestionTaskInfo
+  | WorkflowTaskInfo;
 
 export interface CompactionResult {
   readonly summary: string;
@@ -1264,10 +1275,21 @@ export const questionTaskInfoSchema = taskInfoBaseSchema.extend({
   toolCallId: z.string().optional(),
 }) satisfies z.ZodType<QuestionTaskInfo>;
 
+export const workflowTaskInfoSchema = taskInfoBaseSchema.extend({
+  kind: z.literal('workflow'),
+  runId: z.string(),
+  workflowName: z.string(),
+  phaseCount: z.number().int().nonnegative(),
+  agentCount: z.number().int().nonnegative(),
+  source: z.enum(['inline', 'saved']),
+  manifestPath: z.string().optional(),
+}) satisfies z.ZodType<WorkflowTaskInfo>;
+
 export const taskInfoSchema = z.discriminatedUnion('kind', [
   processTaskInfoSchema,
   agentTaskInfoSchema,
   questionTaskInfoSchema,
+  workflowTaskInfoSchema,
 ]) satisfies z.ZodType<TaskInfo>;
 
 export const compactionResultSchema = z.object({

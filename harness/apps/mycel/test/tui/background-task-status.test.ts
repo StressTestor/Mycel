@@ -24,6 +24,18 @@ function task(overrides: Partial<BackgroundTaskInfo> = {}): BackgroundTaskInfo {
       ...overrides,
     } as BackgroundTaskInfo;
   }
+  if (kind === 'workflow') {
+    return {
+      ...base,
+      kind: 'workflow',
+      runId: 'wf-00000000-0000-4000-8000-000000000000',
+      workflowName: 'review-change',
+      phaseCount: 2,
+      agentCount: 3,
+      source: 'inline',
+      ...overrides,
+    } as BackgroundTaskInfo;
+  }
   return {
     ...base,
     kind: 'process',
@@ -47,6 +59,13 @@ describe('formatBackgroundTaskTranscript', () => {
       task({ taskId: 'agent-deadbeef', status: 'running' }),
     );
     expect(data.headline).toContain('agent task started');
+  });
+
+  it('renders a workflow started entry', () => {
+    const data = formatBackgroundTaskTranscript(
+      task({ taskId: 'workflow-deadbeef', kind: 'workflow', status: 'running' }),
+    );
+    expect(data.headline).toContain('workflow started in background');
   });
 
   it('renders a question started entry', () => {

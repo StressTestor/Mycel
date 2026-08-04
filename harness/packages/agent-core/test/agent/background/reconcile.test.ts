@@ -2,7 +2,7 @@
  * BackgroundManager reconcile + persistence integration tests.
  */
 
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'pathe';
 
@@ -77,6 +77,47 @@ describe('BackgroundManager — loadFromDisk + reconcile', () => {
         taskId: 'bash-orphan00',
         status: 'lost',
       }),
+    });
+  });
+
+  it('reconciles a running workflow manifest with its authoritative lost task record', async () => {
+    const runId = 'wf-00000000-0000-4000-8000-000000000000';
+    const manifestDir = join(sessionDir, 'workflows');
+    const manifestPath = join(manifestDir, `${runId}.json`);
+    await mkdir(manifestDir, { recursive: true });
+    await writeFile(
+      manifestPath,
+      JSON.stringify({ version: 1, runId, status: 'running', endedAt: null, currentPhase: 1 }),
+    );
+    await persistence.writeTask({
+      taskId: 'workflow-orphan00',
+      kind: 'workflow',
+      runId,
+      workflowName: 'review-change',
+      phaseCount: 2,
+      agentCount: 3,
+      source: 'inline',
+      manifestPath,
+      description: 'Review change',
+      status: 'running',
+      detached: true,
+      startedAt: 1_700_000_000,
+      endedAt: null,
+    });
+    const { manager } = createBackgroundManager({ sessionDir });
+
+    await manager.loadFromDisk();
+    await manager.reconcile();
+
+    expect(manager.getTask('workflow-orphan00')).toMatchObject({
+      kind: 'workflow',
+      status: 'lost',
+    });
+    expect(JSON.parse(await readFile(manifestPath, 'utf8'))).toMatchObject({
+      runId,
+      status: 'lost',
+      currentPhase: null,
+      endedAt: expect.any(Number),
     });
   });
 

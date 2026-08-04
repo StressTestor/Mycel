@@ -219,6 +219,39 @@ describe('Session lifecycle hooks', () => {
     expect(main.background.getTask(taskId)?.status).toBe('running');
   });
 
+  it('keeps workflow-detached child turns alive on close when keepAliveOnExit is true', async () => {
+    const { sessionDir, workDir } = await hookFixture();
+    const session = new Session({
+      kaos: testKaos.withCwd(workDir),
+      id: 'session-workflow-child-keepalive',
+      homedir: sessionDir,
+      rpc: createSessionRpc(),
+      skills: { explicitDirs: [join(workDir, 'missing-skills')] },
+      background: { keepAliveOnExit: true },
+    });
+    const main = await session.createMain();
+    const { id: childId, agent: child } = await session.createAgent(
+      { type: 'sub' },
+      { parentAgentId: 'main' },
+    );
+    const turnSettled = createDeferred<void>();
+    const waitSpy = vi
+      .spyOn(child.turn, 'waitForCurrentTurn')
+      .mockImplementation(() => turnSettled.promise as never);
+    const cancelSpy = vi.spyOn(child.turn, 'cancel').mockImplementation(() => {
+      turnSettled.resolve();
+    });
+    vi.spyOn(child.turn, 'hasActiveTurn', 'get').mockReturnValue(true);
+    const host = main.subagentHost;
+    if (host === undefined) throw new Error('Expected the main agent to have a subagent host.');
+    vi.spyOn(host, 'activeBackgroundAgentIds').mockReturnValue([childId]);
+
+    await session.close();
+
+    expect(cancelSpy).not.toHaveBeenCalled();
+    expect(waitSpy).not.toHaveBeenCalled();
+  });
+
   it('waitForBackgroundTasksOnPrint returns immediately when keepAliveOnExit is false', async () => {
     const { sessionDir, workDir } = await hookFixture();
     const session = new Session({

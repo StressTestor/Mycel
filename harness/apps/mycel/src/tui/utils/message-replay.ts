@@ -88,7 +88,7 @@ export function countActiveBackgroundTasks(tasks: ReadonlyMap<string, Background
   let agentTasks = 0;
   for (const info of tasks.values()) {
     if (isTerminalBackgroundTask(info)) continue;
-    if (info.kind === 'agent') {
+    if (info.kind === 'agent' || info.kind === 'workflow') {
       agentTasks += 1;
     } else {
       bashTasks += 1;

@@ -23,6 +23,7 @@ import {
   UserConfiguredDenyPermissionPolicy,
 } from './user-configured-rules';
 import { YoloModeApprovePermissionPolicy } from './yolo-mode-approve';
+import { WorkflowExclusiveDenyPermissionPolicy } from './workflow-exclusive-deny';
 
 /** Permission policies run in order; the first non-undefined result wins. */
 export function createPermissionDecisionPolicies(agent: Agent): PermissionPolicy[] {
@@ -31,6 +32,8 @@ export function createPermissionDecisionPolicies(agent: Agent): PermissionPolicy
     new PreToolCallHookPermissionPolicy(agent),
     // AgentSwarm is batch-exclusive and must run alone, regardless of permission mode.
     new AgentSwarmExclusiveDenyPermissionPolicy(),
+    // Workflow owns a background orchestration launch and must also run alone.
+    new WorkflowExclusiveDenyPermissionPolicy(),
     // auto mode + AskUserQuestion → deny.
     new AutoModeAskUserQuestionDenyPermissionPolicy(agent),
     // plan mode: Write/Edit outside the plan file, or TaskStop → deny.
@@ -59,7 +62,7 @@ export function createPermissionDecisionPolicies(agent: Agent): PermissionPolicy
     new GitControlPathAccessAskPermissionPolicy(agent),
     // yolo mode → approve.
     new YoloModeApprovePermissionPolicy(agent),
-    // Swarm mode keeps AgentSwarm available without making it a globally default-approved tool.
+    // Swarm/Hyphae mode keeps orchestration tools available without globally approving them.
     new SwarmModeAgentSwarmApprovePermissionPolicy(agent),
     // Tool is in the default-approve list (read-only / UI helpers) → approve.
     new DefaultToolApprovePermissionPolicy(),

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { handleSwarmCommand } from '#/tui/commands/index';
+import { handleHyphaeCommand, handleSwarmCommand } from '#/tui/commands/index';
 import type { SlashCommandHost } from '#/tui/commands/dispatch';
 import { currentTheme } from '#/tui/theme';
 
@@ -22,11 +22,20 @@ function makeHost(
     hasSession?: boolean;
     permissionMode?: 'manual' | 'auto' | 'yolo';
     swarmMode?: boolean;
+    thinkingEffort?: string;
   } = {},
 ) {
+  let thinkingEffort = overrides.thinkingEffort ?? 'high';
   const session = {
     setPermission: vi.fn(async () => {}),
     setSwarmMode: vi.fn(async () => {}),
+    setThinking: vi.fn(async (effort: string) => {
+      thinkingEffort = effort;
+    }),
+    getStatus: vi.fn(async () => ({
+      model: overrides.model ?? 'kimi-model',
+      thinkingEffort,
+    })),
   };
   const hasSession = overrides.hasSession ?? true;
   const host = {
@@ -35,6 +44,9 @@ function makeHost(
         model: overrides.model ?? 'kimi-model',
         permissionMode: overrides.permissionMode ?? 'auto',
         swarmMode: overrides.swarmMode ?? false,
+        thinkingEffort,
+        streamingPhase: 'idle',
+        availableModels: {},
       },
       theme: currentTheme,
       transcriptContainer: { addChild: vi.fn() },
@@ -72,6 +84,45 @@ function expectSwarmMarker(host: SlashCommandHost, text: string): void {
   const rendered = stripAnsi(components.at(-1)?.render(80).join('\n') ?? '');
   expect(rendered).toContain(text);
 }
+
+describe('handleHyphaeCommand', () => {
+  it('sets xhigh for the session and starts a one-shot orchestration task', async () => {
+    const { host, session } = makeHost({ permissionMode: 'auto', thinkingEffort: 'high' });
+
+    await handleHyphaeCommand(host, 'Review the release candidate');
+
+    expect(session.setThinking).toHaveBeenCalledWith('xhigh');
+    expect(session.setSwarmMode).toHaveBeenCalledWith(true, 'task');
+    expect(host.setAppState).toHaveBeenCalledWith(
+      expect.objectContaining({ thinkingEffort: 'xhigh' }),
+    );
+    expect(host.sendNormalUserInput).toHaveBeenCalledWith('Review the release candidate');
+  });
+
+  it('turns off standing orchestration without silently changing effort', async () => {
+    const { host, session } = makeHost({ swarmMode: true, thinkingEffort: 'xhigh' });
+
+    await handleHyphaeCommand(host, 'off');
+
+    expect(session.setSwarmMode).toHaveBeenCalledWith(false, 'manual');
+    expect(session.setThinking).not.toHaveBeenCalled();
+    expect(host.showStatus).toHaveBeenCalledWith(
+      'Hyphae is off. Thinking effort remains unchanged.',
+    );
+  });
+
+  it('does not enable orchestration when the provider rejects xhigh', async () => {
+    const { host, session } = makeHost({ thinkingEffort: 'high' });
+    session.setThinking.mockRejectedValueOnce(new Error('xhigh is not supported'));
+
+    await handleHyphaeCommand(host, 'on');
+
+    expect(session.setSwarmMode).not.toHaveBeenCalled();
+    expect(host.showError).toHaveBeenCalledWith(
+      'Failed to switch model: xhigh is not supported',
+    );
+  });
+});
 
 describe('handleSwarmCommand', () => {
   it('sends the swarm prompt as a normal prompt after enabling swarm mode', async () => {

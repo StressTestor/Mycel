@@ -97,6 +97,12 @@ export interface AgentOptions {
   readonly pluginSessionStarts?: readonly EnabledPluginSessionStart[];
   readonly pluginCommands?: readonly PluginCommandDef[];
   readonly experimentalFlags?: ExperimentalFlagResolver;
+  /**
+   * Optional per-workflow worker ceiling for programmatic hosts. Supplying a
+   * value also enables Workflow independently of the interactive experiment
+   * flag. The main Mycel agent is not counted toward this limit.
+   */
+  readonly workflowMaxAgents?: number;
   /** Owner-scoped [image] limits; a standalone Agent gets env/built-in defaults. */
   readonly imageLimits?: ImageLimits;
   readonly replay?: ReplayBuilderOptions;
@@ -127,6 +133,7 @@ export class Agent {
   readonly log: Logger;
   readonly telemetry: TelemetryClient;
   readonly experimentalFlags: ExperimentalFlagResolver;
+  readonly workflowMaxAgents?: number;
   readonly imageLimits: ImageLimits;
 
   readonly llmRequestLogger: LlmRequestLogger;
@@ -152,8 +159,8 @@ export class Agent {
 
   /**
    * Print-mode (`mycel -p`) only: when true and the agent ends a turn while
-   * background subagents (`kind === 'agent'`) are still running, the turn loop
-   * holds the turn open and idle-waits until they finish, flushing their
+   * background subagents or workflows are still running, the turn loop holds
+   * the turn open and idle-waits until they finish, flushing their
    * completions into the turn so the model can react before the run exits. Set
    * by the session for print runs; defaults to false everywhere else.
    */
@@ -191,6 +198,7 @@ export class Agent {
     this.log = options.log ?? log;
     this.telemetry = options.telemetry ?? noopTelemetryClient;
     this.experimentalFlags = options.experimentalFlags ?? new FlagResolver();
+    this.workflowMaxAgents = options.workflowMaxAgents;
     this.imageLimits = options.imageLimits ?? new ImageLimits();
     this.additionalDirs = normalizeAdditionalDirs(options.additionalDirs ?? []);
     this.systemPromptContextProvider = options.systemPromptContextProvider;
@@ -231,6 +239,19 @@ export class Agent {
     this.cron = this.type === 'sub' ? null : new CronManager(this);
     this.goal = new GoalMode(this);
     this.replayBuilder = new ReplayBuilder(this, options.replay);
+  }
+
+  /** Resolved Mycel data directory used for user-global profiles, skills, and workflows. */
+  get brandHomeDir(): string | undefined {
+    return this.brandHome;
+  }
+
+  /** Workflow is interactive-flagged, or explicitly enabled by a bounded programmatic host. */
+  get workflowsEnabled(): boolean {
+    return (
+      this.workflowMaxAgents !== undefined ||
+      this.experimentalFlags.enabled('dynamic_workflows')
+    );
   }
 
   setKaos(kaos: Kaos) {

@@ -848,7 +848,7 @@ export class TurnFlow {
               signal.throwIfAborted();
 
               // Print-mode drain: when `mycel -p` ends a turn while background
-              // subagents are still running, hold the turn open and idle-wait
+              // subagents or workflows are still running, hold the turn open and idle-wait
               // until they finish. Their completions steer into the buffer
               // during the wait and are flushed afterward, so the model gets
               // one wrap-up step to react (nominate, backfill, ...) before the
@@ -857,12 +857,12 @@ export class TurnFlow {
               // running subagents are still observed. Gated on a session flag
               // so interactive / goal modes are unaffected.
               if (this.agent.printDrainAgentTasksOnStop) {
-                const hasActiveAgentTask = this.agent.background
+                const hasActiveOrchestrationTask = this.agent.background
                   .list(true)
-                  .some((task) => task.kind === 'agent');
-                if (hasActiveAgentTask) {
+                  .some((task) => task.kind === 'agent' || task.kind === 'workflow');
+                if (hasActiveOrchestrationTask) {
                   await this.agent.background.waitForActiveTasks(
-                    (task) => task.kind === 'agent',
+                    (task) => task.kind === 'agent' || task.kind === 'workflow',
                     { signal },
                   );
                   this.flushSteerBuffer();
