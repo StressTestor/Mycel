@@ -135,6 +135,16 @@ max_output_size = 128
         }
         thread::sleep(Duration::from_millis(10));
     };
+    // Report an early child exit BEFORE joining the provider thread: if the
+    // child died before ever calling the provider, joining would block on a
+    // request that never comes and the test would hang instead of fail.
+    assert!(
+        sent_prompt && sent_eof,
+        "child exited early (status={status}, provider state {}, prompt sent {sent_prompt}, \
+         eof sent {sent_eof}): {}",
+        server_state.load(Ordering::SeqCst),
+        String::from_utf8_lossy(&output)
+    );
     server.join().expect("provider server");
     assert_eq!(server_state.load(Ordering::SeqCst), 3);
 
@@ -175,7 +185,27 @@ max_output_size = 128
 }
 
 fn serve_openai_stream(listener: TcpListener, answer: &str, state: &AtomicU8) {
-    let (mut stream, _) = listener.accept().expect("accept provider request");
+    // Bounded accept: a blocking accept() with no client would hang the join
+    // forever (observed on CI). Poll until the main test's own deadline has
+    // long since expired, then give up loudly.
+    listener
+        .set_nonblocking(true)
+        .expect("nonblocking listener");
+    let accept_deadline = Instant::now() + Duration::from_secs(20);
+    let mut stream = loop {
+        match listener.accept() {
+            Ok((stream, _)) => break stream,
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                assert!(
+                    Instant::now() < accept_deadline,
+                    "provider server never received a request (mycel never called the provider)"
+                );
+                thread::sleep(Duration::from_millis(10));
+            }
+            Err(error) => panic!("accept provider request: {error}"),
+        }
+    };
+    stream.set_nonblocking(false).expect("blocking stream");
     state.store(1, Ordering::SeqCst);
     stream
         .set_read_timeout(Some(Duration::from_secs(5)))
