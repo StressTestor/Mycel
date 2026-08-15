@@ -159,6 +159,25 @@ fn prepare_confines_paths_to_real_workspace_roots_and_rejects_symlink_escapes() 
         .prepare(&json!({"path":"escape/secret.txt"}), &context)
         .is_err());
     assert!(read.prepare(&json!({"path":".env"}), &context).is_err());
+    // A harmlessly named symlink pointing at a sensitive file must be rejected
+    // too: the name check runs on the input, but the bytes come from the
+    // canonical target, so the target has to pass the same policy.
+    symlink(
+        workspace.path().join(".env"),
+        workspace.path().join("config-link"),
+    )
+    .expect("sensitive symlink");
+    assert!(
+        read.prepare(&json!({"path":"config-link"}), &context)
+            .is_err(),
+        "symlink to .env bypassed the sensitive-path policy"
+    );
+    assert!(
+        GrepTool::new(config.clone())
+            .prepare(&json!({"pattern":"SECRET","path":"config-link"}), &context)
+            .is_err(),
+        "grep of a symlink to .env bypassed the sensitive-path policy"
+    );
     assert!(WriteTool::new(config.clone())
         .prepare(&json!({"path":"escape/new.txt","content":"no"}), &context)
         .is_err());
@@ -559,6 +578,56 @@ async fn bash_uses_shell_c_semantics_confined_cwd_progress_timeout_and_cancellat
     let cancelled = task.await.expect("cancelled task");
     assert!(cancelled.is_error);
     assert!(output_text(&cancelled).contains("Interrupted"));
+}
+
+/// An update sink that is slow per streamed chunk - the real TUI/headless
+/// sinks render or write to a socket, so a consumer that lags the producer is
+/// the production condition, not a contrivance.
+struct SlowUpdates;
+
+impl ToolUpdateSink for SlowUpdates {
+    fn emit(&self, update: ToolUpdate) {
+        if matches!(update.kind, ToolUpdateKind::Stdout | ToolUpdateKind::Stderr) {
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+    }
+}
+
+/// A child that bursts far more than the 32-chunk channel can hold and then
+/// exits must still return. Regression: the runner awaited both drain tasks
+/// BEFORE draining the receiver, so a producer parked in `sender.send` on a
+/// full channel after the child exited was joined by a consumer that never
+/// read - a circular wait, i.e. a hang. Needs a lagging consumer to surface.
+#[tokio::test]
+async fn bash_burst_then_exit_returns_instead_of_deadlocking() {
+    let workspace = TempWorkspace::new("bash-burst");
+    let blob = workspace.path().join("blob");
+    std::fs::write(&blob, vec![b'x'; 1024 * 1024]).expect("blob");
+    let config = LocalToolConfig::new(workspace.path(), Vec::<PathBuf>::new()).expect("config");
+    let tool = BashTool::new(config);
+    let arguments = json!({"command":"cat blob; cat blob >&2","timeout":10});
+    tool.validate_arguments(&arguments)
+        .expect("valid arguments");
+    tool.prepare(&arguments, &prepare_context())
+        .expect("prepare tool");
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        tool.execute(ToolInvocation {
+            context: prepare_context(),
+            arguments,
+            cancellation: CancellationToken::new(),
+            updates: Arc::new(SlowUpdates),
+        }),
+    )
+    .await
+    .expect("bash burst-then-exit deadlocked (drain tasks joined before the channel was drained)")
+    .expect("execute tool");
+    assert!(!result.is_error, "{}", output_text(&result));
+    assert!(
+        output_text(&result).contains('x'),
+        "burst output was lost: {}",
+        output_text(&result)
+    );
 }
 
 #[tokio::test]

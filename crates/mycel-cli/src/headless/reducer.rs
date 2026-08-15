@@ -155,6 +155,12 @@ impl HeadlessEventReducer {
                 content,
                 blocked,
             } => {
+                // A successful hook with nothing to say (the catch-all gate
+                // returns `{}` on every allow) is not a transcript event; only
+                // blocks and hooks that carry a message render.
+                if !blocked && content.trim().is_empty() {
+                    return Vec::new();
+                }
                 let mut records = self.flush_attempt();
                 let blocked = if blocked { " blocked" } else { "" };
                 let body = if content.trim().is_empty() {

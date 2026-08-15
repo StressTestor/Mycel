@@ -36,6 +36,12 @@ pub(super) fn resolve_local_path(
         PathKind::File | PathKind::Directory => {
             let canonical = std::fs::canonicalize(&candidate)
                 .map_err(|error| format!("cannot resolve {input:?}: {error}"))?;
+            // The name check above ran on the INPUT; the bytes come from the
+            // canonical target. A benign-named symlink (config-link -> .env)
+            // must not launder a sensitive file, so re-apply the policy here.
+            if !matches!(kind, PathKind::Directory) && is_sensitive_path(&canonical) {
+                return Err(format!("access to sensitive path {input:?} is denied"));
+            }
             require_within_real_root(config, &canonical, input)?;
             let metadata = std::fs::metadata(&canonical)
                 .map_err(|error| format!("cannot inspect {input:?}: {error}"))?;

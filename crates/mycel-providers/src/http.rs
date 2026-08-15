@@ -258,6 +258,11 @@ pub async fn collect_body(mut body: ByteStream, limit: usize) -> Result<Vec<u8>,
 type EventDecoder =
     Box<dyn FnMut(&str, &mut VecDeque<Result<ProviderStreamEvent, ProviderError>>) + Send>;
 
+/// Largest single SSE event we will buffer while waiting for its delimiter.
+/// Real provider events are a few KiB (a tool-call argument burst is the big
+/// case); 16 MiB is far above that and far below "grow until OOM".
+const MAX_SSE_EVENT_BYTES: usize = 16 * 1024 * 1024;
+
 struct SseState {
     body: ByteStream,
     buffer: Vec<u8>,
@@ -289,7 +294,25 @@ pub fn decode_sse(body: ByteStream, decoder: EventDecoder) -> ProviderEventStrea
                 return None;
             }
             match state.body.next().await {
-                Some(Ok(chunk)) => state.buffer.extend_from_slice(&chunk),
+                Some(Ok(chunk)) => {
+                    // Bound the undelimited buffer: a body that never sends
+                    // "\n\n" would otherwise grow the process until EOF.
+                    if state.buffer.len().saturating_add(chunk.len()) > MAX_SSE_EVENT_BYTES {
+                        state.eof = true;
+                        state.buffer.clear();
+                        state.queue.push_back(Err(ProviderError {
+                            kind: ProviderErrorKind::MalformedResponse,
+                            message: format!(
+                                "SSE event exceeds {MAX_SSE_EVENT_BYTES} bytes without a delimiter"
+                            ),
+                            retryable: false,
+                            status_code: None,
+                            retry_after_ms: None,
+                        }));
+                    } else {
+                        state.buffer.extend_from_slice(&chunk);
+                    }
+                }
                 Some(Err(error)) => {
                     state.eof = true;
                     state.queue.push_back(Err(connection_error(error.message)));
@@ -378,6 +401,31 @@ pub(crate) mod tests {
         );
         assert!(stream.next().await.is_none());
         assert_eq!(seen.lock().expect("lock").as_slice(), ["{\"x\":\"🍄\"}"]);
+    }
+
+    /// A body that never emits an SSE delimiter must not buffer to EOF: a
+    /// malformed or hostile endpoint could otherwise grow the process without
+    /// bound. Once the undelimited buffer exceeds the wire limit the stream
+    /// yields a malformed-response error and stops pulling.
+    #[tokio::test]
+    async fn sse_decoder_bounds_undelimited_event_buffer() {
+        // Each chunk is 1 MiB of non-delimiter bytes; a lazy generator so the
+        // test itself never allocates past the bound.
+        let chunk = Bytes::from(vec![b'a'; 1024 * 1024]);
+        let body: ByteStream = Box::pin(stream::iter(std::iter::repeat_n(chunk, 64).map(Ok)));
+        let mut stream = decode_sse(body, Box::new(|_, _| unreachable!("no event completes")));
+        let first = stream.next().await.expect("stream must not silently end");
+        let error = first.expect_err("oversized undelimited SSE buffer must error");
+        assert_eq!(error.kind, ProviderErrorKind::MalformedResponse);
+        assert!(
+            error.message.contains("SSE event exceeds"),
+            "unexpected error message: {}",
+            error.message
+        );
+        assert!(
+            stream.next().await.is_none(),
+            "stream must end after the bound error"
+        );
     }
 
     struct RetryTransport {

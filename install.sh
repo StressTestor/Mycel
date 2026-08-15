@@ -83,8 +83,13 @@ migrated, unknown = [], []
 for name, entry in servers.items():
     if not isinstance(entry, dict) or "transport" in entry:
         continue
+    # McpServerConfig accepts exactly two transports: stdio (command) and
+    # http (url). infer from the shape; anything else is genuinely unknown.
     if "command" in entry:
         entry["transport"] = "stdio"
+        migrated.append(name)
+    elif "url" in entry:
+        entry["transport"] = "http"
         migrated.append(name)
     else:
         unknown.append(name)
@@ -95,16 +100,17 @@ if migrated:
         json.dump(data, f, indent=2)
         f.write("\n")
     os.replace(tmp, path)
-    print(f"migrated mcp.json: added \"transport\": \"stdio\" to {', '.join(migrated)}")
+    print(f"migrated mcp.json: added \"transport\" to {', '.join(migrated)}")
 for name in unknown:
     sys.stderr.write(
-        f"warning: mcp.json entry \"{name}\" has no \"transport\" key and no "
-        f"\"command\"; mycel will refuse to start until you add one "
-        f"(\"stdio\", \"sse\", or \"streamable_http\") in {path}\n")
+        f"warning: mcp.json entry \"{name}\" has no \"transport\" key and neither "
+        f"\"command\" nor \"url\"; mycel will refuse to start until you add "
+        f"\"transport\": \"stdio\" (with a command) or \"transport\": \"http\" "
+        f"(with a url) in {path}\n")
 PYEOF
 else
-  if grep -qs '"command"' "$MYCEL_INSTALL_DIR/mcp.json" && ! grep -qs '"transport"' "$MYCEL_INSTALL_DIR/mcp.json"; then
-    _fail "existing mcp.json predates the Rust cutover (no \"transport\" key) and python3 is unavailable to migrate it. add \"transport\": \"stdio\" to each server entry in $MYCEL_INSTALL_DIR/mcp.json, then re-run install.sh"
+  if grep -qsE '"(command|url)"' "$MYCEL_INSTALL_DIR/mcp.json" && ! grep -qs '"transport"' "$MYCEL_INSTALL_DIR/mcp.json"; then
+    _fail "existing mcp.json predates the Rust cutover (no \"transport\" key) and python3 is unavailable to migrate it. add \"transport\": \"stdio\" to each command-based entry and \"transport\": \"http\" to each url-based entry in $MYCEL_INSTALL_DIR/mcp.json, then re-run install.sh"
   fi
 fi
 

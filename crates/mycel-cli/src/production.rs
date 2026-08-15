@@ -8847,7 +8847,20 @@ mod tests {
         fn next_event(&mut self, timeout: Option<Duration>) -> io::Result<BackendEvent> {
             if let Some((after, requests, expected)) = &self.request_wait {
                 if self.emitted_events >= *after {
+                    // Bounded like path_wait/output_waits below: an unbounded
+                    // spin here hung the whole CI test binary (no output, no
+                    // failure) when the expected provider request never came.
+                    let deadline = Instant::now() + Duration::from_secs(10);
                     while requests.load(Ordering::SeqCst) < *expected {
+                        if Instant::now() >= deadline {
+                            return Err(io::Error::new(
+                                io::ErrorKind::TimedOut,
+                                format!(
+                                    "timed out waiting for {expected} provider request(s), saw {}",
+                                    requests.load(Ordering::SeqCst)
+                                ),
+                            ));
+                        }
                         thread::sleep(Duration::from_millis(1));
                     }
                     self.request_wait = None;

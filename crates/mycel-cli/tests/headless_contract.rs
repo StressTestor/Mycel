@@ -192,6 +192,68 @@ fn hook_results_and_goal_status_use_stable_render_and_exit_contracts() {
     );
 }
 
+/// The shipped catch-all gate hook returns `{}` on every allowed tool call.
+/// That is a successful hook with nothing to say: it must not manufacture an
+/// assistant turn reading "PreToolUse hook (empty)" per tool use. Blocked
+/// results and results carrying a message (warns) still render.
+#[test]
+fn successful_hooks_with_no_message_are_not_rendered() {
+    let mut runtime = ScriptedRuntime {
+        events: vec![
+            HeadlessEvent::HookResult {
+                hook_event: "PreToolUse".to_owned(),
+                content: String::new(),
+                blocked: false,
+            },
+            HeadlessEvent::HookResult {
+                hook_event: "PostToolUse".to_owned(),
+                content: "   ".to_owned(),
+                blocked: false,
+            },
+            HeadlessEvent::HookResult {
+                hook_event: "PreToolUse".to_owned(),
+                content: "mycel warn: prefer --force-with-lease".to_owned(),
+                blocked: false,
+            },
+            HeadlessEvent::HookResult {
+                hook_event: "PreToolUse".to_owned(),
+                content: String::new(),
+                blocked: true,
+            },
+        ],
+        completion: RuntimeCompletion::success_with_session("session-hooks"),
+    };
+    let result = execute(
+        parse(&["mycel", "--prompt", "run tools"]),
+        &HashMap::new(),
+        &mut runtime,
+    )
+    .expect("scripted hooks");
+
+    assert!(
+        !result.stdout.contains("PreToolUse hook\n\n  (empty)")
+            && !result.stdout.contains("PostToolUse hook\n\n  (empty)"),
+        "silent successful hooks leaked into output: {:?}",
+        result.stdout
+    );
+    assert!(
+        result.stdout.contains("prefer --force-with-lease"),
+        "warn message must still render: {:?}",
+        result.stdout
+    );
+    assert!(
+        result.stdout.contains("PreToolUse hook blocked"),
+        "blocked hook must still render even without a message: {:?}",
+        result.stdout
+    );
+    assert_eq!(
+        result.stdout.matches("hook").count(),
+        2,
+        "exactly the warn and the block should render: {:?}",
+        result.stdout
+    );
+}
+
 #[test]
 fn all_nonstandard_completion_codes_are_stable() {
     assert_eq!(GoalStatus::Blocked.exit_code(), GOAL_BLOCKED);

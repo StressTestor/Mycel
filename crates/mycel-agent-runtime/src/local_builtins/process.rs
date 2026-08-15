@@ -133,8 +133,15 @@ pub(crate) async fn run_process(request: ProcessRequest<'_>) -> Result<ProcessOu
         }
     };
 
-    let _ = stdout_task.await;
-    let _ = stderr_task.await;
+    // Drain the channel WHILE the producers finish, never before joining them.
+    // A drain task can be parked in `sender.send` on the full 32-slot channel
+    // at the moment the child exits; awaiting that task before reading would
+    // be a circular wait (producer needs a recv, consumer is joining the
+    // producer). Once both senders drop, `recv()` returns None and we're done.
+    // The `stdout_task`/`stderr_task` handles are dropped here; the tasks run
+    // to completion on their own since nothing aborts them.
+    drop(stdout_task);
+    drop(stderr_task);
     while let Some(chunk) = receiver.recv().await {
         record_chunk(
             chunk,
