@@ -110,6 +110,15 @@ const CODEX_FLAG: &str = "codex_subscription_auth";
 const CODEX_FLAG_ENV: &str = "MYCEL_EXPERIMENTAL_CODEX_SUBSCRIPTION_AUTH";
 const GOOGLE_APPLICATION_CREDENTIALS: &str = "GOOGLE_APPLICATION_CREDENTIALS";
 const INTERACTIVE_POLL: Duration = Duration::from_millis(25);
+/// After an exit is requested while a turn is in flight (Ctrl-D once, then
+/// stdin closes), how long the session waits for that turn to finish on its
+/// own before cancelling it and exiting anyway. Bounded on purpose: a stalled
+/// provider must never make the session unkillable.
+const EXIT_TURN_GRACE: Duration = Duration::from_secs(5);
+/// After cancelling the in-flight turn on shutdown, how long to wait for the
+/// task to honor cancellation before aborting it. A turn stuck in something
+/// non-cancellable must not block the process from exiting.
+const SHUTDOWN_JOIN_BOUND: Duration = Duration::from_secs(5);
 const SIDE_QUESTION_SYSTEM_REMINDER: &str = "This is a side-channel conversation with the user. Answer questions directly from the conversation you already have. The main agent continues independently. Do not call tools; this side channel has no tools. Follow-up turns remain in this side channel. If you do not know the answer, say so directly.";
 
 #[derive(Clone, Copy)]
@@ -6178,7 +6187,19 @@ impl InteractiveLoopState {
             .cancel_all("interactive session closed while waiting for input");
         if let Some(active) = self.active.take() {
             active.cancellation.cancel();
-            let _ = executor.block_on(active.task);
+            // Bounded: give the turn a moment to honor cancellation, then abort
+            // it. A turn stuck in something non-cancellable must not block the
+            // process from exiting.
+            let mut task = active.task;
+            let joined = executor.block_on(async {
+                tokio::time::timeout(SHUTDOWN_JOIN_BOUND, &mut task)
+                    .await
+                    .is_ok()
+            });
+            if !joined {
+                task.abort();
+                let _ = executor.block_on(task);
+            }
         }
         self.close_btw(executor, None);
         self.event_pump.abort();
@@ -6579,6 +6600,9 @@ fn interactive_terminal_body<B: TerminalBackend>(
         .size()
         .map_err(|error| format!("could not read terminal size: {error}"))?;
     let mut state = InteractiveLoopState::new(executor, prepared, size);
+    // When stdin closes with an exit already requested and a turn still in
+    // flight, this marks the start of the bounded grace wait for that turn.
+    let mut exit_grace_started: Option<Instant> = None;
     let result = (|| loop {
         state.process_runtime_messages(executor, prepared)?;
         if let Some(transition) = state.session_transition.take() {
@@ -6669,6 +6693,23 @@ fn interactive_terminal_body<B: TerminalBackend>(
                 ));
             }
             TerminalEvent::EndOfInput if state.exit_after_turn && state.active.is_some() => {
+                // Exit already requested, stdin gone, turn still running: give
+                // the turn a bounded grace period to finish on its own, then
+                // cancel it and exit. Never wait on it forever - a stalled
+                // provider must not make the session unkillable.
+                let started = *exit_grace_started.get_or_insert_with(Instant::now);
+                if started.elapsed() >= EXIT_TURN_GRACE {
+                    if let Some(active) = &state.active {
+                        active.cancellation.cancel();
+                    }
+                    state.status(format!(
+                        "exit: current turn did not finish within {}s; cancelled",
+                        EXIT_TURN_GRACE.as_secs()
+                    ));
+                    break Ok(InteractiveTerminalOutcome::Completion(
+                        RuntimeCompletion::success(),
+                    ));
+                }
                 std::thread::sleep(INTERACTIVE_POLL);
             }
             TerminalEvent::EndOfInput => {
@@ -11774,6 +11815,62 @@ max_context_size = 8192
             .expect("system message")
             .to_string();
         assert!(system_message.contains("Swarm mode is active"));
+    }
+
+    /// Ctrl-D once during a stalled provider turn, then stdin closes. Ctrl-D
+    /// once means "exit after the current turn"; before this the EndOfInput
+    /// arm then slept in a loop with NO deadline while
+    /// `exit_after_turn && active.is_some()`, so a provider that never answers
+    /// made the session unkillable - and wedged the CI runner. Now the wait
+    /// for the in-flight turn is bounded: a grace period for it to finish on
+    /// its own, then it is cancelled and the session exits.
+    #[test]
+    fn interactive_quit_during_stalled_turn_exits_within_the_grace_bound() {
+        let temp = TempDir::new().expect("temp");
+        let transport = Arc::new(ScriptedTransport::default());
+        // A provider that will not answer within any bound the test tolerates.
+        transport.respond_after(Duration::from_secs(3600), "never arrives");
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            transport.clone(),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Auto))
+            .expect("prepare");
+        // Prompt starts a turn that stalls; ONE Ctrl-D lands while it is in
+        // flight (= exit after turn, keep waiting); then the script exhausts
+        // -> EndOfInput with exit_after_turn set and an active turn: exactly
+        // the previously-unbounded path.
+        let backend = MemoryBackend::scripted([
+            BackendEvent::Input(b"answer me\r".to_vec()),
+            BackendEvent::Input(vec![0x04]),
+        ])
+        .wait_after_events_for_requests(1, transport.request_counter(), 1);
+        let restored = backend.restored.clone();
+        let mut driver = TerminalDriver::new(backend);
+
+        let started = Instant::now();
+        let (done_tx, done_rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let result = adapter.run_prepared_interactive(prepared, &mut driver);
+            let _ = done_tx.send(result.map(|_| ()));
+        });
+        // The exit must complete well within the grace bound plus join bound;
+        // 30s is far above both and far below "hangs forever".
+        let result = done_rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("quit during a stalled turn must not hang the session");
+        result.expect("stalled-turn quit should exit cleanly");
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "exit took {:?}",
+            started.elapsed()
+        );
+        assert!(restored.load(Ordering::SeqCst), "terminal must be restored");
     }
 
     #[test]
