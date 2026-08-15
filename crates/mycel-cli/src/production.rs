@@ -9061,9 +9061,14 @@ effort = "high"
 max_steps_per_turn = 4
 max_retries_per_step = 0
 
+# A benign always-available PreToolUse hook, so these orchestration tests
+# exercise the tool-flow-with-a-hook path without depending on an installed
+# `mycel-gate` on PATH (which resolves on a dev box but not on CI, where a
+# failed fail-closed hook would block every tool). The real gate binary is
+# covered by the mycel-gate crate tests and the gate-contract/immunity e2e.
 [[hooks]]
 event = "PreToolUse"
-command = "mycel-gate"
+command = "true"
 fail_mode = "closed"
 "#
         .to_owned()
