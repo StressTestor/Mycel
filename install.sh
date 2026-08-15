@@ -29,6 +29,7 @@ command -v cargo >/dev/null 2>&1 || _fail "cargo not found. install rust: https:
 # default toolchain resolves the shim but cannot actually run cargo. Prove it
 # runs before we commit to a multi-minute build.
 CARGO_VER="$(cargo --version 2>&1)" || _fail "cargo is present but cannot run: $CARGO_VER (try: rustup default stable)"
+command -v rg >/dev/null 2>&1 || _log "warning: ripgrep (rg) not found - the Glob/Grep tools need it at runtime (brew install ripgrep / apt install ripgrep)"
 _log "prerequisites ok: $CARGO_VER"
 
 # ---------- rust brain ----------
