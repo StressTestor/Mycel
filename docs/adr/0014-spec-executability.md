@@ -107,7 +107,7 @@ evidenced two ways:
 
 2. **out-of-band blind-reviewer pass**: the orchestrator gives only the spec (not the
    transcript) to a fresh agent and records whether that agent can name the next concrete
-   action. evidence recorded in `docs/v0.3-blind-review-evidence.md`.
+   action. This operational evidence is not stored in the product repository.
 
 the harness is necessary but not sufficient. a spec can pass the heuristic while still being
 too thin for a cold-start agent. the blind-reviewer pass catches that. both must pass for the

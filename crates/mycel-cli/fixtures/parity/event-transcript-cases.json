@@ -1,0 +1,202 @@
+[
+  {
+    "name": "thinking flushes before assistant and tool",
+    "actions": [
+      { "at": 0, "event": { "type": "turn.started" } },
+      { "at": 0, "event": { "type": "thinking.delta", "text": "rea" } },
+      { "at": 10, "event": { "type": "thinking.delta", "text": "son" } },
+      { "at": 20, "event": { "type": "assistant.delta", "text": "answer" } },
+      { "at": 80, "tick": true },
+      {
+        "at": 90,
+        "event": { "type": "tool.started", "id": "tool-1", "name": "Read", "preview": "README.md" }
+      },
+      {
+        "at": 100,
+        "event": { "type": "tool.result", "id": "tool-1", "output": "ok", "failed": false }
+      },
+      { "at": 110, "event": { "type": "turn.ended" } }
+    ],
+    "expected": [
+      { "kind": "thinking", "text": "reason", "streaming": false },
+      { "kind": "assistant", "text": "answer", "streaming": false },
+      {
+        "kind": "tool",
+        "text": "Read README.md\nok",
+        "streaming": false,
+        "tool_id": "tool-1",
+        "tool_status": "completed",
+        "state": "completed"
+      }
+    ]
+  },
+  {
+    "name": "coalesced assistant retry drops failed frame",
+    "actions": [
+      { "at": 0, "event": { "type": "assistant.delta", "text": "partial" } },
+      { "at": 60, "tick": true },
+      {
+        "at": 70,
+        "event": { "type": "retrying", "failed_attempt": 1, "next_attempt": 2 }
+      },
+      { "at": 80, "event": { "type": "assistant.delta", "text": "final " } },
+      { "at": 90, "event": { "type": "assistant.delta", "text": "answer" } },
+      { "at": 140, "tick": true },
+      { "at": 150, "event": { "type": "turn.ended" } }
+    ],
+    "expected": [
+      {
+        "kind": "status",
+        "text": "retrying attempt 1 as 2",
+        "streaming": false,
+        "state": "retrying"
+      },
+      { "kind": "assistant", "text": "final answer", "streaming": false }
+    ]
+  },
+  {
+    "name": "hook flushes assistant first",
+    "actions": [
+      { "at": 0, "event": { "type": "assistant.delta", "text": "before" } },
+      {
+        "at": 10,
+        "event": { "type": "hook.result", "name": "PreToolUse", "content": "denied", "blocked": true }
+      }
+    ],
+    "expected": [
+      { "kind": "assistant", "text": "before", "streaming": false },
+      {
+        "kind": "hook",
+        "text": "PreToolUse hook blocked\n\ndenied",
+        "streaming": false,
+        "state": "blocked"
+      }
+    ]
+  },
+  {
+    "name": "domain lifecycle frames update stable entities in event order",
+    "actions": [
+      {
+        "at": 0,
+        "event": {
+          "type": "subagent.state",
+          "id": "agent-1",
+          "name": "reviewer",
+          "state": "spawned"
+        }
+      },
+      {
+        "at": 1,
+        "event": {
+          "type": "subagent.state",
+          "id": "agent-1",
+          "name": "reviewer",
+          "state": "completed",
+          "detail": "clean"
+        }
+      },
+      {
+        "at": 2,
+        "event": {
+          "type": "background.state",
+          "id": "task-1",
+          "kind": "process",
+          "state": "running",
+          "description": "tests"
+        }
+      },
+      {
+        "at": 3,
+        "event": {
+          "type": "background.state",
+          "id": "task-1",
+          "kind": "process",
+          "state": "failed",
+          "description": "tests"
+        }
+      },
+      {
+        "at": 4,
+        "event": {
+          "type": "mcp.state",
+          "name": "github",
+          "status": "pending"
+        }
+      },
+      {
+        "at": 5,
+        "event": {
+          "type": "mcp.state",
+          "name": "github",
+          "status": "connected",
+          "detail": "12 tools"
+        }
+      },
+      {
+        "at": 6,
+        "event": {
+          "type": "goal.state",
+          "status": "blocked",
+          "objective": "ship",
+          "detail": "needs approval"
+        }
+      }
+    ],
+    "expected": [
+      {
+        "kind": "subagent",
+        "text": "reviewer\nclean",
+        "streaming": false,
+        "entity_id": "agent-1",
+        "state": "completed"
+      },
+      {
+        "kind": "background_task",
+        "text": "process: tests",
+        "streaming": false,
+        "entity_id": "task-1",
+        "state": "failed"
+      },
+      {
+        "kind": "mcp",
+        "text": "github\n12 tools",
+        "streaming": false,
+        "entity_id": "github",
+        "state": "connected"
+      },
+      {
+        "kind": "goal",
+        "text": "ship\nneeds approval",
+        "streaming": false,
+        "state": "blocked"
+      }
+    ]
+  },
+  {
+    "name": "compaction replaces spinner frame with summary",
+    "actions": [
+      {
+        "at": 0,
+        "event": { "type": "compaction.started", "instruction": "Summarize context" }
+      },
+      {
+        "at": 1,
+        "event": {
+          "type": "compaction.completed",
+          "tokens_before": 12000,
+          "tokens_after": 3000,
+          "summary": "kept decisions"
+        }
+      }
+    ],
+    "expected": [
+      {
+        "kind": "compaction",
+        "text": "12000 → 3000 tokens\nkept decisions",
+        "streaming": false,
+        "entity_id": "compaction",
+        "state": "completed"
+      }
+    ]
+  }
+]

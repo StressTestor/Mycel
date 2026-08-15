@@ -1,0 +1,225 @@
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": [],
+      "toolCalls": [],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read one file",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": { "type": "string" }
+            },
+            "required": ["path"]
+          }
+        },
+        {
+          "name": "deferred_search",
+          "description": "Search when selected",
+          "parameters": { "type": "object" },
+          "deferred": true
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "name": "joe",
+      "content": [
+        { "type": "text", "text": "inspect these" },
+        {
+          "type": "image_url",
+          "imageUrl": { "url": "data:image/png;base64,AA==", "id": "image-1" }
+        },
+        {
+          "type": "audio_url",
+          "audioUrl": { "url": "file:///tmp/audio.wav", "id": "audio-1" }
+        },
+        {
+          "type": "video_url",
+          "videoUrl": { "url": "https://example.invalid/video.mp4" }
+        }
+      ],
+      "toolCalls": []
+    },
+    {
+      "role": "assistant",
+      "content": [
+        { "type": "think", "think": "checking", "encrypted": "sig-v1" },
+        { "type": "text", "text": "I need two tools." }
+      ],
+      "toolCalls": [
+        {
+          "type": "function",
+          "id": "call-1",
+          "name": "read_file",
+          "arguments": "{\"path\":\"README.md\"}",
+          "extras": { "providerTag": "keep-me" }
+        },
+        {
+          "type": "function",
+          "id": "call-2",
+          "name": "deferred_search",
+          "arguments": null
+        }
+      ],
+      "partial": true
+    },
+    {
+      "role": "tool",
+      "content": [
+        { "type": "text", "text": "file contents" },
+        {
+          "type": "image_url",
+          "imageUrl": { "url": "file:///tmp/result.png", "id": "result-image" }
+        }
+      ],
+      "toolCalls": [],
+      "toolCallId": "call-1"
+    }
+  ],
+  "toolDefinitions": [
+    {
+      "name": "shell",
+      "description": "Run a command",
+      "parameters": {
+        "type": "object",
+        "properties": { "command": { "type": "string" } }
+      }
+    },
+    {
+      "name": "lazy_tool",
+      "description": "Only sent after selection",
+      "parameters": { "type": "object", "additionalProperties": false },
+      "deferred": true
+    }
+  ],
+  "usage": [
+    {
+      "inputOther": 0,
+      "output": 0,
+      "inputCacheRead": 0,
+      "inputCacheCreation": 0
+    },
+    {
+      "inputOther": 4294967296,
+      "output": 7,
+      "inputCacheRead": 11,
+      "inputCacheCreation": 13
+    }
+  ],
+  "serdeFailures": [
+    {
+      "name": "unknown message role",
+      "target": "message",
+      "value": { "role": "developer", "content": [], "toolCalls": [] }
+    },
+    {
+      "name": "unknown content part",
+      "target": "message",
+      "value": {
+        "role": "user",
+        "content": [{ "type": "file", "path": "README.md" }],
+        "toolCalls": []
+      }
+    },
+    {
+      "name": "non-string tool arguments",
+      "target": "message",
+      "value": {
+        "role": "assistant",
+        "content": [],
+        "toolCalls": [
+          {
+            "type": "function",
+            "id": "call-1",
+            "name": "read_file",
+            "arguments": { "path": "README.md" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "negative usage",
+      "target": "usage",
+      "value": {
+        "inputOther": -1,
+        "output": 0,
+        "inputCacheRead": 0,
+        "inputCacheCreation": 0
+      }
+    },
+    {
+      "name": "fractional usage",
+      "target": "usage",
+      "value": {
+        "inputOther": 1.5,
+        "output": 0,
+        "inputCacheRead": 0,
+        "inputCacheCreation": 0
+      }
+    },
+    {
+      "name": "missing normalized usage field",
+      "target": "usage",
+      "value": { "inputOther": 1, "output": 2, "inputCacheRead": 3 }
+    }
+  ],
+  "validationFailures": [
+    {
+      "name": "tool result missing call id",
+      "target": "message",
+      "value": { "role": "tool", "content": [], "toolCalls": [] },
+      "error": "tool message is missing toolCallId"
+    },
+    {
+      "name": "non-tool message has call id",
+      "target": "message",
+      "value": {
+        "role": "user",
+        "content": [],
+        "toolCalls": [],
+        "toolCallId": "call-1"
+      },
+      "error": "non-tool message must not contain toolCallId"
+    },
+    {
+      "name": "empty tool call id",
+      "target": "message",
+      "value": {
+        "role": "assistant",
+        "content": [],
+        "toolCalls": [
+          { "type": "function", "id": " ", "name": "read_file", "arguments": "{}" }
+        ]
+      },
+      "error": "tool call id must not be empty"
+    },
+    {
+      "name": "empty tool call name",
+      "target": "message",
+      "value": {
+        "role": "assistant",
+        "content": [],
+        "toolCalls": [
+          { "type": "function", "id": "call-1", "name": "", "arguments": "{}" }
+        ]
+      },
+      "error": "tool call name must not be empty"
+    },
+    {
+      "name": "empty tool definition name",
+      "target": "tool",
+      "value": { "name": " ", "description": "bad", "parameters": {} },
+      "error": "tool name must not be empty"
+    },
+    {
+      "name": "tool parameters are not an object",
+      "target": "tool",
+      "value": { "name": "bad", "description": "bad", "parameters": [] },
+      "error": "tool parameters must be a JSON object"
+    }
+  ]
+}

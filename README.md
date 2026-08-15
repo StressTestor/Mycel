@@ -1,213 +1,97 @@
-<div align="center">
-  <img src="docs/assets/mycel-mascot.png" alt="Mycel: a friendly amanita mushroom wearing a 'deny by default' patch, standing on a network of glowing mycelial roots" width="220">
-</div>
-
 # mycel
 
-**deny by default.** personal agent harness for coding, built around substrate ecology.
+Mycel is a local-first coding-agent CLI built around substrate ecology. The
+agent loop, terminal client, providers, tools, policy, and durable memory are
+implemented in Rust.
 
-mycel treats agent runs as living work units inside a local substrate. the first job is substrate memory: remember failures, preserve durable findings, hibernate blocked work, and transfer useful context when an agent dies.
+The product is deliberately terminal-only. It does not ship a browser UI,
+editor extension, daemon, remote control plane, cloud telemetry, self-updater,
+or bundled plugin marketplace.
 
-confidence key: **solid** means verified or strongly supported. **directional** means the shape is likely right, but details may change. **vibes** means a useful hypothesis, not a fact.
+## what ships
 
-## what it is now
+- `crates/mycel-agent-protocol`: the normalized Rust message, event, record,
+  permission, session, and configuration contracts.
+- `crates/mycel-agent-runtime`: the native replay, context, permission,
+  scheduler, session, tools, orchestration, skills, plugins, and MCP runtime.
+- `crates/mycel-providers`: Rust adapters for the retained provider wire families
+  and credential flows.
+- `crates/mycel-core`: the SQLite substrate, antibodies, task records, decay,
+  sclerotia, spores, and deterministic evaluation logic.
+- `crates/mycel-gate`: the fail-closed `PreToolUse` policy hook.
+- `crates/mycel-observe`: failure capture for the immunity learning loop.
+- `crates/mycel-cli`: the installed native `mycel` CLI/TUI plus
+  `mycel-substrate`.
+- `crates/mycel-mcp`: the local stdio MCP interface to the substrate.
 
-two halves in one repo.
-
-- `crates/` is the rust brain: substrate, antibodies, the evaluation engine, sentinel. this is where policy and memory live.
-- `harness/` is the agent body: a forked, de-vendored agent CLI (grafted from kimi-code, MIT, ADR-0006). it runs sessions, drives whatever model you configure, executes tools.
-
-they meet at one hard edge. every shell command the agent wants to run goes through `mycel-gate` as a fail-closed `PreToolUse` hook. a command that matches an active antibody is blocked with a remediation string. if the gate crashes, times out, or the substrate db is missing, the command is blocked, not allowed. a deleted db reads as a disarmed guard, not a fresh start.
-
-model-agnostic on purpose. no default model, no telemetry, no update pings, no marketplace phone-home. bring kimi, anthropic, a local ollama, gemini - config picks all of it.
+The Kimi-derived TypeScript implementation was removed after its retained
+behavior was captured in Rust fixtures, adversarial tests, CLI contracts, and
+PTY tests. The migration boundary and intentional exclusions are recorded in
+[`docs/RUST_PORT_PARITY.md`](docs/RUST_PORT_PARITY.md).
 
 ## install
+
+Requirement: a stable Rust toolchain.
 
 ```sh
 bash install.sh
 ```
 
-builds the rust binaries and the harness, installs `mycel` + `mycel-gate` + `mycel-substrate` + `mycel-mcp-server` into `~/.mycel/bin`, scaffolds a config, and verifies the gate before it calls itself done. every step is loud and every failure names the fix. then edit `~/.mycel/config.toml`, pick a provider, set `default_model`, and run `mycel`.
+The installer builds and installs the native Rust binaries under `~/.mycel`,
+initializes the substrate, and verifies that the gate allows a
+benign operation and blocks when its database is missing.
 
-### codex subscription provider
-
-mycel can experimentally use an existing ChatGPT subscription login while
-keeping Mycel's loop, tools, approvals, hooks, and fail-closed gate in charge.
-Install a current Codex CLI, run `codex login`, then add this to
-`~/.mycel/config.toml`:
-
-```toml
-default_model = "codex/gpt-5.6-sol"
-
-[experimental]
-codex_subscription_auth = true
-
-[providers."managed:codex"]
-type = "openai_responses"
-base_url = "https://chatgpt.com/backend-api/codex"
-oauth = { storage = "codex", key = "default" }
-
-[models."codex/gpt-5.6-sol"]
-provider = "managed:codex"
-model = "gpt-5.6-sol"
-max_context_size = 272000
-capabilities = [ "thinking", "image_in", "tool_use" ]
-support_efforts = [ "low", "medium", "high", "xhigh", "max" ]
-default_effort = "low"
-```
-
-the adapter asks `codex app-server` for short-lived request auth, so Mycel does
-not read or copy Codex's refresh token. the model endpoint is an undocumented
-ChatGPT backend, not a supported public OpenAI API. treat this provider as
-version-sensitive and keep the API-key provider available as the stable path.
-
-seed the immunity gate:
+Then edit `~/.mycel/config.toml`, configure a provider and model, and run:
 
 ```sh
-mycel-substrate antibody-add --db ~/.mycel/substrate/mycel.db \
-  --command-pattern "rm -rf /" \
-  --remediation "no." --severity refuse --refusal-mode hard
+mycel
 ```
 
-## language recommendation
+Mycel ships no default model. Kimi, Anthropic, Google, OpenAI-compatible local
+servers, and the experimental Codex subscription adapter are available through
+explicit configuration. Provider traffic and user-configured MCP/plugin traffic
+are the only expected network activity.
 
-recommendation: **rust core, with thin python and typescript adapters**.
+Production terminal support is macOS and Linux. Windows is not currently
+supported.
 
-why:
+## immunity loop
 
-| option | read |
-| --- | --- |
-| rust | best fit for local state, typed policy, and Sentinel pairing. rust should reduce runtime ambiguity in the substrate core. **confidence: directional. load-bearing.** |
-| python | best fit for Hermes interop and eval experiments. weaker as the long-term policy runtime. **confidence: directional. load-bearing.** |
-| typescript | best fit for OpenClaw manifest work and editor-adjacent tooling. less aligned with Sentinel. **confidence: directional. load-bearing.** |
-| hybrid | best fit if the core stays small and adapters stay schema-driven. **confidence: directional. load-bearing.** |
-
-initial runtime shape:
-
-- rust owns substrate storage, antibody matching, condition evaluation, and file projection.
-- sentinel is a core runtime-defense subsystem inside the future cargo workspace.
-- python adapters export and import Hermes-compatible skills and run optional eval tooling.
-- typescript adapters export and import OpenClaw-compatible plugin and skill metadata.
-- no source directories exist yet.
-
-## v0.1 pick
-
-v0.1 ships **fail-pattern immunity** first.
-
-the reason is boring in the useful way: it proves the substrate has memory, policy, and enforcement before autonomous spawning. it also pairs directly with Sentinel. Sentinel block logs can become antibody candidates, and Mycel antibodies can later become Sentinel rules. **confidence: directional. load-bearing.**
-
-v0.1 also drafts self-spec schema and makes the interop decision early. early interop design should reduce schema churn once Hermes and OpenClaw export losses are visible. **confidence: directional. load-bearing.**
-
-## repo structure proposal
-
-this repository starts flat and document-first:
+Mycel never promotes a captured failure automatically:
 
 ```text
-mycel/
-  ARCHITECTURE.md
-  README.md
-  ROADMAP.md
-  CONTRIBUTING.md
-  LICENSE
-  .gitignore
-  docs/
-    adr/
-      0001-substrate-format.md
-      0002-workspace-convention.md
-      0003-language-and-runtime.md
-      0004-skill-interop.md
-      0005-license.md
-    open-questions.md
+tool failure or block
+  -> mycel-observe records an audit event
+  -> mycel-substrate ingest creates an inert candidate
+  -> a human reviews and promotes the candidate
+  -> mycel-gate enforces the active antibody on later calls
 ```
 
-future source layout, still uncreated:
+The TUI exposes this substrate through `/immunity`, `/gate`, `/substrate`,
+`/candidates`, `/promote`, `/deny`, and `/delegate`. Declarative Workflow and
+session-scoped `/hyphae` orchestration are also part of Mycel's product, not
+fork scaffolding.
 
-```text
-crates/
-  mycel-core/        substrate, antibodies, wake rules
-  mycel-mcp/         MCP server, canonical interface
-  mycel-cli/         local command surface (built on MCP tool surface)
-  sentinel-guard/    workspace member, also published independently
-adapters/
-  hermes/            python skill import/export
-  openclaw/          typescript plugin and skill import/export
-schemas/             json schema for spores, antibodies, sclerotia
-examples/            small local workspaces
-docs/
-  adr/               architectural decision records
-  schemas/           schema appendix
-```
+The gate fails closed when its process crashes, times out, receives invalid
+input, or cannot open a valid substrate database. Its compiled protected-path
+floor blocks structured write tools from replacing the installed gate, config,
+or substrate before database evaluation. Shell-command writes to those paths
+remain a documented residual until structured shell parsing lands.
 
-why:
-
-- keeping v0 document-first lowers early churn while decisions are still moving. **confidence: directional. load-bearing.**
-- separating the rust core from adapter languages should keep interop from shaping the substrate model too early. **confidence: directional. load-bearing.**
-- schemas likely belong at repo root once formats stabilize because spores and antibodies become public-ish contracts. **confidence: directional.**
-
-## mechanisms
-
-| mechanism | v1 role |
-| --- | --- |
-| fail-pattern immunity | failed signatures become antibody records that refuse or pre-flag similar runs |
-| decay-pruned context | ttl-tiered context compaction on schedule, driven by solid, directional, and vibes tiers |
-| self-spec on death | terminating agents write the next agent spec before exit |
-| sclerotia | blocked agents serialize work-in-progress with wake conditions |
-| spore-based plugin discovery | finished agents emit typed manifests of completed work and adjacent opportunities |
-| mycorrhizal kin-sharing | terminating agents bequeath useful context to related live or dormant work |
-| substrate-conditioned spawning | agents start when typed environmental tuples match |
-
-post-v1:
-
-- lifestyle classification: parasite, saprophyte, symbiote. **confidence: vibes.**
-- mycoheterotroph detection: identify freeloader patterns that consume context without contributing useful substrate. **confidence: vibes.**
-- distribution layer: share selected spores, skills, and antibodies across machines or users. **confidence: vibes.**
-
-## workspace files
-
-mycel workspaces expose four canonical human files:
-
-| file | role |
-| --- | --- |
-| `SUBSTRATE.md` | current substrate summary, active conditions, durable findings |
-| `SPORES.md` | emitted manifests and germination candidates |
-| `COMPOST.md` | decayed findings, distillations, and pruned context notes |
-| `MYCELIUM.md` | kin graph, live threads, dormant sclerotia, resource transfers |
-
-these files should be projections from the local substrate store. the database stays the source of truth. **confidence: directional. load-bearing.**
-
-## getting started shape
-
-hypothetical until implementation begins:
+## develop
 
 ```sh
-mycel init
-mycel antibody ingest --from sentinel
-mycel run --task "repair failing tests"
-mycel substrate maintain
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+bash tests/e2e/gate-contract.sh
+bash tests/e2e/immunity-loop.sh
 ```
 
-expected v0.1 workflow:
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the current wiring and
+[`docs/VISION.md`](docs/VISION.md) for the product direction.
 
-1. initialize a local workspace substrate.
-2. ingest Sentinel block logs or failed run records.
-3. normalize them into typed antibody records.
-4. evaluate a proposed run against the antibody registry.
-5. refuse, warn, or allow with attached context.
+## license
 
-## positioning
-
-OpenClaw is a useful reference for a typed context-engine lifecycle and native plugin manifests. its current context engine interface includes bootstrap, ingest, after-turn, assemble, compact, maintain, and subagent lifecycle hooks. **confidence: solid. source-checked 2026-05-27.**
-
-Hermes Agent is a useful reference for a pluggable context engine, threshold-triggered compression, background review after turns, and active/stale/archive skill curation. **confidence: solid. source-checked 2026-05-27.**
-
-mycel's wedge is ecological substrate management: immune memory, dormancy, and kin-aware death transfer.
-
-## references checked
-
-- [OpenClaw context engine types](https://raw.githubusercontent.com/openclaw/openclaw/main/src/context-engine/types.ts)
-- [OpenClaw plugin manifest docs](https://raw.githubusercontent.com/openclaw/openclaw/main/docs/plugins/manifest.md)
-- [OpenClaw commitments types](https://raw.githubusercontent.com/openclaw/openclaw/main/src/commitments/types.ts)
-- [Hermes context engine](https://raw.githubusercontent.com/NousResearch/hermes-agent/main/agent/context_engine.py)
-- [Hermes context compressor](https://raw.githubusercontent.com/NousResearch/hermes-agent/main/agent/context_compressor.py)
-- [Hermes background review](https://raw.githubusercontent.com/NousResearch/hermes-agent/main/agent/background_review.py)
-- [Hermes curator](https://raw.githubusercontent.com/NousResearch/hermes-agent/main/agent/curator.py)
+Mycel is MIT licensed. Licenses for code derived from Kimi Code and pi-tui are
+preserved in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

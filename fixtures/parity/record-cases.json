@@ -1,0 +1,258 @@
+{
+  "records": [
+    {
+      "type": "metadata",
+      "time": 1000,
+      "protocol_version": "1.4",
+      "created_at": 1000
+    },
+    { "type": "forked" },
+    {
+      "type": "turn.prompt",
+      "input": [{ "type": "text", "text": "hello" }],
+      "origin": { "kind": "user" }
+    },
+    {
+      "type": "turn.steer",
+      "input": [{ "type": "text", "text": "focus on fixtures" }],
+      "origin": { "kind": "injection", "variant": "steer" }
+    },
+    { "type": "turn.cancel", "turnId": 7 },
+    {
+      "type": "config.update",
+      "model": "primary",
+      "thinkingEffort": "high",
+      "systemPrompt": "You are Mycel."
+    },
+    { "type": "permission.set_mode", "mode": "manual" },
+    {
+      "type": "permission.record_approval_result",
+      "turnId": 7,
+      "toolCallId": "call-1",
+      "toolName": "shell",
+      "action": "cargo test",
+      "sessionApprovalRule": "shell(command=cargo test*)",
+      "result": { "decision": "approved", "scope": "session" }
+    },
+    { "type": "full_compaction.begin", "source": "manual", "instruction": "keep decisions" },
+    { "type": "plan_mode.enter", "id": "plan-1" },
+    { "type": "plan_mode.cancel", "id": "plan-1" },
+    { "type": "plan_mode.exit", "id": "plan-1" },
+    { "type": "swarm_mode.enter", "trigger": "user" },
+    { "type": "swarm_mode.exit" },
+    {
+      "type": "tools.register_user_tool",
+      "name": "custom_tool",
+      "description": "Custom tool",
+      "parameters": { "type": "object" },
+      "command": ["custom-tool"]
+    },
+    { "type": "tools.unregister_user_tool", "name": "custom_tool" },
+    { "type": "tools.set_active_tools", "names": ["read_file", "shell"] },
+    {
+      "type": "usage.record",
+      "model": "model-a",
+      "usage": {
+        "inputOther": 10,
+        "output": 20,
+        "inputCacheRead": 30,
+        "inputCacheCreation": 40
+      },
+      "usageScope": "session"
+    },
+    { "type": "full_compaction.cancel" },
+    { "type": "full_compaction.complete" },
+    { "type": "micro_compaction.apply", "cutoff": 4 },
+    {
+      "type": "context.append_message",
+      "message": {
+        "role": "assistant",
+        "content": [{ "type": "text", "text": "done" }],
+        "toolCalls": [],
+        "origin": { "kind": "user" },
+        "note": "model-visible only"
+      }
+    },
+    {
+      "type": "context.append_loop_event",
+      "event": {
+        "type": "step.begin",
+        "turnId": "7",
+        "step": 1,
+        "uuid": "step-uuid"
+      }
+    },
+    { "type": "context.update_token_count", "tokenCount": 1234 },
+    { "type": "context.clear" },
+    {
+      "type": "context.apply_compaction",
+      "summary": "summary",
+      "compactedCount": 4,
+      "tokensBefore": 1000,
+      "tokensAfter": 200,
+      "keptUserMessageCount": 1,
+      "droppedCount": 3
+    },
+    { "type": "context.undo", "count": 2 },
+    { "type": "tools.update_store", "key": "mcp:server", "value": { "enabled": true } },
+    {
+      "type": "goal.create",
+      "goalId": "goal-1",
+      "objective": "finish parity",
+      "completionCriterion": "all tests pass"
+    },
+    {
+      "type": "goal.update",
+      "status": "active",
+      "tokensUsed": 100,
+      "turnsUsed": 2,
+      "wallClockMs": 5000,
+      "budgetLimits": { "tokenBudget": 10000, "turnBudget": 20 },
+      "reason": "progress",
+      "actor": "runtime"
+    },
+    { "type": "goal.clear" },
+    {
+      "type": "llm.tools_snapshot",
+      "hash": "sha256:tools",
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a file",
+          "parameters": { "type": "object" }
+        }
+      ]
+    },
+    {
+      "type": "llm.request",
+      "kind": "loop",
+      "provider": "anthropic",
+      "model": "claude-test",
+      "modelAlias": "primary",
+      "thinkingEffort": "high",
+      "thinkingKeep": "all",
+      "temperature": 0.2,
+      "topP": 0.9,
+      "maxTokens": 4096,
+      "betaApi": false,
+      "toolSelect": true,
+      "systemPromptHash": "sha256:system",
+      "systemPrompt": "You are Mycel.",
+      "toolsHash": "sha256:tools",
+      "messageCount": 4,
+      "turnStep": "7:1",
+      "attempt": "1",
+      "projection": "strict"
+    },
+    {
+      "type": "mcp.tools_discovered",
+      "serverName": "filesystem",
+      "hash": "sha256:mcp",
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a file",
+          "inputSchema": { "type": "object" }
+        }
+      ],
+      "enabledNames": ["read_file"],
+      "collisions": [{ "name": "write_file", "existingSource": "builtin" }]
+    }
+  ],
+  "forwardRecord": {
+    "type": "future.snapshot",
+    "time": 9999,
+    "codec": "v2",
+    "payload": { "opaque": true }
+  },
+  "sequences": [
+    {
+      "name": "current",
+      "compatibility": "current",
+      "records": [
+        { "type": "metadata", "protocol_version": "1.4", "created_at": 1 },
+        {
+          "type": "turn.prompt",
+          "input": [{ "type": "text", "text": "hello" }],
+          "origin": { "kind": "user" }
+        }
+      ]
+    },
+    {
+      "name": "oldest retained migration",
+      "compatibility": "migration",
+      "records": [
+        { "type": "metadata", "protocol_version": "1.0", "created_at": 1 },
+        { "type": "micro_compaction.apply", "cutoff": 1 }
+      ]
+    },
+    {
+      "name": "newer log with unknown record",
+      "compatibility": "newer",
+      "records": [
+        { "type": "metadata", "protocol_version": "9.9", "created_at": 1 },
+        { "type": "future.snapshot", "opaque": { "keep": true } }
+      ]
+    },
+    {
+      "name": "unsupported older major",
+      "compatibility": "error",
+      "records": [{ "type": "metadata", "protocol_version": "0.9", "created_at": 1 }],
+      "error": "unsupported protocol version 0.9"
+    },
+    {
+      "name": "empty log",
+      "compatibility": "error",
+      "records": [],
+      "error": "agent record log is empty"
+    },
+    {
+      "name": "metadata not first",
+      "compatibility": "error",
+      "records": [
+        { "type": "forked" },
+        { "type": "metadata", "protocol_version": "1.4", "created_at": 1 }
+      ],
+      "error": "metadata record must be first"
+    },
+    {
+      "name": "duplicate metadata",
+      "compatibility": "error",
+      "records": [
+        { "type": "metadata", "protocol_version": "1.4", "created_at": 1 },
+        { "type": "metadata", "protocol_version": "1.4", "created_at": 2 }
+      ],
+      "error": "metadata record repeated at line 2"
+    }
+  ],
+  "recordFailures": [
+    {
+      "name": "empty record type",
+      "value": { "type": " " },
+      "error": "record type must not be empty"
+    },
+    {
+      "name": "missing required record field",
+      "value": {
+        "type": "turn.prompt",
+        "input": [{ "type": "text", "text": "missing origin" }]
+      },
+      "error": "record \"turn.prompt\" is missing required field \"origin\""
+    },
+    {
+      "name": "metadata version is not a string",
+      "value": { "type": "metadata", "protocol_version": 1.4, "created_at": 1 },
+      "error": "metadata protocol_version must be a string"
+    },
+    {
+      "name": "invalid metadata version",
+      "value": { "type": "metadata", "protocol_version": "v1", "created_at": 1 },
+      "error": "invalid protocol version \"v1\""
+    },
+    {
+      "name": "metadata creation time is not numeric",
+      "value": { "type": "metadata", "protocol_version": "1.4", "created_at": "now" },
+      "error": "metadata created_at must be a number"
+    }
+  ]
+}

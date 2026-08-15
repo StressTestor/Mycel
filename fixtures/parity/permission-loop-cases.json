@@ -1,0 +1,234 @@
+{
+  "approvalRequests": [
+    {
+      "toolCallId": "call-1",
+      "toolName": "shell",
+      "action": "cargo test -p mycel-agent-protocol",
+      "display": {
+        "kind": "command",
+        "command": "cargo test -p mycel-agent-protocol",
+        "cwd": "/Volumes/T7/Mycel",
+        "description": "Run protocol tests",
+        "language": "bash"
+      }
+    }
+  ],
+  "approvalResponses": [
+    {
+      "decision": "approved",
+      "scope": "session",
+      "feedback": "safe in this repository",
+      "selectedLabel": "approve for session"
+    },
+    { "decision": "rejected", "feedback": "do not run this command" },
+    { "decision": "cancelled" }
+  ],
+  "approvalRecords": [
+    {
+      "turnId": 7,
+      "toolCallId": "call-1",
+      "toolName": "shell",
+      "action": "cargo test -p mycel-agent-protocol",
+      "sessionApprovalRule": "shell(command=cargo test*)",
+      "result": {
+        "decision": "approved",
+        "scope": "session",
+        "selectedLabel": "approve for session"
+      }
+    },
+    {
+      "turnId": 8,
+      "toolCallId": "call-2",
+      "toolName": "shell",
+      "action": "rm -rf build",
+      "result": { "decision": "rejected", "feedback": "destructive" }
+    }
+  ],
+  "executableToolResults": [
+    { "output": "plain text" },
+    {
+      "output": [
+        { "type": "text", "text": "structured text" },
+        {
+          "type": "image_url",
+          "imageUrl": { "url": "file:///tmp/output.png", "id": "output-image" }
+        }
+      ],
+      "isError": true,
+      "stopTurn": true,
+      "message": "tool failed",
+      "note": "visible to the model",
+      "truncated": true
+    }
+  ],
+  "loopContentParts": [
+    { "type": "text", "text": "hello" },
+    { "type": "think", "think": "reasoning", "encrypted": "sig-v1" }
+  ],
+  "loopEvents": [
+    {
+      "recorded": true,
+      "value": { "type": "step.begin", "uuid": "step-1", "turnId": "7", "step": 1 }
+    },
+    {
+      "recorded": true,
+      "value": {
+        "type": "step.end",
+        "uuid": "step-1",
+        "turnId": "7",
+        "step": 1,
+        "usage": {
+          "inputOther": 10,
+          "output": 5,
+          "inputCacheRead": 3,
+          "inputCacheCreation": 2
+        },
+        "finishReason": "tool_use",
+        "llmFirstTokenLatencyMs": 10.5,
+        "llmStreamDurationMs": 100.25,
+        "llmRequestBuildMs": 1.5,
+        "llmServerFirstTokenMs": 9.0,
+        "llmServerDecodeMs": 90.0,
+        "llmClientConsumeMs": 10.25,
+        "providerFinishReason": "tool_calls",
+        "rawFinishReason": "tool_calls",
+        "messageId": "message-1"
+      }
+    },
+    {
+      "recorded": true,
+      "value": {
+        "type": "content.part",
+        "uuid": "content-1",
+        "turnId": "7",
+        "step": 1,
+        "stepUuid": "step-1",
+        "part": { "type": "think", "think": "reasoning", "encrypted": "sig-v1" }
+      }
+    },
+    {
+      "recorded": true,
+      "value": {
+        "type": "tool.call",
+        "uuid": "tool-uuid-1",
+        "turnId": "7",
+        "step": 1,
+        "stepUuid": "step-1",
+        "toolCallId": "call-1",
+        "name": "read_file",
+        "args": { "path": "README.md" },
+        "description": "Read README",
+        "display": { "kind": "file_io", "operation": "read", "path": "README.md" },
+        "extras": { "providerItemId": "item-1" }
+      }
+    },
+    {
+      "recorded": true,
+      "value": {
+        "type": "tool.result",
+        "parentUuid": "tool-uuid-1",
+        "toolCallId": "call-1",
+        "result": { "output": "README contents", "note": "read successfully" }
+      }
+    },
+    {
+      "recorded": false,
+      "value": {
+        "type": "turn.interrupted",
+        "reason": "aborted",
+        "attemptedSteps": 2,
+        "activeStep": 2,
+        "message": "user cancelled"
+      }
+    },
+    {
+      "recorded": false,
+      "value": {
+        "type": "step.retrying",
+        "turnId": "7",
+        "step": 2,
+        "stepUuid": "step-2",
+        "failedAttempt": 1,
+        "nextAttempt": 2,
+        "maxAttempts": 3,
+        "delayMs": 1000,
+        "errorName": "RateLimitError",
+        "errorMessage": "slow down",
+        "statusCode": 429
+      }
+    },
+    { "recorded": false, "value": { "type": "text.delta", "delta": "hello" } },
+    { "recorded": false, "value": { "type": "thinking.delta", "delta": "reasoning" } },
+    {
+      "recorded": false,
+      "value": {
+        "type": "tool.call.delta",
+        "toolCallId": "call-1",
+        "name": "read_file",
+        "argumentsPart": "{\"path\":"
+      }
+    },
+    {
+      "recorded": false,
+      "value": {
+        "type": "tool.progress",
+        "toolCallId": "call-1",
+        "update": {
+          "kind": "custom",
+          "text": "reading",
+          "percent": 50.0,
+          "customKind": "bytes",
+          "customData": { "read": 512, "total": 1024 }
+        }
+      }
+    }
+  ],
+  "serdeFailures": [
+    {
+      "name": "approval request missing display",
+      "target": "request",
+      "value": { "toolCallId": "call-1", "toolName": "shell", "action": "true" }
+    },
+    {
+      "name": "unknown approval decision",
+      "target": "response",
+      "value": { "decision": "allowed" }
+    },
+    {
+      "name": "unknown approval scope",
+      "target": "response",
+      "value": { "decision": "approved", "scope": "project" }
+    },
+    {
+      "name": "negative approval record turn",
+      "target": "record",
+      "value": {
+        "turnId": -1,
+        "toolCallId": "call-1",
+        "toolName": "shell",
+        "action": "true",
+        "result": { "decision": "approved" }
+      }
+    },
+    {
+      "name": "unknown loop event",
+      "target": "loop",
+      "value": { "type": "step.paused", "turnId": "1", "step": 1 }
+    },
+    {
+      "name": "loop event missing required field",
+      "target": "loop",
+      "value": { "type": "step.begin", "uuid": "step-1", "step": 1 }
+    },
+    {
+      "name": "negative loop step",
+      "target": "loop",
+      "value": { "type": "step.begin", "uuid": "step-1", "turnId": "1", "step": -1 }
+    },
+    {
+      "name": "executable tool output has unsupported object shape",
+      "target": "toolResult",
+      "value": { "output": { "text": "not a content-part array" } }
+    }
+  ]
+}

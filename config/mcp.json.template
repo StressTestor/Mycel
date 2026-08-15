@@ -1,6 +1,7 @@
 {
   "mcpServers": {
     "mycel-substrate": {
+      "transport": "stdio",
       "command": "$HOME/.mycel/bin/mycel-mcp-server",
       "args": []
     }

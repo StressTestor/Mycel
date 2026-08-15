@@ -1,0 +1,26 @@
+[package]
+name = "mycel-providers"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+base64.workspace = true
+bytes.workspace = true
+futures-core.workspace = true
+futures-util.workspace = true
+hex.workspace = true
+mycel-agent-protocol = { path = "../mycel-agent-protocol" }
+reqwest.workspace = true
+ring.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+url.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

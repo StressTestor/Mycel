@@ -16,6 +16,8 @@ serde = { workspace = true }
 serde_json.workspace = true
 
 [dev-dependencies]
+mycel-agent-runtime = { path = "../mycel-agent-runtime" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 tempfile = "3"
+tokio = { workspace = true }
 uuid = { version = "1", features = ["v4"] }

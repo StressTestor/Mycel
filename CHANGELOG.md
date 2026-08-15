@@ -1,5 +1,15 @@
 # changelog
 
+## unreleased
+
+- the installer now ships the native Rust `mycel` binary directly. Node, pnpm,
+  the repo-bound TypeScript shim, and the retired external `claude -p`
+  delegation package are no longer part of the product install.
+- removed the Kimi-derived TypeScript workspace and its CI/package-manager
+  dependency after the Rust fixture, adversarial, CLI, PTY, and ecology gates
+  passed. Upstream MIT notices remain in `THIRD_PARTY_NOTICES.md`.
+- `/delegate` now uses Mycel's capability-bounded native child-agent runtime.
+
 ## v0.2.0
 
 the branding release. mycel got a face, and the gate got sealed shut.

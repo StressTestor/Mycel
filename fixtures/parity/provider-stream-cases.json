@@ -1,0 +1,327 @@
+{
+  "requests": [
+    {
+      "provider": "anthropic",
+      "model": "claude-test",
+      "systemPrompt": "You are Mycel.",
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read a file",
+          "parameters": { "type": "object" }
+        },
+        {
+          "name": "deferred_search",
+          "description": "Search lazily",
+          "parameters": { "type": "object" },
+          "deferred": true
+        }
+      ],
+      "history": [
+        {
+          "role": "user",
+          "content": [{ "type": "text", "text": "hello" }],
+          "toolCalls": []
+        }
+      ],
+      "thinkingEffort": "high",
+      "maxCompletionTokens": 4096,
+      "responseFormat": {
+        "type": "json_schema",
+        "jsonSchema": {
+          "name": "answer",
+          "schema": { "type": "object" },
+          "strict": true,
+          "description": "Structured answer"
+        }
+      },
+      "metadata": { "requestClass": "interactive" }
+    },
+    {
+      "provider": "openai",
+      "model": "openai-test",
+      "systemPrompt": "",
+      "tools": [],
+      "history": []
+    },
+    {
+      "provider": "kimi",
+      "model": "kimi-test",
+      "systemPrompt": "",
+      "tools": [],
+      "history": []
+    },
+    {
+      "provider": "google-genai",
+      "model": "gemini-test",
+      "systemPrompt": "",
+      "tools": [],
+      "history": []
+    },
+    {
+      "provider": "openai_responses",
+      "model": "responses-test",
+      "systemPrompt": "",
+      "tools": [],
+      "history": []
+    },
+    {
+      "provider": "vertexai",
+      "model": "vertex-test",
+      "systemPrompt": "",
+      "tools": [],
+      "history": []
+    }
+  ],
+  "streams": [
+    {
+      "name": "thinking-signature-and-text-boundaries",
+      "events": [
+        { "event": "response_start", "id": "response-1", "traceId": "trace-1" },
+        { "event": "part", "part": { "type": "think", "think": "plan " } },
+        {
+          "event": "part",
+          "part": { "type": "think", "think": "done", "encrypted": "sig-v1" }
+        },
+        { "event": "part", "part": { "type": "think", "think": "post-signature" } },
+        { "event": "part", "part": { "type": "text", "text": "hel" } },
+        { "event": "part", "part": { "type": "text", "text": "lo" } },
+        {
+          "event": "usage",
+          "usage": {
+            "inputOther": 10,
+            "output": 3,
+            "inputCacheRead": 2,
+            "inputCacheCreation": 1
+          }
+        },
+        { "event": "finish", "reason": "completed", "rawReason": "stop" },
+        { "event": "response_end" }
+      ],
+      "expected": {
+        "id": "response-1",
+        "message": {
+          "role": "assistant",
+          "content": [
+            { "type": "think", "think": "plan done", "encrypted": "sig-v1" },
+            { "type": "think", "think": "post-signature" },
+            { "type": "text", "text": "hello" }
+          ],
+          "toolCalls": []
+        },
+        "usage": {
+          "inputOther": 10,
+          "output": 3,
+          "inputCacheRead": 2,
+          "inputCacheCreation": 1
+        },
+        "finishReason": "completed",
+        "rawFinishReason": "stop",
+        "traceId": "trace-1"
+      }
+    },
+    {
+      "name": "interleaved-numeric-and-string-tool-indexes",
+      "events": [
+        { "event": "response_start", "id": "response-2", "traceId": null },
+        {
+          "event": "part",
+          "part": {
+            "type": "function",
+            "id": "call-a",
+            "name": "weather",
+            "arguments": "{",
+            "_streamIndex": 0
+          }
+        },
+        {
+          "event": "part",
+          "part": {
+            "type": "function",
+            "id": "call-b",
+            "name": "sum",
+            "arguments": "[",
+            "_streamIndex": "second"
+          }
+        },
+        {
+          "event": "part",
+          "part": {
+            "type": "tool_call_part",
+            "argumentsPart": "\"city\":\"Denver\"}",
+            "index": 0
+          }
+        },
+        {
+          "event": "part",
+          "part": {
+            "type": "tool_call_part",
+            "argumentsPart": "1,2]",
+            "index": "second"
+          }
+        },
+        {
+          "event": "part",
+          "part": { "type": "tool_call_part", "argumentsPart": null, "index": "second" }
+        },
+        { "event": "finish", "reason": "tool_calls", "rawReason": "tool_calls" },
+        { "event": "response_end" }
+      ],
+      "expected": {
+        "id": "response-2",
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "toolCalls": [
+            {
+              "type": "function",
+              "id": "call-a",
+              "name": "weather",
+              "arguments": "{\"city\":\"Denver\"}"
+            },
+            {
+              "type": "function",
+              "id": "call-b",
+              "name": "sum",
+              "arguments": "[1,2]"
+            }
+          ]
+        },
+        "usage": null,
+        "finishReason": "tool_calls",
+        "rawFinishReason": "tool_calls",
+        "traceId": null
+      }
+    },
+    {
+      "name": "sequential-no-index-fallback",
+      "events": [
+        {
+          "event": "part",
+          "part": {
+            "type": "function",
+            "id": "call-1",
+            "name": "first",
+            "arguments": null
+          }
+        },
+        {
+          "event": "part",
+          "part": { "type": "tool_call_part", "argumentsPart": "{\"x\":" }
+        },
+        {
+          "event": "part",
+          "part": { "type": "tool_call_part", "argumentsPart": "1}" }
+        },
+        {
+          "event": "part",
+          "part": {
+            "type": "function",
+            "id": "call-2",
+            "name": "second",
+            "arguments": "{}"
+          }
+        },
+        { "event": "response_end" }
+      ],
+      "expected": {
+        "id": null,
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "toolCalls": [
+            {
+              "type": "function",
+              "id": "call-1",
+              "name": "first",
+              "arguments": "{\"x\":1}"
+            },
+            {
+              "type": "function",
+              "id": "call-2",
+              "name": "second",
+              "arguments": "{}"
+            }
+          ]
+        },
+        "usage": null,
+        "finishReason": null,
+        "rawFinishReason": null
+      }
+    }
+  ],
+  "failures": [
+    {
+      "name": "duplicate response start",
+      "events": [
+        { "event": "response_start", "id": "one" },
+        { "event": "response_start", "id": "two" }
+      ],
+      "error": "provider stream contains a duplicate response start"
+    },
+    {
+      "name": "event after response end",
+      "events": [
+        { "event": "part", "part": { "type": "text", "text": "done" } },
+        { "event": "response_end" },
+        {
+          "event": "usage",
+          "usage": {
+            "inputOther": 0,
+            "output": 1,
+            "inputCacheRead": 0,
+            "inputCacheCreation": 0
+          }
+        }
+      ],
+      "error": "provider stream emitted an event after response_end"
+    },
+    {
+      "name": "empty response",
+      "events": [
+        { "event": "response_start", "id": null },
+        { "event": "response_end" }
+      ],
+      "error": "provider returned no content or tool calls"
+    },
+    {
+      "name": "thinking-only response",
+      "events": [
+        { "event": "part", "part": { "type": "think", "think": "private" } },
+        { "event": "response_end" }
+      ],
+      "error": "provider returned thinking without text or tool calls"
+    },
+    {
+      "name": "thinking plus whitespace-only response",
+      "events": [
+        { "event": "part", "part": { "type": "think", "think": "private" } },
+        { "event": "part", "part": { "type": "text", "text": "  \n\t" } },
+        { "event": "response_end" }
+      ],
+      "error": "provider returned thinking without text or tool calls"
+    },
+    {
+      "name": "orphan null tool delta",
+      "events": [
+        {
+          "event": "part",
+          "part": { "type": "tool_call_part", "argumentsPart": null, "index": 0 }
+        },
+        { "event": "response_end" }
+      ],
+      "error": "provider returned no content or tool calls"
+    },
+    {
+      "name": "empty streamed tool id",
+      "events": [
+        {
+          "event": "part",
+          "part": { "type": "function", "id": "", "name": "bad", "arguments": "{}" }
+        },
+        { "event": "response_end" }
+      ],
+      "error": "invalid streamed tool call: tool call id must not be empty"
+    }
+  ]
+}

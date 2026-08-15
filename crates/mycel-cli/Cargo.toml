@@ -6,21 +6,39 @@ license.workspace = true
 repository.workspace = true
 
 [[bin]]
-# named mycel-substrate, not mycel: the `mycel` command is the harness (the
-# thing users launch); this is the substrate management CLI beside it.
+# The substrate management CLI remains available beside the agent harness.
 name = "mycel-substrate"
 path = "src/main.rs"
 
+[[bin]]
+name = "mycel"
+path = "src/bin/mycel.rs"
+
 [dependencies]
 anyhow.workspace = true
+base64.workspace = true
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
+futures-util.workspace = true
+libc.workspace = true
+mycel-agent-protocol = { path = "../mycel-agent-protocol" }
+mycel-agent-runtime = { path = "../mycel-agent-runtime" }
 mycel-core = { path = "../mycel-core" }
 mycel-mcp = { path = "../mycel-mcp" }
+mycel-providers = { path = "../mycel-providers" }
+reqwest.workspace = true
+ring.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["net", "signal"] }
+toml.workspace = true
+url.workspace = true
 uuid = { version = "1", features = ["v4"] }
+zeroize.workspace = true
 
 [dev-dependencies]
 assert_cmd = "2"
+bytes.workspace = true
 predicates = "3"
 tempfile = "3"

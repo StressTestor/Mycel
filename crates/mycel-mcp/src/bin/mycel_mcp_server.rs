@@ -2,8 +2,9 @@
 //! agent harness.
 //!
 //! It speaks newline-delimited JSON-RPC 2.0 over stdin/stdout and implements the
-//! MCP subset a harness needs: `initialize`, `notifications/initialized`,
-//! `tools/list`, and `tools/call`. Three tools are exposed:
+//! MCP subset a harness needs: the stateless 2026-07-28 `server/discover`
+//! probe, the legacy `initialize` handshake, `tools/list`, and `tools/call`.
+//! Three tools are exposed:
 //!
 //! * `evaluate_run`  - score a proposed tool/command against the antibody store.
 //! * `list_antibodies` - dump the full antibody store.
@@ -25,7 +26,8 @@ use mycel_core::{ProposedRun, SignatureScope};
 use mycel_mcp::McpTools;
 use serde_json::{json, Value};
 
-const PROTOCOL_VERSION: &str = "2025-06-18";
+const MODERN_PROTOCOL_VERSION: &str = "2026-07-28";
+const LEGACY_PROTOCOL_VERSION: &str = "2025-06-18";
 const SERVER_NAME: &str = "mycel-mcp-server";
 const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -48,12 +50,18 @@ fn main() {
         let request: Value = match serde_json::from_str(&line) {
             Ok(value) => value,
             Err(_) => {
-                write_message(&mut out, &parse_error());
+                if let Err(error) = write_message(&mut out, &parse_error()) {
+                    eprintln!("failed to write MCP parse error response: {error}");
+                    break;
+                }
                 continue;
             }
         };
         if let Some(response) = server.handle(&request) {
-            write_message(&mut out, &response);
+            if let Err(error) = write_message(&mut out, &response) {
+                eprintln!("failed to write MCP response: {error}");
+                break;
+            }
         }
     }
 }
@@ -72,6 +80,7 @@ impl ServerState {
         let id = id?;
 
         match method {
+            "server/discover" => Some(ok(id, self.discover())),
             "initialize" => Some(ok(id, self.initialize())),
             "ping" => Some(ok(id, json!({}))),
             "tools/list" => Some(ok(id, self.tools_list())),
@@ -80,9 +89,17 @@ impl ServerState {
         }
     }
 
+    fn discover(&self) -> Value {
+        json!({
+            "supportedVersions": [MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION],
+            "capabilities": { "tools": { "listChanged": false } },
+            "serverInfo": { "name": SERVER_NAME, "version": SERVER_VERSION },
+        })
+    }
+
     fn initialize(&self) -> Value {
         json!({
-            "protocolVersion": PROTOCOL_VERSION,
+            "protocolVersion": LEGACY_PROTOCOL_VERSION,
             "capabilities": { "tools": {} },
             "serverInfo": { "name": SERVER_NAME, "version": SERVER_VERSION },
         })
@@ -161,7 +178,8 @@ impl ServerState {
             "outcome": evaluation.outcome,
             "matches": matches,
         });
-        Ok(serde_json::to_string(&payload).expect("serialize evaluation"))
+        serde_json::to_string(&payload)
+            .map_err(|error| format!("failed to serialize evaluation: {error}"))
     }
 
     fn list_antibodies(&self) -> std::result::Result<String, String> {
@@ -171,7 +189,8 @@ impl ServerState {
         let antibodies = tools
             .list_antibodies()
             .map_err(|e| format!("failed to list antibodies: {e}"))?;
-        Ok(serde_json::to_string(&antibodies).expect("serialize antibodies"))
+        serde_json::to_string(&antibodies)
+            .map_err(|error| format!("failed to serialize antibodies: {error}"))
     }
 
     fn propose_antibody(&self, args: &Value) -> std::result::Result<String, String> {
@@ -198,7 +217,8 @@ impl ServerState {
             "rationale": rationale,
         });
 
-        let mut line = serde_json::to_string(&record).expect("serialize proposal");
+        let mut line = serde_json::to_string(&record)
+            .map_err(|error| format!("failed to serialize proposal: {error}"))?;
         line.push('\n');
         let mut file = std::fs::OpenOptions::new()
             .create(true)
@@ -209,7 +229,8 @@ impl ServerState {
             .map_err(|e| format!("failed to write proposal to {}: {e}", path.display()))?;
 
         let response = json!({ "proposed_id": proposed_id, "path": path.to_string_lossy() });
-        Ok(serde_json::to_string(&response).expect("serialize proposal response"))
+        serde_json::to_string(&response)
+            .map_err(|error| format!("failed to serialize proposal response: {error}"))
     }
 }
 
@@ -321,9 +342,8 @@ fn parse_error() -> Value {
     json!({ "jsonrpc": "2.0", "id": Value::Null, "error": { "code": -32700, "message": "parse error" } })
 }
 
-fn write_message(out: &mut impl Write, message: &Value) {
-    let line = serde_json::to_string(message).expect("serialize response");
-    let _ = out.write_all(line.as_bytes());
-    let _ = out.write_all(b"\n");
-    let _ = out.flush();
+fn write_message(out: &mut impl Write, message: &Value) -> std::io::Result<()> {
+    serde_json::to_writer(&mut *out, message).map_err(std::io::Error::other)?;
+    out.write_all(b"\n")?;
+    out.flush()
 }
