@@ -5202,6 +5202,11 @@ impl InteractiveLoopState {
 
     fn copy_last_assistant_message(&mut self) {
         const MAX_CLIPBOARD_BYTES: usize = 1024 * 1024;
+        // Streamed deltas coalesce for a short window before they become a
+        // frame. The user can see the answer and type /copy inside that
+        // window; without this flush we would report "no assistant message"
+        // for text that is already on screen.
+        self.transcript.flush_now();
         let Some(text) = self
             .transcript
             .frames()
@@ -10490,11 +10495,14 @@ fail_mode = "closed"
             .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Auto))
             .expect("prepare");
         let output = Arc::new(Mutex::new(Vec::new()));
-        let mut backend = MemoryBackend::scripted(
-            std::iter::once(BackendEvent::Input(b"/goal ship the patch\r".to_vec()))
-                .chain(std::iter::repeat_n(BackendEvent::Timeout, 6))
-                .chain(std::iter::once(BackendEvent::Input(vec![0x04]))),
-        );
+        // Six blind Timeout ticks were meant to let the goal run to completion
+        // before Ctrl-D; under contention that is not enough and the test
+        // races the goal. Wait for the completion render instead (bounded).
+        let mut backend = MemoryBackend::scripted([
+            BackendEvent::Input(b"/goal ship the patch\r".to_vec()),
+            BackendEvent::Input(vec![0x04]),
+        ])
+        .wait_after_events_for_output(1, b"complete".to_vec());
         backend.output = output.clone();
         let mut driver = TerminalDriver::new(backend);
         adapter
@@ -11785,14 +11793,20 @@ max_context_size = 8192
             .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Auto))
             .expect("prepare");
         let output = Arc::new(Mutex::new(Vec::new()));
+        // Two blind Timeout ticks used to sit between the prompt and /copy.
+        // Under test-thread contention the turn outlasted the script: the
+        // backend hit EndOfInput and the session exited mid-turn before /copy
+        // ever produced its effect (a flaky assertion here). Do not let the
+        // script exhaust while the effect is pending: wait (bounded) for the
+        // answer to render before /copy, and for the copy status before /q.
         let mut backend = MemoryBackend::scripted([
             BackendEvent::Input(b"answer me\r".to_vec()),
-            BackendEvent::Timeout,
-            BackendEvent::Timeout,
             BackendEvent::Input(b"/copy\r".to_vec()),
             BackendEvent::Input(b"/q\r".to_vec()),
         ])
-        .wait_after_events_for_requests(1, transport.request_counter(), 1);
+        .wait_after_events_for_requests(1, transport.request_counter(), 1)
+        .wait_after_events_for_output(1, b"copy this answer".to_vec())
+        .wait_after_events_for_output(2, b"Copied via terminal escape".to_vec());
         backend.output = output.clone();
         let restored = backend.restored.clone();
         let mut driver = TerminalDriver::new(backend);
@@ -11805,11 +11819,20 @@ max_context_size = 8192
             "\u{1b}]52;c;{}\u{7}",
             BASE64_STANDARD.encode("copy this answer")
         );
-        assert!(output
-            .windows(expected.len())
-            .any(|window| window == expected.as_bytes()));
-        assert!(String::from_utf8_lossy(&output)
-            .contains("Copied via terminal escape sequence (unverified, 16 characters)."));
+        let rendered = String::from_utf8_lossy(&output);
+        assert!(
+            output
+                .windows(expected.len())
+                .any(|window| window == expected.as_bytes()),
+            "OSC52 copy escape missing from output. saw 'No assistant message': {}, saw \
+             'Copied via': {}. rendered tail: {:?}",
+            rendered.contains("No assistant message to copy"),
+            rendered.contains("Copied via terminal escape"),
+            &rendered[rendered.len().saturating_sub(600)..]
+        );
+        assert!(
+            rendered.contains("Copied via terminal escape sequence (unverified, 16 characters).")
+        );
         assert!(restored.load(Ordering::SeqCst));
     }
 
@@ -11829,13 +11852,14 @@ max_context_size = 8192
         let prepared = adapter
             .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Auto))
             .expect("prepare");
-        let backend = MemoryBackend::scripted(
-            [BackendEvent::Input(b"/init\r".to_vec())]
-                .into_iter()
-                .chain(std::iter::repeat_n(BackendEvent::Timeout, 2))
-                .chain(std::iter::once(BackendEvent::Input(vec![0x04]))),
-        )
-        .wait_after_events_for_requests(1, transport.request_counter(), 1);
+        // Wait for the native child's answer to render before Ctrl-D, rather
+        // than trusting two blind Timeout ticks to outlast it under contention.
+        let backend = MemoryBackend::scripted([
+            BackendEvent::Input(b"/init\r".to_vec()),
+            BackendEvent::Input(vec![0x04]),
+        ])
+        .wait_after_events_for_requests(1, transport.request_counter(), 1)
+        .wait_after_events_for_output(1, b"AGENTS.md initialized".to_vec());
         let mut driver = TerminalDriver::new(backend);
         adapter
             .run_prepared_interactive(prepared, &mut driver)

@@ -373,6 +373,14 @@ impl TranscriptReducer {
         self.end_stream();
     }
 
+    /// Promote any coalescing pending delta into a frame immediately, without
+    /// ending the stream. For readers that need `frames()` to reflect what is
+    /// already on screen (e.g. `/copy` right after an answer streams in)
+    /// rather than waiting out the coalesce window.
+    pub fn flush_now(&mut self) {
+        self.flush_pending();
+    }
+
     fn queue_delta(&mut self, kind: StreamKind, delta: String, now_ms: u64) {
         if self.pending_kind.is_some_and(|pending| pending != kind) {
             self.flush_pending();
@@ -472,5 +480,40 @@ impl TranscriptReducer {
             entity_id: Some(id),
             state: Some(state),
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Streamed assistant deltas coalesce for COALESCE_MS before they become
+    /// a frame. Anything that reads `frames()` right after a delta lands
+    /// (`/copy` reads the last Assistant frame) must be able to force the
+    /// pending text into a frame, or it silently sees "no assistant message"
+    /// while the user is looking at the answer on screen.
+    #[test]
+    fn flush_now_promotes_pending_assistant_delta_to_a_frame() {
+        let mut reducer = TranscriptReducer::default();
+        reducer.push(
+            TranscriptEvent::AssistantDelta("copy this".to_owned()),
+            1_000,
+        );
+        // Inside the coalesce window: not a frame yet.
+        assert!(
+            !reducer
+                .frames()
+                .iter()
+                .any(|frame| frame.kind == FrameKind::Assistant),
+            "delta must still be pending inside the coalesce window"
+        );
+        reducer.flush_now();
+        let frame = reducer
+            .frames()
+            .iter()
+            .rev()
+            .find(|frame| frame.kind == FrameKind::Assistant)
+            .expect("flush_now must promote the pending delta to an Assistant frame");
+        assert_eq!(frame.text, "copy this");
     }
 }
