@@ -1,12 +1,14 @@
 [workspace]
 members = [
+  "crates/mycel-agent-protocol",
+  "crates/mycel-agent-runtime",
+  "crates/mycel-providers",
   "crates/mycel-core",
   "crates/mycel-gate",
   "crates/mycel-observe",
   "crates/mycel-mcp",
   "crates/mycel-cli",
   "crates/mycel-tests",
-  "crates/sentinel-guard",
 ]
 resolver = "2"
 
@@ -17,6 +19,20 @@ repository = "https://github.com/StressTestor/Mycel"
 
 [workspace.dependencies]
 anyhow = "1"
+base64 = "0.22"
+bytes = "1"
+futures-core = "0.3"
+futures-util = "0.3"
+hex = "0.4"
+libc = "0.2.189"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls"] }
+ring = "0.17"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 thiserror = "2"
+tokio = { version = "1", features = ["fs", "io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
+toml = "0.8"
+url = "2"
+zeroize = { version = "1", features = ["derive"] }

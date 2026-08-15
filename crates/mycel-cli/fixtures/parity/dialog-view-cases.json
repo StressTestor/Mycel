@@ -1,0 +1,394 @@
+[
+  {
+    "name": "approval once uses numeric shortcut",
+    "kind": "approval",
+    "initial": { "preset": "default", "preview": false },
+    "chunks": ["1"],
+    "expected": {
+      "selected": 0,
+      "feedback_mode": false,
+      "feedback": "",
+      "actions": [{ "kind": "respond", "decision": "approved" }]
+    }
+  },
+  {
+    "name": "approval session choice uses arrow and enter",
+    "kind": "approval",
+    "initial": { "preset": "default", "preview": false },
+    "chunks": ["\u001b[B", "\r"],
+    "expected": {
+      "selected": 1,
+      "feedback_mode": false,
+      "feedback": "",
+      "actions": [
+        { "kind": "respond", "decision": "approved_for_session" }
+      ]
+    }
+  },
+  {
+    "name": "plan revise collects feedback and selected label",
+    "kind": "approval",
+    "initial": { "preset": "plan", "preview": true },
+    "chunks": ["3", "tighten tets", "\u001b[D", "\u001b[D", "s", "\r"],
+    "expected": {
+      "selected": 2,
+      "feedback_mode": true,
+      "feedback": "tighten tests",
+      "actions": [
+        {
+          "kind": "respond",
+          "decision": "rejected",
+          "feedback": "tighten tests",
+          "selected_label": "Revise"
+        }
+      ]
+    }
+  },
+  {
+    "name": "approval preview and output toggles are independent",
+    "kind": "approval",
+    "initial": { "preset": "default", "preview": true },
+    "chunks": ["\u0005", "\u000f"],
+    "expected": {
+      "selected": 0,
+      "feedback_mode": false,
+      "feedback": "",
+      "actions": [{ "kind": "open_preview" }, { "kind": "toggle_output" }]
+    }
+  },
+  {
+    "name": "approval escape rejects immediately",
+    "kind": "approval",
+    "initial": { "preset": "default", "preview": false },
+    "chunks": ["\u001b"],
+    "expected": {
+      "selected": 0,
+      "feedback_mode": false,
+      "feedback": "",
+      "actions": [{ "kind": "respond", "decision": "rejected" }]
+    }
+  },
+  {
+    "name": "question single selections advance to review and submit",
+    "kind": "question",
+    "initial": {
+      "questions": [
+        { "question": "Color?", "multi": false, "options": ["red", "blue"] },
+        { "question": "Size?", "multi": false, "options": ["small", "large"] }
+      ]
+    },
+    "chunks": ["1", "2", "\r"],
+    "expected": {
+      "current_tab": 2,
+      "submit_tab": true,
+      "submit_action": 0,
+      "editing_other": false,
+      "cursor": 0,
+      "answers": ["red", "large"],
+      "unanswered": false,
+      "actions": [
+        { "kind": "answer", "answers": ["red", "large"], "method": "number_key" }
+      ]
+    }
+  },
+  {
+    "name": "question multiselect combines preset and Other",
+    "kind": "question",
+    "initial": {
+      "questions": [
+        { "question": "Targets?", "multi": true, "options": ["cli", "sdk"] }
+      ]
+    },
+    "chunks": [" ", "\u001b[B", "\u001b[B", "\r", "dos", "\u001b[D", "c", "\r", "\t", "\r"],
+    "expected": {
+      "current_tab": 1,
+      "submit_tab": true,
+      "submit_action": 0,
+      "editing_other": false,
+      "cursor": 0,
+      "answers": ["cli, docs"],
+      "unanswered": false,
+      "actions": [
+        { "kind": "answer", "answers": ["cli, docs"], "method": "enter" }
+      ]
+    }
+  },
+  {
+    "name": "question review cancel emits empty answers",
+    "kind": "question",
+    "initial": {
+      "questions": [
+        { "question": "Continue?", "multi": false, "options": ["yes"] }
+      ]
+    },
+    "chunks": ["1", "\u001b[B", "\r"],
+    "expected": {
+      "current_tab": 1,
+      "submit_tab": true,
+      "submit_action": 1,
+      "editing_other": false,
+      "cursor": 0,
+      "answers": ["yes"],
+      "unanswered": false,
+      "actions": [{ "kind": "answer", "answers": [] }]
+    }
+  },
+  {
+    "name": "searchable choice filters then selects persistently",
+    "kind": "choice",
+    "initial": { "searchable": true, "session_only": true, "options": ["alpha", "beta", "gamma"] },
+    "chunks": ["gm", "\r"],
+    "expected": {
+      "query": "gm",
+      "selected": "gamma",
+      "filtered": ["gamma"],
+      "page": 0,
+      "page_count": 1,
+      "actions": [{ "kind": "select", "value": "gamma", "scope": "persistent" }]
+    }
+  },
+  {
+    "name": "search escape clears before cancelling",
+    "kind": "choice",
+    "initial": { "searchable": true, "session_only": false, "options": ["alpha", "beta"] },
+    "chunks": ["b", "\u001b", "\u001b"],
+    "expected": {
+      "query": "",
+      "selected": "alpha",
+      "filtered": ["alpha", "beta"],
+      "page": 0,
+      "page_count": 1,
+      "actions": [{ "kind": "cancel" }]
+    }
+  },
+  {
+    "name": "choice Alt-S applies session only",
+    "kind": "choice",
+    "initial": { "searchable": false, "session_only": true, "options": ["alpha", "beta"] },
+    "chunks": ["\u001b[B", "\u001bs"],
+    "expected": {
+      "query": "",
+      "selected": "beta",
+      "filtered": ["alpha", "beta"],
+      "page": 0,
+      "page_count": 1,
+      "actions": [{ "kind": "select", "value": "beta", "scope": "session" }]
+    }
+  },
+  {
+    "name": "model effort steps and commits session only",
+    "kind": "model",
+    "initial": {
+      "current": "m1",
+      "current_effort": "low",
+      "models": [
+        { "alias": "m1", "efforts": ["off", "low", "high"] },
+        { "alias": "m2", "efforts": ["off", "on"] }
+      ]
+    },
+    "chunks": ["\u001b[C", "\u001bs"],
+    "expected": {
+      "query": "",
+      "selected": "m1",
+      "effort": "high",
+      "filtered": ["m1", "m2"],
+      "actions": [{ "kind": "select", "alias": "m1", "effort": "high", "scope": "session" }]
+    }
+  },
+  {
+    "name": "standalone effort clamps and persists",
+    "kind": "effort",
+    "initial": { "efforts": ["off", "low", "high"], "current": "low", "session_only": true },
+    "chunks": ["\u001b[C", "\u001b[C", "\r"],
+    "expected": {
+      "active": 2,
+      "actions": [{ "kind": "select", "value": "high", "scope": "persistent" }]
+    }
+  },
+  {
+    "name": "session scope toggle produces cross-cwd resume command",
+    "kind": "session",
+    "initial": {
+      "scope": "cwd",
+      "current_id": "local",
+      "cwd": "/work/here",
+      "sessions": [
+        { "id": "local", "title": "Local", "work_dir": "/work/here" },
+        { "id": "remote'id", "title": "Remote", "work_dir": "/other dir" }
+      ]
+    },
+    "chunks": ["\u0001", "rem", "\r"],
+    "expected": {
+      "scope": "all",
+      "query": "rem",
+      "selected": "remote'id",
+      "filtered": ["remote'id"],
+      "actions": [
+        { "kind": "toggle_scope", "scope": "all", "selected_id": "local" },
+        {
+          "kind": "cross_cwd",
+          "session_id": "remote'id",
+          "command": "cd '/other dir' && mycel --resume 'remote'\\''id'"
+        }
+      ]
+    }
+  },
+  {
+    "name": "session cwd search resumes in place",
+    "kind": "session",
+    "initial": {
+      "scope": "cwd",
+      "current_id": "one",
+      "cwd": "/work/./here",
+      "sessions": [
+        { "id": "one", "title": "First", "work_dir": "/work/here" },
+        { "id": "two", "title": "Second", "work_dir": "/work/here" }
+      ]
+    },
+    "chunks": ["sec", "\r"],
+    "expected": {
+      "scope": "cwd",
+      "query": "sec",
+      "selected": "two",
+      "filtered": ["two"],
+      "actions": [{ "kind": "select", "id": "two" }]
+    }
+  },
+  {
+    "name": "provider delete confirmation ignores unrelated keys",
+    "kind": "provider",
+    "initial": {
+      "active": "p2",
+      "rows": [
+        { "id": "one", "provider_ids": ["p1"] },
+        { "id": "two", "provider_ids": ["p2", "p3"] },
+        { "id": "add", "provider_ids": [], "add": true }
+      ]
+    },
+    "chunks": ["d", "x", "y"],
+    "expected": {
+      "selected": 1,
+      "confirm": null,
+      "actions": [{ "kind": "delete", "provider_ids": ["p2", "p3"] }]
+    }
+  },
+  {
+    "name": "provider add row only activates on enter",
+    "kind": "provider",
+    "initial": {
+      "rows": [
+        { "id": "one", "provider_ids": ["p1"] },
+        { "id": "add", "provider_ids": [], "add": true }
+      ]
+    },
+    "chunks": ["\u001b[B", "d", "\r"],
+    "expected": {
+      "selected": 1,
+      "confirm": null,
+      "actions": [{ "kind": "add" }]
+    }
+  },
+  {
+    "name": "tasks filter excludes foreground and terminal tasks",
+    "kind": "tasks",
+    "initial": {
+      "filter": "all",
+      "tasks": [
+        { "id": "done", "status": "completed", "started": 1, "ended": 9 },
+        { "id": "run2", "status": "running", "started": 2 },
+        { "id": "run1", "status": "running", "started": 1 },
+        { "id": "foreground", "status": "running", "started": 0, "detached": false }
+      ]
+    },
+    "chunks": ["\t", "\u001b[B", "s", "y"],
+    "expected": {
+      "filter": "active",
+      "visible": ["run1", "run2"],
+      "selected": "run2",
+      "pending_stop": null,
+      "actions": [
+        { "kind": "toggle_filter", "filter": "active" },
+        { "kind": "select", "id": "run2" },
+        { "kind": "stop", "id": "run2" }
+      ]
+    }
+  },
+  {
+    "name": "terminal task stop is ignored and output opens",
+    "kind": "tasks",
+    "initial": {
+      "filter": "all",
+      "tasks": [{ "id": "done", "status": "failed", "started": 1, "ended": 2 }]
+    },
+    "chunks": ["s", "r", "o"],
+    "expected": {
+      "filter": "all",
+      "visible": ["done"],
+      "selected": "done",
+      "pending_stop": null,
+      "actions": [
+        { "kind": "stop_ignored", "id": "done" },
+        { "kind": "refresh" },
+        { "kind": "open_output", "id": "done" }
+      ]
+    }
+  },
+  {
+    "name": "goal queue moving arrows emit reorder without cursor navigation",
+    "kind": "goal_queue",
+    "initial": { "goals": ["g1", "g2"] },
+    "chunks": [" ", "\u001b[B", " ", "e", "d"],
+    "expected": {
+      "selected": 0,
+      "moving_goal": null,
+      "actions": [
+        { "kind": "move", "id": "g1", "direction": "down" },
+        { "kind": "edit", "id": "g1" },
+        { "kind": "delete", "id": "g1" }
+      ]
+    }
+  },
+  {
+    "name": "goal edit supports newline and sanitized paste before save",
+    "kind": "goal_edit",
+    "initial": { "id": "g1", "objective": "ship" },
+    "chunks": ["\u000a", "\u001b[200~tests\u001b[31m!\u001b[0m\u001b[201~", "\r"],
+    "expected": {
+      "text": "ship\ntests!",
+      "error": null,
+      "done": true,
+      "actions": [{ "kind": "save", "id": "g1", "objective": "ship\ntests!" }]
+    }
+  },
+  {
+    "name": "help viewer pages and enter closes",
+    "kind": "viewer",
+    "initial": { "viewer": "help", "lines": 50, "visible": 10 },
+    "chunks": ["\u001b[6~", "\u001b[B", "\r"],
+    "expected": { "scroll_top": 11, "actions": [{ "kind": "close" }] }
+  },
+  {
+    "name": "output viewer uses less-style end and page keys",
+    "kind": "viewer",
+    "initial": { "viewer": "output", "lines": 40, "visible": 8 },
+    "chunks": ["G", " ", "\u0006", "q"],
+    "expected": { "scroll_top": 32, "actions": [{ "kind": "close" }] }
+  },
+  {
+    "name": "approval preview ctrl-e closes",
+    "kind": "viewer",
+    "initial": { "viewer": "preview", "lines": 40, "visible": 8 },
+    "chunks": ["G", " ", "\u0005"],
+    "expected": { "scroll_top": 25, "actions": [{ "kind": "close" }] }
+  },
+  {
+    "name": "startup permission picker clamps and selects with space",
+    "kind": "permission",
+    "initial": { "options": ["auto", "yolo", "manual", "cancel"] },
+    "chunks": ["\u001b[A", "\u001b[B", "\u001b[B", " "],
+    "expected": {
+      "selected": 2,
+      "actions": [{ "kind": "select", "value": "manual" }]
+    }
+  }
+]

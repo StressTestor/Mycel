@@ -1,0 +1,48 @@
+[
+  {
+    "name": "cursor position writes selected row",
+    "width": 8,
+    "height": 3,
+    "chunks": ["hello", "\u001b[2;3H", "X"],
+    "expected_lines": ["hello", "  X", ""],
+    "expected_cursor": { "row": 1, "column": 3 }
+  },
+  {
+    "name": "erase line clears from cursor",
+    "width": 8,
+    "height": 2,
+    "chunks": ["abcdef", "\u001b[1;3H", "\u001b[0K", "Z"],
+    "expected_lines": ["abZ", ""],
+    "expected_cursor": { "row": 0, "column": 3 }
+  },
+  {
+    "name": "unicode cells wrap deterministically",
+    "width": 4,
+    "height": 3,
+    "chunks": ["A界B"],
+    "expected_lines": ["A界B", "", ""],
+    "expected_cursor": { "row": 0, "column": 3 }
+  },
+  {
+    "name": "sgr and osc are nonprinting",
+    "width": 8,
+    "height": 2,
+    "chunks": ["\u001b[31mred\u001b[0m", "\u001b]0;title\u0007"],
+    "expected_lines": ["red", ""],
+    "expected_cursor": { "row": 0, "column": 3 }
+  },
+  {
+    "name": "split csi and utf8 preserve parser state",
+    "width": 8,
+    "height": 3,
+    "chunks": [
+      "hello",
+      "\u001b[2;",
+      "3H",
+      { "hex": "f09f" },
+      { "hex": "91a9e2808df09f92bb" }
+    ],
+    "expected_lines": ["hello", "  \ud83d\udc69\u200d\ud83d\udcbb", ""],
+    "expected_cursor": { "row": 1, "column": 4 }
+  }
+]

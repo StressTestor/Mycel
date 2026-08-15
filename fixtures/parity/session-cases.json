@@ -1,0 +1,174 @@
+{
+  "metadata": [
+    {
+      "createdAt": "2026-08-14T12:00:00.000Z",
+      "updatedAt": "2026-08-14T12:30:00.000Z",
+      "title": "Mycel parity audit",
+      "isCustomTitle": true,
+      "lastPrompt": "continue",
+      "forkedFrom": "session-parent",
+      "workDir": "/Volumes/T7/Mycel",
+      "additionalDirs": ["/private/tmp/mycel"],
+      "agents": {
+        "main": { "homedir": "/sessions/main", "type": "main" },
+        "sub-1": {
+          "homedir": "/sessions/sub-1",
+          "type": "sub",
+          "parentAgentId": "main",
+          "swarmItem": "review fixtures"
+        },
+        "independent-1": { "type": "independent", "parentAgentId": null }
+      },
+      "custom": {
+        "branch": "codex/slim-rust-transition-harness",
+        "nested": { "enabled": true },
+        "labels": ["rust", "parity"]
+      }
+    },
+    {
+      "createdAt": "1",
+      "updatedAt": "2",
+      "title": "Minimal",
+      "isCustomTitle": false,
+      "agents": {},
+      "custom": {}
+    }
+  ],
+  "summaries": [
+    {
+      "id": "session-1",
+      "title": "Mycel parity audit",
+      "lastPrompt": "continue",
+      "workDir": "/Volumes/T7/Mycel",
+      "sessionDir": "/sessions/session-1",
+      "createdAt": 1000,
+      "updatedAt": 2000,
+      "archived": false,
+      "metadata": { "customTitle": "Mycel parity audit", "opaque": { "n": 1 } },
+      "additionalDirs": ["/private/tmp/mycel"]
+    }
+  ],
+  "indexLines": [
+    {
+      "sessionId": "session-1",
+      "sessionDir": "/sessions/session-1",
+      "workDir": "/Volumes/T7/Mycel"
+    },
+    { "sessionId": "session-old", "deleted": true }
+  ],
+  "serdeFailures": [
+    {
+      "name": "unknown agent type",
+      "target": "metadata",
+      "value": {
+        "createdAt": "1",
+        "updatedAt": "2",
+        "title": "title",
+        "isCustomTitle": false,
+        "agents": { "agent": { "type": "worker" } },
+        "custom": {}
+      }
+    },
+    {
+      "name": "negative summary timestamp",
+      "target": "summary",
+      "value": {
+        "id": "session-1",
+        "workDir": "/repo",
+        "sessionDir": "/session",
+        "createdAt": -1,
+        "updatedAt": 0
+      }
+    }
+  ],
+  "validationFailures": [
+    {
+      "name": "missing metadata timestamp",
+      "target": "metadata",
+      "value": {
+        "createdAt": " ",
+        "updatedAt": "2",
+        "title": "title",
+        "isCustomTitle": false,
+        "agents": {},
+        "custom": {}
+      },
+      "error": "session timestamps must not be empty"
+    },
+    {
+      "name": "empty metadata title",
+      "target": "metadata",
+      "value": {
+        "createdAt": "1",
+        "updatedAt": "2",
+        "title": " ",
+        "isCustomTitle": false,
+        "agents": {},
+        "custom": {}
+      },
+      "error": "session title must not be empty"
+    },
+    {
+      "name": "empty agent id",
+      "target": "metadata",
+      "value": {
+        "createdAt": "1",
+        "updatedAt": "2",
+        "title": "title",
+        "isCustomTitle": false,
+        "agents": { " ": { "type": "sub" } },
+        "custom": {}
+      },
+      "error": "agent id must not be empty"
+    },
+    {
+      "name": "self-parented agent",
+      "target": "metadata",
+      "value": {
+        "createdAt": "1",
+        "updatedAt": "2",
+        "title": "title",
+        "isCustomTitle": false,
+        "agents": { "sub-1": { "type": "sub", "parentAgentId": "sub-1" } },
+        "custom": {}
+      },
+      "error": "agent \"sub-1\" cannot be its own parent"
+    },
+    {
+      "name": "empty summary work directory",
+      "target": "summary",
+      "value": {
+        "id": "session-1",
+        "workDir": " ",
+        "sessionDir": "/session",
+        "createdAt": 1,
+        "updatedAt": 2
+      },
+      "error": "work directory must not be empty"
+    },
+    {
+      "name": "empty session id",
+      "target": "id",
+      "value": " ",
+      "error": "session id must not be empty"
+    },
+    {
+      "name": "parent traversal session id",
+      "target": "id",
+      "value": "..",
+      "error": "unsafe session id \"..\""
+    },
+    {
+      "name": "slash session id",
+      "target": "id",
+      "value": "parent/child",
+      "error": "unsafe session id \"parent/child\""
+    },
+    {
+      "name": "backslash session id",
+      "target": "id",
+      "value": "parent\\child",
+      "error": "unsafe session id \"parent\\\\child\""
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 # architecture
 
-note: sections marked superseded-by-ADR defer to the relevant ADR once 0001-0005 are merged. this file is high-level overview, not the source of truth for decisions.
+Accepted ADRs are the decision record. This file describes the code that exists
+today.
 
 confidence key: **solid** means verified or strongly supported. **directional** means the shape is likely right, but details may change. **vibes** means a useful hypothesis, not a fact.
 
@@ -8,29 +9,31 @@ confidence key: **solid** means verified or strongly supported. **directional** 
 
 mycel is a local-first personal agent harness for coding, organized around substrate ecology.
 
-the v0 design goal is to prove that agent runs can leave durable substrate records that affect future runs. **confidence: directional. load-bearing.**
+Agent runs can leave durable substrate records that affect future runs through
+explicit review and promotion.
 
-the product direction - a 14-harness field survey, the honest measured state of the gate ("the seam, measured"), and 12 scope-tiered bets (now/next/later) - lives in [`docs/VISION.md`](docs/VISION.md). read it for the "why" behind the substrate/immune-system framing. this file (`ARCHITECTURE.md`) is the how-it's-wired-today; VISION.md is the where-it's-going. **confidence: directional.**
+The product direction and the reason substrate ecology is load-bearing live in
+[`docs/VISION.md`](docs/VISION.md). This file is the factual wiring that exists
+today; the completed Rust migration boundary is recorded in
+[`docs/RUST_PORT_PARITY.md`](docs/RUST_PORT_PARITY.md). **confidence: solid.**
 
 ## stack and dependencies
 
 superseded-by-ADR: `docs/adr/0003-language-and-runtime.md`
 
-planned stack:
+stack:
 
 | layer | choice |
 | --- | --- |
 | core runtime | Rust |
 | canonical interface | MCP |
 | command surface | CLI built on MCP tool surface |
-| runtime defense | Sentinel as workspace subsystem |
+| runtime defense | fail-closed `mycel-gate` hook |
 | canonical substrate | SQLite |
 | event interchange | JSONL |
 | human projections | markdown |
-| Hermes interop | Python adapter |
-| OpenClaw interop | TypeScript adapter |
-
-Rust should reduce ambiguity in local policy and state handling. **confidence: directional. load-bearing.**
+Rust owns the installed product, including the terminal client, agent runtime,
+providers, tools, policy, and substrate. **confidence: solid. load-bearing.**
 
 SQLite should be enough for local substrate queries without adding a service dependency.
 
@@ -58,64 +61,49 @@ Mycel/
     mycel.config.toml.template
     mcp.json.template
   crates/
+    mycel-agent-protocol/    provider-neutral messages/events/config/records
+    mycel-agent-runtime/     sessions, turns, tools, MCP, orchestration, child agents
+    mycel-providers/         model-provider, discovery, and credential adapters
     mycel-core/
     mycel-mcp/               McpTools lib + mycel-mcp-server bin (stdio JSON-RPC)
-    mycel-cli/               bin name: mycel-substrate
+    mycel-cli/               bins: mycel and mycel-substrate; terminal + ecology UI
+      src/clipboard.rs       bounded macOS/Linux image paste -> provider media parts
+      src/system_prompt.rs   bounded environment, instructions, tree, and skill context
+      src/tui_config.rs      private terminal theme/editor/client preferences
+      src/workspace_config.rs  private project-local additional-root persistence
     mycel-gate/              PreToolUse hook bin, fail-closed antibody gate
     mycel-observe/           PostToolUseFailure hook bin, captures failures (m2)
     mycel-tests/
-    sentinel-guard/
-  harness/                   grafted kimi-code fork (TS), the agent body
-    apps/mycel/              bin name: mycel
-      src/tui/commands/mycel/  Mycel slash-command family (immunity/gate/substrate/
-                               candidates/promote/deny/delegate) + substrate-runner + panel
-      src/tui/commands/hyphae.ts  session-only xhigh + swarm orchestration command
-    packages/                agent-core, agent-core-v2, kosong, oauth, ...
-      agent-core/src/tools/builtin/collaboration/workflow*.{ts,md}
-                              experimental declarative Workflow tool and plan validator
-  adapters/
-    hermes/
-    openclaw/
-  schemas/
-  examples/
+  tests/e2e/
   docs/
-    adr/                     0006 = harness adoption
-    specs/                   harness graft design
-    plans/
-    schemas/
-    open-questions.md
+    adr/
+    RUST_PORT_PARITY.md
+    VISION.md
 ```
 
-The `harness/` tree is the kimi-code fork (MIT), grafted with full history and
-diverged from upstream (ADR-0006). It is the agent body; `crates/` is the
-substrate brain. They meet at two contracts: the `mycel-gate` hook (enforcement,
-fail-closed) and `mycel-mcp-server` over MCP (conversation).
-
-`crates/sentinel-guard` enters the workspace as a Git submodule pointed at
-`https://github.com/StressTestor/sentinel.git`. Mycel builds it as a workspace
-member while Sentinel keeps its own package metadata, repository, license, and
-publication path for non-Mycel users.
+The former Kimi-derived TypeScript tree was removed after its retained behavior
+was captured by Rust fixtures, adversarial tests, CLI contracts, and PTY tests.
+Upstream attributions remain in `THIRD_PARTY_NOTICES.md`. The `crates/` path is
+the only product implementation.
 
 ## core subsystems
 
 | subsystem | role |
 | --- | --- |
+| `mycel-agent-protocol` | network- and filesystem-free Rust serialization boundary for provider messages/streams, public CLI events, normalized config, permissions, sessions, loop events, and the forward-compatible 1.4 agent record envelope |
+| `mycel-agent-runtime` | agent body with explicit IDs/cancellation/events, durable JSONL records, validated full-history forks and replay, canonical context with idle-only undo, crash-recoverable steering, durable manual/automatic compaction, permissions, local/retained/MCP tools, hooks, skills, local plugins, incremental streaming turns, goals, cron, Workflow, Hyphae, background/swarm state with foreground process/subagent detachment, and capability-bounded in-process child agents |
+| `mycel-providers` | retained Anthropic, OpenAI Chat/Responses, Kimi, and Google/Vertex wire families; typed registry and explicit discovery; API-key, OAuth, service-account, managed Kimi, and Codex subscription credentials; vendor marketplace/control-plane behavior is excluded |
 | `mycel-core` | substrate, antibodies, deterministic proposed-run evaluation, audit/projection runtime |
 | `mycel-mcp` | McpTools lib + `mycel-mcp-server` stdio MCP bin (evaluate_run, list_antibodies, propose_antibody - proposals are inert until promoted). Lib also exposes read-only `sentinel_event_count` + `list_candidates` for the CLI status/candidates surfaces |
 | `mycel-observe` | `PostToolUseFailure` hook bin: appends each failed/blocked tool call to the substrate audit log as a `SentinelAuditEvent`. Observation-only, always exits 0. The capture half of the m2 learning loop |
-| `mycel-cli` | local command surface (bin `mycel-substrate`): ingest, evaluate, list-antibodies, antibody-add, maintain, import-promptpressure, plus read-only `list-candidates` (derives a candidate per stored sentinel event) and `status --db` (one JSON blob: antibody + candidate counts, audit-trail size, last maintenance). Both require an existing db and never auto-create it |
+| `mycel-cli` | Rust command package. `mycel-substrate` retains ingest/evaluate/antibody/maintenance/status operations. `mycel` owns parsing, real provider/session execution, bounded system-prompt composition, `/new`/`/sessions`/`/reload`/`/fork`/`/title` lifecycle transitions, durable `/add-dir` workspace roots, headless text/JSON output, Unix terminal driving, approvals/questions, bounded clipboard image paste, governed interactive shell execution, crash-recoverable Ctrl-S steering, Ctrl-B foreground process/subagent detachment, durable `/compact`, `/undo`, and `/swarm`, textual background-task management, doctor/export, provider management, session-scoped MCP, plan/skill/media composition, bounded local-plugin installation/state/removal, native `/init`, `/copy`, `/hyphae`, projected-history `/btw`, private terminal settings/themes, external-editor handoff, native exports, and the seven-command ecology service |
 | `mycel-gate` | `PreToolUse` hook bin (catch-all matcher: governs every tool, not just Bash). For a write-class tool it extracts + canonicalizes the target path and runs a compiled protected-path floor (blocks writes to its own `bin`/`config.toml`/`substrate`) BEFORE the db is opened. Opens the substrate read-only + strict, so a 0-byte/truncated/empty-schema db fail-closes instead of allow-all; never creates the db (a deleted db reads as guard-disarmed -> block). Then runs the evaluation engine, emits a fail-closed allow/deny. Seals the Write/Edit + truncated-db self-disarm; a Bash-*command* write to a protected path is a documented residual (needs structured shell parsing) |
-| `mycel-tests` | external black-box adversarial suite for v0.1 fail-pattern immunity |
-| `sentinel-guard` | always-on runtime defense and shared policy evaluator |
-| `harness/apps/mycel` | the agent body (bin `mycel`): TUI, sessions, subagents, providers, hooks |
-| `harness/packages/agent-core` Workflow runtime | phased orchestration: validated JSON plans, parallel tasks inside sequential phases, durable background task output/manifests, structural recursion limits, and a reduced three-worker programmatic surface |
-| `mycel-delegate` | script: runs a governed `claude -p` subagent on the Claude subscription. Claude generates + drives; every Bash command still passes `mycel-gate --claude` (fail-closed), so delegated work stays under the immunity gate. Preferred for subagent work via `~/.mycel/AGENTS.md` when `claude` is present |
-| `harness/packages/oauth` | managed credential adapters, including the experimental Codex app-server bridge |
+| `mycel-tests` | external black-box adversarial suite for v0.1 fail-pattern immunity plus a source-level product-boundary regression gate that prevents removed browser/editor/server/telemetry/update/marketplace surfaces from returning |
 
 ### gate data flow (fail-closed immunity)
 
 ```text
-harness tool call (ANY tool - catch-all matcher)
+agent tool call (ANY tool - catch-all matcher)
   -> PreToolUse hook (fail_mode = "closed")
     -> mycel-gate  (stdin: {tool_name, tool_input, cwd})
       write-class tool? -> extract + canonicalize the target path (payload cwd, ~, symlinks, case)
@@ -144,57 +132,84 @@ tool fails / is blocked
 The substrate learns from what goes wrong; nothing auto-activates. Proven by
 `tests/e2e/immunity-loop.sh`.
 
-### governed delegation (claude subagents on the subscription)
+### native delegation
 
 ```text
-main mycel agent decides to delegate substantial work
-  -> ~/.mycel/AGENTS.md steers it to `mycel-delegate "<task>"` when claude is present
-  -> mycel-delegate runs `claude -p` (ANTHROPIC_API_KEY unset -> subscription auth)
-       --settings -> PreToolUse Bash hook = mycel-gate --claude (fail-closed)
-       --mcp-config -> mycel-mcp-server (subagent can query the substrate)
-       --append-system-prompt -> the Mycel subagent preamble
-  -> the subagent's every Bash command passes mycel-gate --claude
-       deny  -> exit 2 + stderr reason -> Claude Code BLOCKS the tool
-       error -> exit 2 (fail-closed) -> BLOCKED
-       allow -> exit 0
-  -> the subagent returns a final message; mycel relays what matters
+main Mycel agent invokes Agent, AgentSwarm, Workflow, or /delegate
+  -> the native orchestration bundle derives a capability-bounded child profile
+  -> the child gets its own durable session and native turn engine
+  -> the shared permission and hook pipeline governs every child tool call
+  -> foreground work may be detached into the durable background-task registry
+  -> completion, failure, cancellation, and restart loss are terminal records
 ```
 
-Claude generates and drives; Mycel keeps governance. `mycel-gate --claude`
-speaks Claude Code's hook dialect (exit 2 blocks) instead of the native
-`permissionDecision` JSON, so one gate governs both Mycel itself and delegated
-`claude -p` subagents. Live proof: `tests/e2e/delegate-live.sh`.
+No external Claude/Codex process or subscription-specific helper is part of
+delegation. `/delegate` is a compatibility UX over the same native Agent path.
+
+### system prompt and workspace roots
+
+`crates/mycel-cli/src/system_prompt.rs` builds one provider-neutral coding-agent
+prompt for parent turns, compaction, goal continuation, and child agents. It
+includes bounded OS/shell/time/cwd context, a two-level workspace tree, skill
+summaries, and hierarchical instruction files. Instruction precedence is
+`MYCEL_HOME/AGENTS.md`, user `~/.agents/AGENTS.md` (or lowercase fallback), then
+root-to-leaf project `.mycel/AGENTS.md`, `AGENTS.md`, and `agents.md`. Symlinked
+instruction files are ignored, each file is capped at 1 MiB, and the combined
+instruction budget is 4 MiB.
+
+Additional workspace roots are canonical existing directories. Session roots
+are stored in the durable session index and immediately trigger runtime
+recomposition so tool confinement changes with the UI state. `/add-dir <path>`
+adds a session root; `/add-dir remember <path>` also updates the project root's
+`.mycel/local.toml`. The local file preserves unrelated TOML, rejects symlinks
+and special files, is capped at 1 MiB, and is written by private atomic replace.
+CLI `--add-dir` values and remembered roots are merged and deduplicated before
+session resolution.
+
+### terminal client state and side questions
+
+Client-only preferences live in private `MYCEL_HOME/tui.toml`, separate from
+provider and agent policy in `config.toml`. The Rust TUI accepts only the built-in
+`auto`, `dark`, and `light` themes; it does not reproduce the inherited custom
+theme/plugin machinery. `/theme`, `/editor`, `/settings`, and `/reload-tui`
+update or reload the bounded TOML document through a 0600 atomic replace.
+ANSI control sequences are excluded from width and truncation calculations.
+Ctrl-G restores the terminal before running the explicitly configured editor
+against a private bounded temporary file, then resumes the same session with
+the edited draft.
+
+`/btw` is a separate ephemeral session, not an extra message in the parent
+history. It copies only a wire-complete projection of the current context, has
+an empty tool registry, streams into its own panel, accepts follow-up turns, and
+may run while the main turn continues. Closing the panel cancels bounded work,
+closes its record log, and removes the generated runtime directory. This keeps
+the side-channel behavior without persisting an orphan session or giving it
+filesystem/network tools.
 
 ### TUI command family (immune-system surface)
 
-The harness TUI ships a cohesive family of Mycel slash commands under
-`harness/apps/mycel/src/tui/commands/mycel/`. They share one launcher
-(`substrate-runner.ts`: resolves the managed binaries + db/audit/proposals paths
-from MYCEL_HOME and runs a subcommand via `execFile` with an argv array, never a
-shell string) and one panel renderer (`panel.ts`: theme painters, severity/mode
-colors, whitespace-fold, `mountPanel`). `index.ts` aggregates the seven
-`KimiSlashCommand` objects into `MYCEL_SLASH_COMMANDS`, spread once into
-`registry.ts`; handlers wire into `dispatch.ts`. Every command fails SOFT — a
-missing db/binary/empty result renders a clear panel/message, never a crash.
+`crates/mycel-cli/src/ecology.rs` implements seven native commands. Read-only
+panels check that the database already exists and never initialize it as a side
+effect. Informational failures render a clear message instead of crashing the
+TUI; mutations remain explicit and validated.
 
-| command | alias | kind | source |
-| --- | --- | --- | --- |
-| `/immunity` | `/antibodies` | panel | `mycel-substrate list-antibodies` — active antibodies grouped by severity |
-| `/gate` | `/guard`, `/doorman` | panel | config.toml hook wiring + db presence + antibody count -> derived arming state |
-| `/substrate` | `/marrow` | panel | `mycel-substrate status --json` — antibody/candidate counts, audit size, last maintenance |
-| `/candidates` | `/candidate`, `/learned` | panel | `mycel-substrate list-candidates` — captured lessons not yet signed |
-| `/promote <id>` | `/sign` | action | reads `proposals.jsonl`, shells `antibody-add` to sign a proposal |
-| `/deny <pattern>` | `/refuse`, `/block` | action | shells `antibody-add` (refuse/hard) to teach the gate a refusal |
-| `/delegate <task>` | `/handoff` | action | spawns `mycel-delegate` (governed `claude -p` subagent), streams the result |
+| command | alias | behavior |
+| --- | --- | --- |
+| `/immunity` | `/antibodies` | active antibodies grouped by severity |
+| `/gate` | `/guard`, `/doorman` | derived hook, database, and antibody arming state |
+| `/substrate` | `/marrow` | antibody/candidate counts, audit size, and maintenance state |
+| `/candidates` | `/candidate`, `/learned` | captured lessons that are not yet signed |
+| `/promote <id>` | `/sign` | resolve a bounded proposal identifier and explicitly sign it |
+| `/deny <pattern>` | `/refuse`, `/block` | add a hard refusal through the Rust substrate API |
+| `/delegate <task>` | `/handoff` | invoke a capability-bounded native child agent |
 
-Injection safety: `/deny`, `/promote`, and `/delegate` pass user/agent-authored
-text (pattern, remediation, task) as a single argv element to `execFile`/`spawn`
-with no shell, so shell metacharacters are inert.
+`/deny` and `/promote` call typed Rust APIs rather than constructing a shell
+command. `/delegate` returns a typed native-orchestration request, so task text
+never enters a shell.
 
-### dynamic workflows and Hyphae mode
+### native workflows and Hyphae mode
 
-`KIMI_CODE_EXPERIMENTAL_DYNAMIC_WORKFLOWS=1` exposes the main-agent-only
-`Workflow` tool. The tool accepts exactly one inline plan or saved workflow name.
+The main-agent-only `Workflow` tool accepts exactly one inline plan or saved workflow name.
 Saved plans live at `<MYCEL_HOME>/workflows/<name>.json` and are read and hashed
 fresh on every call. Plans are declarative JSON rather than executable JavaScript:
 phases run sequentially, tasks inside a phase run in parallel, and later phases
@@ -205,8 +220,8 @@ One `Workflow` call becomes one detached background task. Its children are
 detached from parent-turn cancellation but remain visually grouped under that
 workflow. Worker profiles cannot receive `Agent`, `AgentSwarm`, or `Workflow`, so
 the direct 128-task ceiling cannot be bypassed through recursive fan-out. Any
-failed or aborted task stops later phases. Whole-workflow timeout is 12 hours by
-default and can be set up to 24 hours. Task state uses the public `workflow`
+failed or aborted task stops later phases. Whole-workflow execution is bounded
+by the native orchestration configuration. Task state uses the public `workflow`
 background-task kind; full output is kept in the task log and an auxiliary 0600
 manifest is written to `<session>/workflows/<run-id>.json`. Restart reconciliation
 marks an interrupted workflow and its running manifest `lost`. Session shutdown
@@ -220,29 +235,20 @@ orchestration authorization. `/hyphae <task>` enables the same one-shot mode
 and immediately submits the task. `/hyphae off` disables swarm mode; it does
 not restore the previous effort level.
 
-Programmatic v1 hosts can expose the same `Workflow` tool independently of the
-interactive experiment flag. `mycel -p` and ACP enable this reduced surface
-automatically; in-process Node SDK hosts opt in with
-`createKimiHarness({ programmaticWorkflows: true })`. Each programmatic workflow
-is hard-capped at three worker tasks across all phases. Because one plan task
-maps to one child agent, that is a maximum of three subagents in total; the
-parent Mycel agent is not counted. Worker agents still cannot receive `Agent`,
-`AgentSwarm`, or `Workflow`, so they cannot recursively expand the cap. Normal
-approval policy still applies in hosts that do not autoapprove tools.
-
-This programmatic surface currently belongs to the v1 `agent-core` paths used
-by print mode, ACP, and the Node SDK. The experimental `agent-core-v2` /
-`kap-server` REST path does not expose it yet.
+Interactive and prompt modes compose the same native Workflow implementation.
+The default programmatic worker cap is three tasks across all phases. Worker
+agents still cannot receive `Agent`, `AgentSwarm`, or `Workflow`, so they cannot
+recursively expand the cap. Normal approval policy still applies in hosts that
+do not autoapprove tools.
 
 ### env vars
 
 | var | meaning |
 | --- | --- |
-| `MYCEL_HOME` | mycel home dir (default `~/.mycel`). Legacy `KIMI_CODE_HOME` honored with a deprecation warning |
+| `MYCEL_HOME` | mycel home dir (default `~/.mycel`) |
 | `MYCEL_INSTALL_DIR` | installer target (default `~/.mycel`) |
 | `MYCEL_NO_MODIFY_PATH` | skip the installer's shell-rc PATH edit |
-| `KIMI_CODE_EXPERIMENTAL_CODEX_SUBSCRIPTION_AUTH` | enable the experimental Codex subscription provider without a config override |
-| `KIMI_CODE_EXPERIMENTAL_DYNAMIC_WORKFLOWS` | expose the experimental main-agent `Workflow` tool; live flag reload updates tool visibility |
+| `MYCEL_EXPERIMENTAL_CODEX_SUBSCRIPTION_AUTH` | enable the experimental Codex subscription provider without a config override |
 
 ### gotchas
 
@@ -250,20 +256,7 @@ by print mode, ACP, and the Node SDK. The experimental `agent-core-v2` /
 | --- | --- | --- |
 | gate blocks everything after a db delete | by design: missing db = guard disarmed | re-run `install.sh` to re-init the substrate |
 | `mycel` not found after install | PATH rc line not sourced | restart shell or `export PATH="$HOME/.mycel/bin:$PATH"` |
-| harness build missing at launch | repo moved or drive unmounted | shim errors loudly with the fix; re-run `install.sh` |
 | fresh-HOME install fails at cargo | changing `HOME` unroots rustup | keep `RUSTUP_HOME`/`CARGO_HOME` pointed at the real dirs |
-
-Sentinel gates three scopes:
-
-| gate scope | purpose |
-| --- | --- |
-| agent launch | every spawn passes Sentinel before an agent starts |
-| tool invocation | every tool call is filtered before execution |
-| substrate mutation | every substrate write is checked before commit |
-
-Each gate scope owns its policy surface but shares the Sentinel evaluator.
-
-Volva-shedding uses Sentinel as the gate substrate. it stays post-v1, but the integration path is defined.
 
 ## key patterns
 
@@ -272,8 +265,12 @@ Volva-shedding uses Sentinel as the gate substrate. it stays post-v1, but the in
 - schema-driven adapter boundaries.
 - request-scoped provider auth: OAuth adapters can supply both a bearer token
   and provider-specific headers without moving tool execution out of Mycel.
+- one bounded provider-neutral system prompt supplies hierarchical project
+  instructions, workspace shape, and skill summaries to parent and child turns.
+- additional filesystem roots are canonicalized, session-durable, and optionally
+  persisted in a private project-local `.mycel/local.toml`.
 - generated human-readable workspace projections.
-- always-on runtime defense through shared Sentinel gates.
+- fail-closed tool governance through `mycel-gate`.
 - deterministic antibody evaluation: populated signature fields are AND matches,
   empty signature fields are wildcards, expired antibodies do not gate runs,
   `file_pattern` uses glob matching, and `command_pattern` uses substring matching.
@@ -290,8 +287,6 @@ Volva-shedding uses Sentinel as the gate substrate. it stays post-v1, but the in
   `TaskIdentity` signature, are catalogued dedup-on-write, and export to the
   interop loss-matrix shapes as inert metadata that declares its dropped ecology
   fields; v0.5 produces germination candidates only and never launches an agent.
-
-Schema-driven adapters should reduce cross-language coupling. **confidence: directional. load-bearing.**
 
 ## database schema
 
@@ -344,15 +339,15 @@ timestamp in body). see ADR 0011.
 
 ## eval harness
 
-The v0.1 harness has an in-code seed corpus with at least 25 antibodies, 50
+The v0.1 evaluation command has an in-code seed corpus with at least 25 antibodies, 50
 evaluation fixtures, 10 Sentinel events, 10 expiry fixtures, and all three gate
 scopes. `mycel harness` calls the MCP tool surface and prints JSON metrics for
 the roadmap success criteria.
 
 ## environment variables
 
-no environment variables are required. experimental harness features can be
-enabled with the optional variables documented above.
+no environment variables are required. Optional provider and installation
+variables are documented above.
 
 future cloud or model provider variables must be optional unless an ADR says otherwise. **confidence: directional. load-bearing.**
 
@@ -366,13 +361,14 @@ the default operating model is local CLI plus local MCP server.
 
 | system | role |
 | --- | --- |
-| STs-Mission-Control | possible kin-detection layer |
 | PromptPressure | confidence-tier input for context decay |
-| OpenClaw | plugin and skill interop reference |
-| Hermes Agent | skill and context lifecycle reference |
 | Codex / ChatGPT | experimental subscription-backed Responses provider; `codex app-server` owns login and token refresh while Mycel keeps its own loop, tools, hooks, and gate |
+| model providers | explicit user-configured Kimi, Anthropic, Google, and OpenAI-compatible endpoints |
+| MCP | explicit user-configured local stdio or remote Streamable HTTP servers |
+| plugins | explicit local directories are copied without symlinks into Mycel's bounded managed plugin store; the private atomic `plugins/installed.json` ledger owns enable/MCP state, and the Rust session loader composes enabled namespaced skills, MCP servers, and argv-only commands; remote archives and marketplace acquisition are unsupported |
 
-OpenClaw and Hermes are useful references for interop design, but Mycel-specific ecology metadata will need graceful degradation. **confidence: directional. load-bearing.**
+The default CLI performs no telemetry, update, banner, marketplace, or vendor
+control-plane request.
 
 ## gotchas
 
@@ -380,7 +376,6 @@ OpenClaw and Hermes are useful references for interop design, but Mycel-specific
 - the canonical store stays separate from the human-readable files.
 - vibes-tier claims stay hypotheses.
 - autonomous spawning waits behind refusal, dormancy, decay, and handoff controls.
-- Sentinel is core runtime defense.
 - `storage = "codex"` depends on a current `codex` binary on `PATH` and an
   existing `codex login`. It uses an undocumented ChatGPT Responses endpoint,
   so compatibility is version-sensitive and failures must remain explicit. It
@@ -391,6 +386,13 @@ OpenClaw and Hermes are useful references for interop design, but Mycel-specific
   plan cannot run arbitrary host JavaScript.
 - `/hyphae off` leaves xhigh effort active. Select another effort explicitly
   if the session should return to its earlier setting.
+- MCP's deprecated SSE transport is rejected. Use stdio or Streamable HTTP.
+- Local plugin contribution changes take effect in a new session. Rust owns
+  install/remove/enable/MCP state; `/plugins reload` only refreshes the
+  informational ledger view. A plugin may still declare an explicit local `node`
+  command, but Mycel does not inject a bundled Node runtime.
+- `/add-dir remember` writes `.mycel/local.toml` at the detected project root;
+  use session-only `/add-dir` when that project-local persistence is unwanted.
 
 generated projections can overwrite manual edits unless an override policy exists. **confidence: directional. load-bearing.**
 
@@ -401,39 +403,27 @@ current useful commands:
 ```sh
 cargo build --workspace
 cargo test --workspace
-cargo fmt -p mycel-core -p mycel-mcp -p mycel-cli -p mycel-tests
+cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cd harness && pnpm --filter @moonshot-ai/kimi-code-oauth typecheck
-cd harness && pnpm --filter @moonshot-ai/agent-core typecheck
-cd harness && pnpm --filter @moonshot-ai/agent-core-v2 typecheck
-cd harness && pnpm --filter @moonshot-ai/protocol typecheck
-cd harness && pnpm --filter mycel typecheck
-cd harness && pnpm --filter @moonshot-ai/agent-core test
-cd harness && pnpm --filter mycel test
-mycel harness
-mycel ingest --jsonl <path>
-mycel evaluate --tool-name <name>
-mycel list-antibodies
-mycel list-candidates --db <path>
-mycel status --db <path>
-mycel import-promptpressure --db <path> --jsonl <path> [--now <ts>]
-mycel maintain --db <path> --workspace <dir> [--now <ts>]
-cd harness/apps/mycel && pnpm run typecheck
-cd harness/apps/mycel && pnpm exec vitest run
-cd harness/apps/mycel && pnpm run build
-git status --short
-git log --oneline
+bash tests/e2e/gate-contract.sh
+bash tests/e2e/immunity-loop.sh
+mycel-substrate harness
+mycel-substrate ingest --jsonl <path>
+mycel-substrate evaluate --tool-name <name>
+mycel-substrate list-antibodies
+mycel-substrate list-candidates --db <path>
+mycel-substrate status --db <path>
+mycel-substrate import-promptpressure --db <path> --jsonl <path> [--now <ts>]
+mycel-substrate maintain --db <path> --workspace <dir> [--now <ts>]
 ```
-
-(`mycel` above = the `mycel-substrate` bin.)
-
-note: `cargo fmt --all` walks into `crates/sentinel-guard/` (submodule) and reformats code we don't own. always scope fmt to the four mycel crates.
-
-implementation commands do not exist yet.
 
 ## last updated
 
-2026-08-04 — added experimental declarative dynamic workflows, durable workflow
-background-task/manifests, TUI workflow rendering, the session-only `/hyphae`
-xhigh + swarm orchestration command, and a three-worker programmatic surface for
-v1 print, ACP, and opt-in Node SDK hosts
+2026-08-14 — completed the Rust-only cutover. The installed CLI now owns real
+providers, durable sessions, streaming turns, bounded prompts and workspace
+roots, local/retained/MCP tools, permissions and hooks, Unix terminal execution,
+dialogs, clipboard image paste, steering, undo, compaction, background work,
+native child orchestration, Workflow, Hyphae, goals, cron, local plugins,
+provider management, exports, BTW conversations, and the seven-command ecology
+service. The Kimi-derived TypeScript oracle and its build/CI dependency spine
+were removed after the Rust fixture, adversarial, CLI, and PTY gates passed.

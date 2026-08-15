@@ -1,6 +1,6 @@
 # 0006: harness adoption
 
-status: accepted
+status: superseded by ADR-0019
 
 date: 2026-07-19
 
@@ -29,8 +29,9 @@ ADR-0003 said "adapter packages in Python and TypeScript only where interop requ
 - two toolchains in one repo (cargo + pnpm). CI runs both.
 - upstream security fixes require deliberate cherry-picks; we own every line now.
 - the harness's internal `@moonshot-ai/*` package names remain (unpublished here; renaming is churn without behavior).
-- `harness/docs` and code comments are english-only; the upstream bilingual docs obligation ended with the split.
-- kimi-code's MIT license and attribution are preserved under `harness/`.
+- retained TypeScript code comments are english-only; the upstream bilingual docs obligation ended with the split, and the upstream documentation site is not part of Mycel.
+- kimi-code's MIT license and attribution were preserved under `harness/` and
+  now remain in `THIRD_PARTY_NOTICES.md` after the Rust-only cutover.
 
 ## alternatives rejected
 

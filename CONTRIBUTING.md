@@ -1,27 +1,39 @@
 # contributing
 
-mycel is in design-first mode. no production source directories should be added until the initial ADRs are settled.
+Mycel is a terminal-only Rust coding-agent harness. Changes should improve the
+CLI or its local substrate without widening the product into a browser, editor,
+daemon, or vendor control plane.
 
-## basics
+## boundaries
 
-- use conventional commits, for example `docs(adr): choose substrate format`.
-- keep empirical claims, predictions, and load-bearing assumptions confidence-tagged as **solid**, **directional**, or **vibes**.
-- leave decisions and scope items untagged.
-- never ship vibes-tier claims as facts.
-- prefer local-first designs. cloud services need a written reason.
-- update ADRs when a design decision changes.
-- keep public prose direct, specific, and low-gloss.
+- Keep the product local-first and terminal-only.
+- Do not add browser, editor, daemon, ACP, telemetry, updater, or vendor
+  marketplace surfaces.
+- Treat `docs/RUST_PORT_PARITY.md` as the record of the completed Rust boundary
+  and its intentional exclusions.
+- Preserve Workflow, `/hyphae`, and the substrate command family.
+- Treat `ARCHITECTURE.md` and accepted ADRs as the current design record.
+- Keep empirical claims distinct from predictions and assumptions.
 
-## design changes
+## changes
 
-for now, design changes should include:
+- Use conventional commits such as `fix(gate): reject a truncated substrate`.
+- Keep commits logically bisectable and stage explicit paths.
+- Add or update tests for behavioral changes.
+- Update `ARCHITECTURE.md` when structure, dependencies, configuration,
+  integration boundaries, or deployment behavior changes.
+- Do not commit credentials, local substrate data, generated build output, or
+  agent scratch files.
 
-1. the problem.
-2. the proposed decision.
-3. tradeoffs.
-4. confidence tags for claims that need them.
-5. affected roadmap or ADR files.
+## verification
 
-## code changes
+Run the checks relevant to the change. Before merging a broad change, run all
+of them:
 
-code changes are intentionally out of scope until the project exits initialization.
+```sh
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+bash tests/e2e/gate-contract.sh
+bash tests/e2e/immunity-loop.sh
+```

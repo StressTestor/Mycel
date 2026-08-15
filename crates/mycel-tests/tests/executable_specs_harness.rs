@@ -7,8 +7,7 @@
 //! This harness evidences the DETERMINISTIC half of the v0.3 metric:
 //! "at least 10 handoff specs can be reviewed and executed manually WITHOUT
 //! reading the prior full transcript." A separate out-of-band blind-reviewer
-//! pass (recorded in `docs/v0.3-blind-review-evidence.md`) evidences the
-//! qualitative half. See ADR 0014.
+//! pass evidences the qualitative half. See ADR 0014.
 
 use std::collections::HashSet;
 

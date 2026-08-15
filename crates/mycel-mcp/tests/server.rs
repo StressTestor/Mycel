@@ -107,11 +107,10 @@ impl Server {
 
     /// Call a tool and return the `result` object.
     fn call_tool(&mut self, name: &str, arguments: Value) -> Value {
-        let resp = self.request(
+        self.request(
             "tools/call",
             json!({ "name": name, "arguments": arguments }),
-        );
-        resp
+        )
     }
 }
 
@@ -166,6 +165,28 @@ fn seeded_db(dir: &Path) -> PathBuf {
     // Drop closes the connection so the server can open the same file.
     drop(store);
     path
+}
+
+#[test]
+fn modern_discovery_advertises_stateless_tool_support() {
+    let mut server = Server::spawn(None);
+    let response = server.request(
+        "server/discover",
+        json!({
+            "_meta": {
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                "io.modelcontextprotocol/clientInfo": { "name": "test", "version": "0" },
+                "io.modelcontextprotocol/clientCapabilities": {},
+            }
+        }),
+    );
+    let result = &response["result"];
+    assert_eq!(
+        result["supportedVersions"],
+        json!(["2026-07-28", "2025-06-18"])
+    );
+    assert_eq!(result["capabilities"]["tools"]["listChanged"], false);
+    assert_eq!(result["serverInfo"]["name"], "mycel-mcp-server");
 }
 
 #[test]

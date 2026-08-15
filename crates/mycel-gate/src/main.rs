@@ -31,7 +31,7 @@ const UNEXTRACTABLE_SOURCE: &str = "mycel-gate:unextractable-mutator";
 const CORE_WRITE_TOOLS: &[&str] = &["Write", "Edit", "MultiEdit", "NotebookEdit"];
 
 // tool_input keys that may carry a write target, tried in this order. `path` is
-// the real agent-core-v2 Write/Edit field; the others are fallbacks.
+// the canonical Write/Edit field; the others are compatibility fallbacks.
 const PATH_KEYS: &[&str] = &["path", "file_path", "notebook_path"];
 
 #[derive(Debug, Deserialize)]
@@ -55,22 +55,11 @@ enum PathExtraction {
 }
 
 fn main() -> ExitCode {
-    // `--claude` emits the Claude Code hook dialect (exit 2 + stderr reason to
-    // block) instead of the native kimi/mycel dialect (exit 0 + permissionDecision
-    // JSON). Lets one gate govern a `claude -p` subagent as well as Mycel itself.
-    let claude = std::env::args().any(|a| a == "--claude");
-    match run(claude) {
+    match run() {
         Ok(code) => code,
         Err(err) => {
             eprintln!("mycel-gate error: {}: {}", err.cause, err.hint);
-            // Under --claude, Claude Code only treats exit 2 as a block; any other
-            // nonzero is a non-blocking error that lets the tool proceed. Keep the
-            // fail-closed guarantee by blocking (exit 2) on every error.
-            if claude {
-                ExitCode::from(2)
-            } else {
-                ExitCode::from(err.code)
-            }
+            ExitCode::from(err.code)
         }
     }
 }
@@ -82,7 +71,7 @@ struct GateError {
     code: u8,
 }
 
-fn run(claude: bool) -> Result<ExitCode, GateError> {
+fn run() -> Result<ExitCode, GateError> {
     let db_path = resolve_db_path()?;
     let mycel_home = resolve_mycel_home();
 
@@ -117,18 +106,13 @@ fn run(claude: bool) -> Result<ExitCode, GateError> {
         PathExtraction::NotWrite => {}
         PathExtraction::Unextractable => {
             return Ok(emit_block(
-                claude,
                 "refusing a write-class tool call with no resolvable target path (fail-closed)",
                 UNEXTRACTABLE_SOURCE,
             ));
         }
         PathExtraction::Extracted(path) => {
             if let Some(refusal) = protected_floor_check(&path, &ctx, &mycel_home) {
-                return Ok(emit_block(
-                    claude,
-                    &refusal.remediation,
-                    &refusal.source_pointer,
-                ));
+                return Ok(emit_block(&refusal.remediation, &refusal.source_pointer));
             }
             file_path = Some(path);
         }
@@ -190,11 +174,7 @@ fn run(claude: bool) -> Result<ExitCode, GateError> {
                 hint: "this is an internal invariant violation; file a bug".to_string(),
                 code: EXIT_EVAL,
             })?;
-            return Ok(emit_block(
-                claude,
-                &matched.remediation,
-                &matched.source_pointer,
-            ));
+            return Ok(emit_block(&matched.remediation, &matched.source_pointer));
         }
         EvaluationOutcome::Warn => {
             let matched = evaluation
@@ -221,15 +201,9 @@ fn run(claude: bool) -> Result<ExitCode, GateError> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// Emit a block in the active dialect. Native: exit 0 with a `permissionDecision:
-/// deny` JSON on stdout (the same shape a stored refusal uses). Under `--claude`:
-/// exit 2 with the reason on stderr (Claude Code only blocks on exit 2).
-fn emit_block(claude: bool, remediation: &str, source_pointer: &str) -> ExitCode {
+/// Emit a native Mycel block with the same structured shape as a stored refusal.
+fn emit_block(remediation: &str, source_pointer: &str) -> ExitCode {
     let reason = format!("{remediation} (source: {source_pointer})");
-    if claude {
-        eprintln!("{reason}");
-        return ExitCode::from(2);
-    }
     let out = serde_json::json!({
         "hookSpecificOutput": {
             "permissionDecision": "deny",
@@ -310,8 +284,7 @@ fn is_mcp_write_tool(name: &str) -> bool {
 }
 
 /// Resolve the mycel home whose bin/config/substrate the floor protects:
-/// `--mycel-home <path>` wins, then `$MYCEL_HOME`, then the legacy
-/// `$KIMI_CODE_HOME`, then `$HOME/.mycel`.
+/// `--mycel-home <path>` wins, then `$MYCEL_HOME`, then `$HOME/.mycel`.
 fn resolve_mycel_home() -> PathBuf {
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -326,19 +299,14 @@ fn resolve_mycel_home() -> PathBuf {
     if let Some(home) = std::env::var_os("MYCEL_HOME") {
         return PathBuf::from(home);
     }
-    if let Some(home) = std::env::var_os("KIMI_CODE_HOME") {
-        return PathBuf::from(home);
-    }
     if let Some(home) = std::env::var_os("HOME") {
         return Path::new(&home).join(".mycel");
     }
     PathBuf::from(".mycel")
 }
 
-/// Resolve the substrate db path: `--db <path>` wins, then `$MYCEL_HOME/substrate/mycel.db`,
-/// then the legacy `$KIMI_CODE_HOME/substrate/mycel.db`, then `$HOME/.mycel/substrate/mycel.db`.
-/// The env precedence MUST match `resolve_mycel_home` so the floor and the db resolve to the same
-/// tree (a legacy KIMI_CODE_HOME-only install would otherwise split them).
+/// Resolve the substrate db path: `--db <path>` wins, then
+/// `$MYCEL_HOME/substrate/mycel.db`, then `$HOME/.mycel/substrate/mycel.db`.
 fn resolve_db_path() -> Result<PathBuf, GateError> {
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -356,9 +324,6 @@ fn resolve_db_path() -> Result<PathBuf, GateError> {
     }
 
     if let Some(home) = std::env::var_os("MYCEL_HOME") {
-        return Ok(Path::new(&home).join("substrate").join("mycel.db"));
-    }
-    if let Some(home) = std::env::var_os("KIMI_CODE_HOME") {
         return Ok(Path::new(&home).join("substrate").join("mycel.db"));
     }
     if let Some(home) = std::env::var_os("HOME") {

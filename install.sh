@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# mycel installer. builds the rust brain and the ts harness from this repo,
-# installs the mycel command + gate into ~/.mycel, verifies everything, and
+# mycel installer. builds the native Rust CLI and ecology binaries from this
+# repo, installs them into ~/.mycel, verifies everything, and
 # refuses to pretend success. every failure names the step and the fix.
 #
 # usage: bash install.sh
@@ -24,78 +24,28 @@ trap '_fail "command failed (exit $?). fix the message above and re-run install.
 
 # ---------- prerequisites ----------
 STEP="prerequisites"
-command -v node >/dev/null 2>&1 || _fail "node not found. install node >= 24.15 (brew install node)"
-NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
-NODE_MINOR="$(node -p 'process.versions.node.split(".")[1]')"
-if [ "$NODE_MAJOR" -lt 24 ] || { [ "$NODE_MAJOR" -eq 24 ] && [ "$NODE_MINOR" -lt 15 ]; }; then
-  _fail "node $(node -v) too old, need >= 24.15.0 (brew upgrade node)"
-fi
-command -v pnpm >/dev/null 2>&1 || _fail "pnpm not found. install with: npm i -g pnpm@10"
 command -v cargo >/dev/null 2>&1 || _fail "cargo not found. install rust: https://rustup.rs"
 # `command -v cargo` finding a rustup shim is not enough: a rustup with no
 # default toolchain resolves the shim but cannot actually run cargo. Prove it
 # runs before we commit to a multi-minute build.
 CARGO_VER="$(cargo --version 2>&1)" || _fail "cargo is present but cannot run: $CARGO_VER (try: rustup default stable)"
-_log "prerequisites ok: node $(node -v), pnpm $(pnpm --version), $CARGO_VER"
+command -v rg >/dev/null 2>&1 || _log "warning: ripgrep (rg) not found - the Glob/Grep tools need it at runtime (brew install ripgrep / apt install ripgrep)"
+_log "prerequisites ok: $CARGO_VER"
 
 # ---------- rust brain ----------
 STEP="cargo build"
-_log "building mycel-gate + mycel-substrate + mycel-mcp-server + mycel-observe (release)"
+_log "building mycel + mycel-gate + mycel-substrate + mycel-mcp-server + mycel-observe (release)"
 cargo build --release -p mycel-gate -p mycel-cli -p mycel-mcp -p mycel-observe --manifest-path "$REPO_ROOT/Cargo.toml"
-
-# ---------- ts harness ----------
-STEP="harness install"
-_log "installing harness dependencies"
-( cd "$REPO_ROOT/harness" && pnpm install --frozen-lockfile )
-STEP="harness build"
-_log "building harness"
-( cd "$REPO_ROOT/harness" && pnpm run build:packages && pnpm -C apps/mycel run build )
-[ -f "$REPO_ROOT/harness/apps/mycel/dist/main.mjs" ] || _fail "harness build produced no dist/main.mjs"
 
 # ---------- install ----------
 STEP="install binaries"
 mkdir -p "$MYCEL_INSTALL_DIR/bin" "$MYCEL_INSTALL_DIR/substrate"
+install -m 0755 "$REPO_ROOT/target/release/mycel"           "$MYCEL_INSTALL_DIR/bin/mycel"
 install -m 0755 "$REPO_ROOT/target/release/mycel-gate" "$MYCEL_INSTALL_DIR/bin/mycel-gate"
 install -m 0755 "$REPO_ROOT/target/release/mycel-substrate"  "$MYCEL_INSTALL_DIR/bin/mycel-substrate"
 install -m 0755 "$REPO_ROOT/target/release/mycel-mcp-server" "$MYCEL_INSTALL_DIR/bin/mycel-mcp-server"
 install -m 0755 "$REPO_ROOT/target/release/mycel-observe"     "$MYCEL_INSTALL_DIR/bin/mycel-observe"
-install -m 0755 "$REPO_ROOT/scripts/mycel-delegate"          "$MYCEL_INSTALL_DIR/bin/mycel-delegate"
-
-NODE_BIN="$(command -v node)"
-cat > "$MYCEL_INSTALL_DIR/bin/mycel" <<SHIM
-#!/usr/bin/env bash
-# mycel shim - runs the harness build from the repo checkout.
-ENTRY="$REPO_ROOT/harness/apps/mycel/dist/main.mjs"
-if [ ! -f "\$ENTRY" ]; then
-  echo "mycel error: harness build missing at \$ENTRY" >&2
-  echo "fix: cd $REPO_ROOT && bash install.sh   (did the repo move or the drive unmount?)" >&2
-  exit 1
-fi
-exec "$NODE_BIN" "\$ENTRY" "\$@"
-SHIM
-chmod +x "$MYCEL_INSTALL_DIR/bin/mycel"
-_log "installed mycel, mycel-gate, mycel-substrate, mycel-mcp-server, mycel-observe, mycel-delegate to $MYCEL_INSTALL_DIR/bin"
-
-STEP="delegate governance scaffold"
-# Config for governed `claude -p` subagents (mycel-delegate). Always refreshed
-# from the template so a mycel-gate/mycel-mcp path change is picked up; these
-# are generated files, not user-edited, so overwriting is safe.
-mkdir -p "$MYCEL_INSTALL_DIR/delegate"
-sed "s|\$HOME|$HOME|g" "$REPO_ROOT/config/delegate/settings.json.template" > "$MYCEL_INSTALL_DIR/delegate/settings.json"
-sed "s|\$HOME|$HOME|g" "$REPO_ROOT/config/delegate/mcp.json.template" > "$MYCEL_INSTALL_DIR/delegate/mcp.json"
-cp "$REPO_ROOT/config/delegate/subagent-preamble.md" "$MYCEL_INSTALL_DIR/delegate/subagent-preamble.md"
-_log "wrote delegate governance config (subagents run under mycel-gate --claude)"
-
-STEP="agents-md scaffold"
-# ~/.mycel/AGENTS.md is injected into Mycel's system prompt; it tells the agent
-# to prefer mycel-delegate for substantial subagent work. Never overwrite a
-# user-edited one.
-if [ -f "$MYCEL_INSTALL_DIR/AGENTS.md" ]; then
-  _log "kept existing AGENTS.md (not overwritten)"
-else
-  cp "$REPO_ROOT/config/AGENTS.md.template" "$MYCEL_INSTALL_DIR/AGENTS.md"
-  _log "wrote AGENTS.md - default subagent work routes through mycel-delegate when claude is present"
-fi
+_log "installed mycel, mycel-gate, mycel-substrate, mycel-mcp-server, and mycel-observe to $MYCEL_INSTALL_DIR/bin"
 
 STEP="config scaffold"
 if [ -f "$MYCEL_INSTALL_DIR/config.toml" ]; then
@@ -110,12 +60,77 @@ else
   sed "s|\$HOME|$HOME|g" "$REPO_ROOT/config/mcp.json.template" > "$MYCEL_INSTALL_DIR/mcp.json"
   _log "wrote mcp.json registering the mycel-substrate MCP server"
 fi
-if [ -d "$HOME/.kimi-code" ] && [ ! -f "$MYCEL_INSTALL_DIR/.migration-hint-shown" ]; then
-  _log "found ~/.kimi-code - to migrate sessions/config run:"
-  _log "  cp -R ~/.kimi-code/credentials ~/.kimi-code/oauth $MYCEL_INSTALL_DIR/ 2>/dev/null"
-  touch "$MYCEL_INSTALL_DIR/.migration-hint-shown"
+
+# ---------- upgrade migration (pre-Rust-cutover installs) ----------
+# pre-cutover mcp.json entries have no "transport" key; the Rust parser
+# requires it and hard-fails at session start with a deliberately redacted
+# error. inject "transport": "stdio" into command-based entries that lack it.
+STEP="upgrade migration: mcp.json transport"
+if command -v python3 >/dev/null 2>&1; then
+  python3 - "$MYCEL_INSTALL_DIR/mcp.json" <<'PYEOF'
+import json, os, sys
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except (OSError, ValueError) as e:
+    sys.stderr.write(f"warning: could not parse {path} ({e}); fix it by hand\n")
+    sys.exit(0)
+servers = data.get("mcpServers")
+if not isinstance(servers, dict):
+    sys.exit(0)
+migrated, unknown = [], []
+for name, entry in servers.items():
+    if not isinstance(entry, dict) or "transport" in entry:
+        continue
+    # McpServerConfig accepts exactly two transports: stdio (command) and
+    # http (url). infer from the shape; anything else is genuinely unknown.
+    if "command" in entry:
+        entry["transport"] = "stdio"
+        migrated.append(name)
+    elif "url" in entry:
+        entry["transport"] = "http"
+        migrated.append(name)
+    else:
+        unknown.append(name)
+if migrated:
+    # atomic rewrite: a mid-write failure must never truncate the original
+    tmp = path + ".migrate.tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, path)
+    print(f"migrated mcp.json: added \"transport\" to {', '.join(migrated)}")
+for name in unknown:
+    sys.stderr.write(
+        f"warning: mcp.json entry \"{name}\" has no \"transport\" key and neither "
+        f"\"command\" nor \"url\"; mycel will refuse to start until you add "
+        f"\"transport\": \"stdio\" (with a command) or \"transport\": \"http\" "
+        f"(with a url) in {path}\n")
+PYEOF
+else
+  if grep -qsE '"(command|url)"' "$MYCEL_INSTALL_DIR/mcp.json" && ! grep -qs '"transport"' "$MYCEL_INSTALL_DIR/mcp.json"; then
+    _fail "existing mcp.json predates the Rust cutover (no \"transport\" key) and python3 is unavailable to migrate it. add \"transport\": \"stdio\" to each command-based entry and \"transport\": \"http\" to each url-based entry in $MYCEL_INSTALL_DIR/mcp.json, then re-run install.sh"
+  fi
 fi
 
+# the external claude -p delegation was retired in the Rust cutover; its
+# installed artifacts must not survive an upgrade. a leftover AGENTS.md that
+# steers the agent to mycel-delegate is quarantined (never silently deleted -
+# the user may have added their own directives to it).
+STEP="upgrade migration: retired delegate surfaces"
+if [ -f "$MYCEL_INSTALL_DIR/bin/mycel-delegate" ]; then
+  rm -f "$MYCEL_INSTALL_DIR/bin/mycel-delegate"
+  _log "removed retired mycel-delegate binary"
+fi
+if [ -d "$MYCEL_INSTALL_DIR/delegate" ]; then
+  mv "$MYCEL_INSTALL_DIR/delegate" "$MYCEL_INSTALL_DIR/delegate.retired"
+  _log "moved retired delegate/ governance scaffold to delegate.retired/ (delete it when ready)"
+fi
+if [ -f "$MYCEL_INSTALL_DIR/AGENTS.md" ] && grep -qs "mycel-delegate" "$MYCEL_INSTALL_DIR/AGENTS.md"; then
+  mv "$MYCEL_INSTALL_DIR/AGENTS.md" "$MYCEL_INSTALL_DIR/AGENTS.md.pre-rust-bak"
+  _log "quarantined stale AGENTS.md (steered the agent to the retired mycel-delegate) to AGENTS.md.pre-rust-bak - port any of your own directives to a fresh AGENTS.md"
+fi
 STEP="path"
 if [ -n "$MYCEL_NO_MODIFY_PATH" ]; then
   _log "skipping PATH update (MYCEL_NO_MODIFY_PATH set)"

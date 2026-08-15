@@ -1,0 +1,15 @@
+[package]
+name = "mycel-agent-runtime"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+base64.workspace = true
+mycel-agent-protocol = { path = "../mycel-agent-protocol" }
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

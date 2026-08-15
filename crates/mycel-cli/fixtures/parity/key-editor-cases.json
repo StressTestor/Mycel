@@ -1,0 +1,274 @@
+[
+  {
+    "name": "submit prompt",
+    "initial": { "phase": "idle" },
+    "chunks": ["hello", "\r"],
+    "expected": {
+      "text": "",
+      "phase": "busy",
+      "input_mode": "prompt",
+      "queue": [],
+      "actions": [{ "kind": "submit", "text": "hello", "mode": "prompt" }]
+    }
+  },
+  {
+    "name": "kitty shift enter inserts newline",
+    "initial": { "phase": "idle" },
+    "chunks": ["hello", "\u001b[13;2u", "world"],
+    "expected": {
+      "text": "hello\nworld",
+      "phase": "idle",
+      "input_mode": "prompt",
+      "queue": [],
+      "actions": [{ "kind": "newline" }]
+    }
+  },
+  {
+    "name": "split bracketed paste stays atomic",
+    "initial": { "phase": "idle" },
+    "chunks": ["\u001b[200~line one\n", "界\u001b[20", "1~"],
+    "expected": {
+      "text": "line one\n界",
+      "phase": "idle",
+      "input_mode": "prompt",
+      "queue": [],
+      "actions": []
+    }
+  },
+  {
+    "name": "kitty release is ignored",
+    "initial": { "phase": "idle" },
+    "chunks": ["\u001b[120;1u\u001b[121;1:3u"],
+    "expected": {
+      "text": "x",
+      "phase": "idle",
+      "input_mode": "prompt",
+      "queue": [],
+      "actions": []
+    }
+  },
+  {
+    "name": "word insert undo coalesces",
+    "initial": { "phase": "idle" },
+    "chunks": ["abc", "\u001b[45;5u"],
+    "expected": {
+      "text": "",
+      "phase": "idle",
+      "input_mode": "prompt",
+      "queue": [],
+      "actions": []
+    }
+  },
+  {
+    "name": "kill word and yank",
+    "initial": { "phase": "idle" },
+    "chunks": ["hello world", "\u0017", "\u0019"],
+    "expected": {
+      "text": "hello world",
+      "phase": "idle",
+      "input_mode": "prompt",
+      "queue": [],
+      "actions": []
+    }
+  },
+  {
+    "name": "history up recalls newest",
+    "initial": { "phase": "idle", "history": ["first", "second"] },
+    "chunks": ["\u001b[A"],
+    "expected": {
+      "text": "second",
+      "phase": "idle",
+      "input_mode": "prompt",
+      "queue": [],
+      "actions": []
+    }
+  },
+  {
+    "name": "busy submit queues",
+    "initial": { "phase": "busy" },
+    "chunks": ["later", "\r"],
+    "expected": {
+      "text": "",
+      "phase": "busy",
+      "input_mode": "prompt",
+      "queue": [{ "text": "later", "mode": "prompt" }],
+      "actions": [{ "kind": "queue", "text": "later", "mode": "prompt" }]
+    }
+  },
+  {
+    "name": "steer drains prompts but preserves shell queue",
+    "initial": {
+      "phase": "busy",
+      "queue": [
+        { "text": "older", "mode": "prompt" },
+        { "text": "ls", "mode": "shell" }
+      ]
+    },
+    "chunks": ["draft", "\u0013"],
+    "expected": {
+      "text": "",
+      "phase": "busy",
+      "input_mode": "prompt",
+      "queue": [{ "text": "ls", "mode": "shell" }],
+      "actions": [{ "kind": "steer", "messages": ["older", "draft"] }]
+    }
+  },
+  {
+    "name": "cancel busy turn",
+    "initial": { "phase": "busy" },
+    "chunks": ["\u0003"],
+    "expected": {
+      "text": "",
+      "phase": "idle",
+      "input_mode": "prompt",
+      "queue": [],
+      "actions": [{ "kind": "cancel" }]
+    }
+  },
+  {
+    "name": "detach busy turn",
+    "initial": { "phase": "busy" },
+    "chunks": ["\u0002"],
+    "expected": {
+      "text": "",
+      "phase": "busy",
+      "input_mode": "prompt",
+      "queue": [],
+      "actions": [{ "kind": "detach" }]
+    }
+  },
+  {
+    "name": "shell prefix changes submission mode",
+    "initial": { "phase": "idle" },
+    "chunks": ["!ls", "\r"],
+    "expected": {
+      "text": "",
+      "phase": "shell",
+      "input_mode": "prompt",
+      "queue": [],
+      "actions": [{ "kind": "submit", "text": "ls", "mode": "shell" }]
+    }
+  },
+  {
+    "name": "atomic paste undoes in one step",
+    "initial": { "phase": "idle" },
+    "chunks": ["\u001b[200~one\ntwo\u001b[201~", "\u001b[95;5u"],
+    "expected": {
+      "text": "",
+      "phase": "idle",
+      "input_mode": "prompt",
+      "queue": [],
+      "actions": []
+    }
+  },
+  {
+    "name": "shell history restores mode without prefix",
+    "initial": { "phase": "idle", "history": ["first", "!pwd"] },
+    "chunks": ["\u001b[A"],
+    "expected": {
+      "text": "pwd",
+      "phase": "idle",
+      "input_mode": "shell",
+      "queue": [],
+      "actions": []
+    }
+  },
+  {
+    "name": "busy up recalls and removes last queued input",
+    "initial": {
+      "phase": "busy",
+      "queue": [
+        { "text": "first", "mode": "prompt" },
+        { "text": "ls", "mode": "shell" }
+      ]
+    },
+    "chunks": ["\u001b[A"],
+    "expected": {
+      "text": "ls",
+      "phase": "busy",
+      "input_mode": "shell",
+      "queue": [{ "text": "first", "mode": "prompt" }],
+      "actions": []
+    }
+  },
+  {
+    "name": "lone escape flush cancels active turn",
+    "initial": { "phase": "busy" },
+    "chunks": ["\u001b"],
+    "expected": {
+      "text": "",
+      "phase": "idle",
+      "input_mode": "prompt",
+      "queue": [],
+      "actions": [{ "kind": "cancel" }]
+    }
+  },
+  {
+    "name": "ctrl b does not detach compaction",
+    "initial": { "phase": "compacting" },
+    "chunks": ["\u0002"],
+    "expected": {
+      "text": "",
+      "phase": "compacting",
+      "input_mode": "prompt",
+      "queue": [],
+      "actions": []
+    }
+  },
+  {
+    "name": "busy up falls through to history when queue is empty",
+    "initial": { "phase": "busy", "history": ["older", "newer"] },
+    "chunks": ["\u001b[A"],
+    "expected": {
+      "text": "newer",
+      "phase": "busy",
+      "input_mode": "prompt",
+      "queue": [],
+      "actions": []
+    }
+  },
+  {
+    "name": "shell history skips prompt entries",
+    "initial": {
+      "phase": "idle",
+      "input_mode": "shell",
+      "history": ["!pwd", "plain prompt"]
+    },
+    "chunks": ["\u001b[A"],
+    "expected": {
+      "text": "pwd",
+      "phase": "idle",
+      "input_mode": "shell",
+      "queue": [],
+      "actions": []
+    }
+  },
+  {
+    "name": "history down restores shell draft mode",
+    "initial": {
+      "phase": "idle",
+      "input_mode": "shell",
+      "history": ["!pwd"]
+    },
+    "chunks": ["\u001b[A", "\u001b[B"],
+    "expected": {
+      "text": "",
+      "phase": "idle",
+      "input_mode": "shell",
+      "queue": [],
+      "actions": []
+    }
+  },
+  {
+    "name": "ctrl v requests clipboard media without inserting control text",
+    "initial": { "phase": "idle" },
+    "chunks": ["\u0016"],
+    "expected": {
+      "text": "",
+      "phase": "idle",
+      "input_mode": "prompt",
+      "queue": [],
+      "actions": [{ "kind": "paste_media" }]
+    }
+  }
+]

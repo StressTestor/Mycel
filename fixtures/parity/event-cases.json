@@ -1,0 +1,563 @@
+{
+  "events": [
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "error",
+      "code": "provider.api_error",
+      "message": "provider failed",
+      "name": "ApiError",
+      "details": { "status": 503 },
+      "retryable": true,
+      "cause": {
+        "code": "provider.connection_error",
+        "message": "connection reset",
+        "retryable": true
+      }
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "warning",
+      "message": "using fallback",
+      "code": "provider_fallback"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "agent.status.updated",
+      "model": "model-a",
+      "thinkingEffort": "high",
+      "contextTokens": 100,
+      "maxContextTokens": 1000,
+      "contextUsage": 0.1,
+      "planMode": true,
+      "swarmMode": false,
+      "permission": "manual",
+      "usage": {
+        "byModel": {
+          "model-a": {
+            "inputOther": 10,
+            "output": 20,
+            "inputCacheRead": 30,
+            "inputCacheCreation": 40
+          }
+        },
+        "currentTurn": {
+          "inputOther": 1,
+          "output": 2,
+          "inputCacheRead": 3,
+          "inputCacheCreation": 4
+        },
+        "total": {
+          "inputOther": 10,
+          "output": 20,
+          "inputCacheRead": 30,
+          "inputCacheCreation": 40
+        }
+      },
+      "phase": {
+        "kind": "streaming",
+        "turnId": 1,
+        "step": 2,
+        "stepId": "step-2",
+        "stream": "tool_call",
+        "toolCallId": "call-1",
+        "toolName": "read_file",
+        "since": 1000
+      }
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "session.meta.updated",
+      "title": "Auditing Mycel",
+      "patch": { "lastPrompt": "continue", "custom": { "branch": "codex/test" } }
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "goal.updated",
+      "snapshot": null,
+      "change": {
+        "kind": "lifecycle",
+        "status": "blocked",
+        "reason": "waiting",
+        "stats": { "turnsUsed": 2, "tokensUsed": 100, "wallClockMs": 5000 },
+        "actor": "runtime"
+      }
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "skill.activated",
+      "activationId": "activation-1",
+      "skillName": "audit",
+      "skillArgs": "--deep",
+      "trigger": "user-slash",
+      "skillPath": "/skills/audit",
+      "skillSource": "project"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "plugin_command.activated",
+      "activationId": "activation-2",
+      "pluginId": "plugin-a",
+      "commandName": "check",
+      "commandArgs": "--all",
+      "trigger": "user-slash"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "turn.started",
+      "turnId": 1,
+      "origin": { "kind": "user" }
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "turn.ended",
+      "turnId": 1,
+      "reason": "failed",
+      "error": {
+        "code": "loop.max_steps_exceeded",
+        "message": "too many steps",
+        "retryable": false
+      },
+      "durationMs": 2500
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "turn.step.started",
+      "turnId": 1,
+      "step": 1,
+      "stepId": "step-1"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "turn.step.completed",
+      "turnId": 1,
+      "step": 1,
+      "stepId": "step-1",
+      "usage": {
+        "inputOther": 10,
+        "output": 5,
+        "inputCacheRead": 3,
+        "inputCacheCreation": 2
+      },
+      "finishReason": "tool_calls",
+      "llmFirstTokenLatencyMs": 10.5,
+      "llmStreamDurationMs": 200.25,
+      "llmRequestBuildMs": 1.5,
+      "llmServerFirstTokenMs": 9.25,
+      "llmServerDecodeMs": 180.0,
+      "llmClientConsumeMs": 10.0,
+      "providerFinishReason": "tool_calls",
+      "rawFinishReason": "tool_calls"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "turn.step.retrying",
+      "turnId": 1,
+      "step": 2,
+      "stepId": "step-2",
+      "failedAttempt": 1,
+      "nextAttempt": 2,
+      "maxAttempts": 3,
+      "delayMs": 1000,
+      "errorName": "RateLimitError",
+      "errorMessage": "slow down",
+      "statusCode": 429
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "turn.step.interrupted",
+      "turnId": 1,
+      "step": 2,
+      "stepId": "step-2",
+      "reason": "aborted",
+      "message": "user cancelled"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "assistant.delta",
+      "turnId": 1,
+      "delta": "hello"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "hook.result",
+      "turnId": 1,
+      "hookEvent": "PreToolUse",
+      "content": "allowed",
+      "blocked": false
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "thinking.delta",
+      "turnId": 1,
+      "delta": "considering"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "tool.call.delta",
+      "turnId": 1,
+      "toolCallId": "call-1",
+      "name": "read_file",
+      "argumentsPart": "{\"path\":"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "tool.call.started",
+      "turnId": 1,
+      "toolCallId": "call-1",
+      "name": "read_file",
+      "args": { "path": "README.md" },
+      "description": "Read README",
+      "display": {
+        "kind": "file_io",
+        "operation": "read",
+        "path": "README.md",
+        "detail": "UTF-8"
+      }
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "tool.progress",
+      "turnId": 1,
+      "toolCallId": "call-1",
+      "update": { "kind": "progress", "text": "halfway", "percent": 50.0 }
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "shell.output",
+      "commandId": "command-1",
+      "update": { "kind": "stdout", "text": "line\n" }
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "shell.started",
+      "commandId": "command-1",
+      "taskId": "task-1"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "tool.result",
+      "turnId": 1,
+      "toolCallId": "call-1",
+      "output": [{ "type": "text", "text": "done" }],
+      "isError": false,
+      "synthetic": true
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "subagent.spawned",
+      "subagentId": "sub-1",
+      "subagentName": "reviewer",
+      "parentToolCallId": "call-agent",
+      "parentToolCallUuid": "uuid-agent",
+      "parentAgentId": "main",
+      "callerAgentId": "main",
+      "description": "review code",
+      "swarmIndex": 0,
+      "runInBackground": true
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "subagent.started",
+      "subagentId": "sub-1"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "subagent.suspended",
+      "subagentId": "sub-1",
+      "reason": "awaiting input"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "subagent.completed",
+      "subagentId": "sub-1",
+      "resultSummary": "review complete",
+      "usage": {
+        "inputOther": 100,
+        "output": 50,
+        "inputCacheRead": 25,
+        "inputCacheCreation": 5
+      },
+      "contextTokens": 180
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "subagent.failed",
+      "subagentId": "sub-2",
+      "error": "worker failed"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "compaction.started",
+      "trigger": "manual",
+      "instruction": "retain decisions"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "compaction.blocked",
+      "turnId": 1
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "compaction.cancelled"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "compaction.completed",
+      "result": {
+        "summary": "summary",
+        "compactedCount": 4,
+        "tokensBefore": 1000,
+        "tokensAfter": 200,
+        "keptUserMessageCount": 1,
+        "keptHeadUserMessageCount": 1,
+        "droppedCount": 3
+      }
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "background.task.started",
+      "info": {
+        "kind": "process",
+        "taskId": "task-1",
+        "description": "run tests",
+        "status": "running",
+        "detached": true,
+        "startedAt": 1000,
+        "endedAt": null,
+        "timeoutMs": 60000,
+        "command": "cargo test",
+        "pid": 1234,
+        "exitCode": null
+      }
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "background.task.terminated",
+      "info": {
+        "kind": "workflow",
+        "taskId": "task-2",
+        "description": "audit",
+        "status": "completed",
+        "startedAt": 1000,
+        "endedAt": 2000,
+        "stopReason": "completed",
+        "terminalNotificationSuppressed": false,
+        "runId": "run-1",
+        "workflowName": "audit",
+        "phaseCount": 4,
+        "agentCount": 2,
+        "source": "saved",
+        "manifestPath": "/workflows/audit.json"
+      }
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "cron.fired",
+      "origin": {
+        "kind": "cron_job",
+        "jobId": "job-1",
+        "cron": "0 * * * *",
+        "recurring": true,
+        "coalescedCount": 2,
+        "stale": false
+      },
+      "prompt": "run hourly audit"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "tool.list.updated",
+      "reason": "mcp.connected",
+      "serverName": "filesystem"
+    },
+    {
+      "agentId": "main",
+      "sessionId": "session-1",
+      "type": "mcp.server.status",
+      "server": {
+        "name": "remote",
+        "transport": "http",
+        "status": "needs-auth",
+        "toolCount": 7,
+        "error": "login required"
+      }
+    }
+  ],
+  "toolInputDisplays": [
+    {
+      "kind": "command",
+      "command": "cargo test",
+      "cwd": "/repo",
+      "description": "Run tests",
+      "language": "bash"
+    },
+    {
+      "kind": "file_io",
+      "operation": "edit",
+      "path": "src/lib.rs",
+      "detail": "replace",
+      "content": "new",
+      "before": "old",
+      "after": "new"
+    },
+    { "kind": "diff", "path": "src/lib.rs", "before": "a", "after": "b", "hunks": 1 },
+    { "kind": "search", "query": "TODO", "scope": "src" },
+    { "kind": "url_fetch", "url": "https://example.invalid", "method": "GET" },
+    { "kind": "agent_call", "agent_name": "reviewer", "prompt": "review", "background": true },
+    { "kind": "skill_call", "skill_name": "audit", "args": "--deep" },
+    {
+      "kind": "todo_list",
+      "items": [{ "title": "audit", "status": "in_progress" }]
+    },
+    {
+      "kind": "task",
+      "task_id": "task-1",
+      "status": "running",
+      "description": "tests",
+      "task_kind": "process"
+    },
+    { "kind": "task_stop", "task_id": "task-1", "task_description": "tests" },
+    {
+      "kind": "plan_review",
+      "plan": "1. test",
+      "path": "PLAN.md",
+      "options": [{ "label": "approve", "description": "Proceed" }]
+    },
+    {
+      "kind": "goal_start",
+      "objective": "finish parity",
+      "completionCriterion": "all tests pass",
+      "mode": "manual"
+    },
+    { "kind": "generic", "summary": "custom", "detail": { "key": "value" } }
+  ],
+  "errorCodes": [
+    "config.invalid",
+    "session.not_found",
+    "session.already_exists",
+    "session.id_invalid",
+    "session.id_required",
+    "session.id_empty",
+    "session.title_empty",
+    "session.state_not_found",
+    "session.state_invalid",
+    "session.fork_active_turn",
+    "session.export_not_found",
+    "session.export_missing_version",
+    "session.closed",
+    "session.permission_mode_invalid",
+    "session.thinking_empty",
+    "session.model_empty",
+    "session.plan_mode_invalid",
+    "session.approval_handler_error",
+    "session.question_handler_error",
+    "session.init_failed",
+    "agent.not_found",
+    "turn.agent_busy",
+    "goal.already_exists",
+    "goal.not_found",
+    "goal.objective_empty",
+    "goal.objective_too_long",
+    "goal.status_invalid",
+    "goal.metadata_reserved",
+    "goal.not_resumable",
+    "model.not_configured",
+    "model.config_invalid",
+    "auth.login_required",
+    "context.overflow",
+    "loop.max_steps_exceeded",
+    "provider.api_error",
+    "provider.filtered",
+    "provider.rate_limit",
+    "provider.auth_error",
+    "provider.connection_error",
+    "skill.not_found",
+    "skill.type_unsupported",
+    "skill.name_empty",
+    "records.write_failed",
+    "compaction.failed",
+    "compaction.unable",
+    "task.task_id_empty",
+    "mcp.server_not_found",
+    "mcp.server_disabled",
+    "mcp.startup_failed",
+    "mcp.tool_name_collision",
+    "plugin.not_found",
+    "plugin.load_failed",
+    "request.invalid",
+    "request.work_dir_required",
+    "request.prompt_input_empty",
+    "shell.git_bash_not_found",
+    "not_implemented",
+    "internal"
+  ],
+  "obsoleteErrorCodes": ["wire.unknown_record"],
+  "failures": [
+    {
+      "name": "unknown event type",
+      "value": { "agentId": "main", "sessionId": "s", "type": "turn.paused" }
+    },
+    {
+      "name": "missing event envelope",
+      "value": { "type": "warning", "message": "missing ids" }
+    },
+    {
+      "name": "negative turn id",
+      "value": {
+        "agentId": "main",
+        "sessionId": "s",
+        "type": "turn.started",
+        "turnId": -1,
+        "origin": { "kind": "user" }
+      }
+    },
+    {
+      "name": "unknown MCP transport",
+      "value": {
+        "agentId": "main",
+        "sessionId": "s",
+        "type": "mcp.server.status",
+        "server": {
+          "name": "bad",
+          "transport": "websocket",
+          "status": "pending",
+          "toolCount": 0
+        }
+      }
+    }
+  ]
+}

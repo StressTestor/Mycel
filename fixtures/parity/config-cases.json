@@ -1,0 +1,333 @@
+{
+  "mycel": [
+    {
+      "providers": {},
+      "raw": { "theme": "fungal" }
+    },
+    {
+      "providers": {
+        "anthropic-main": {
+          "type": "anthropic",
+          "apiKey": "${ANTHROPIC_API_KEY}",
+          "baseUrl": "https://api.example.invalid/anthropic",
+          "defaultModel": "claude-test",
+          "oauth": { "storage": "codex", "key": "anthropic", "oauthHost": "auth.example" },
+          "env": { "REGION": "test" },
+          "customHeaders": { "X-Test": "one" },
+          "source": { "origin": "fixture" }
+        },
+        "openai-main": { "type": "openai" },
+        "kimi-main": { "type": "kimi" },
+        "google-main": { "type": "google-genai" },
+        "responses-main": { "type": "openai_responses" },
+        "vertex-main": { "type": "vertexai" }
+      },
+      "defaultProvider": "anthropic-main",
+      "defaultModel": "primary",
+      "models": {
+        "primary": {
+          "provider": "anthropic-main",
+          "model": "claude-test",
+          "maxContextSize": 200000,
+          "maxOutputSize": 8192,
+          "capabilities": ["thinking", "tools"],
+          "displayName": "Primary",
+          "reasoningKey": "effort",
+          "protocol": "anthropic",
+          "adaptiveThinking": true,
+          "supportEfforts": ["low", "high"],
+          "defaultEffort": "high",
+          "betaApi": false,
+          "overrides": {
+            "maxContextSize": 180000,
+            "maxOutputSize": 4096,
+            "capabilities": ["tools"],
+            "displayName": "Primary override",
+            "reasoningKey": "reasoning_effort",
+            "adaptiveThinking": false,
+            "supportEfforts": ["medium"],
+            "defaultEffort": "medium"
+          }
+        }
+      },
+      "thinking": { "enabled": true, "effort": "high", "keep": "all" },
+      "defaultPermissionMode": "manual",
+      "defaultPlanMode": true,
+      "permission": {
+        "rules": [
+          {
+            "decision": "deny",
+            "scope": "project",
+            "pattern": "shell(command=rm *)",
+            "reason": "destructive"
+          },
+          {
+            "decision": "ask",
+            "scope": "turn-override",
+            "pattern": "shell"
+          },
+          {
+            "decision": "allow",
+            "scope": "session-runtime",
+            "pattern": "read_file(path=README.md)"
+          }
+        ]
+      },
+      "hooks": [
+        {
+          "event": "PreToolUse",
+          "matcher": "shell",
+          "command": "./hooks/check.sh",
+          "timeout": 30,
+          "fail_mode": "closed"
+        }
+      ],
+      "mergeAllAvailableSkills": true,
+      "extraSkillDirs": ["./skills", "/opt/mycel/skills"],
+      "loopControl": {
+        "maxStepsPerTurn": 100,
+        "maxRetriesPerStep": 3,
+        "maxRalphIterations": -1,
+        "reservedContextSize": 8192,
+        "compactionTriggerRatio": 0.8
+      },
+      "background": {
+        "maxRunningTasks": 4,
+        "keepAliveOnExit": false,
+        "bashAutoBackgroundOnTimeout": true,
+        "bashTaskTimeoutS": 60,
+        "killGracePeriodMs": 5000,
+        "printWaitCeilingS": 30,
+        "printBackgroundMode": "drain",
+        "printMaxTurns": 8
+      },
+      "subagent": { "timeoutMs": 120000 },
+      "image": { "maxEdgePx": 2048, "readByteBudget": 10485760 },
+      "experimental": { "durableEvents": true },
+      "raw": { "theme": "fungal", "notifications": { "sound": false } }
+    }
+  ],
+  "mcp": [
+    {
+      "mcpServers": {
+        "local": {
+          "transport": "stdio",
+          "command": "node",
+          "args": ["server.mjs"],
+          "env": { "MODE": "test" },
+          "cwd": "/repo",
+          "enabled": true,
+          "startupTimeoutMs": 10000,
+          "toolTimeoutMs": 30000,
+          "enabledTools": ["read"],
+          "disabledTools": ["write"]
+        },
+        "http": {
+          "transport": "http",
+          "url": "https://mcp.example.invalid/http",
+          "headers": { "X-Test": "http" },
+          "bearerTokenEnvVar": "MCP_TOKEN",
+          "auth": "oauth",
+          "enabled": false
+        }
+      }
+    }
+  ],
+  "patches": [
+    {
+      "name": "deep merge preserves provider identity and replaces explicit leaves",
+      "base": {
+        "providers": {
+          "openai": {
+            "type": "openai",
+            "apiKey": "${OPENAI_API_KEY}",
+            "env": { "REGION": "one" }
+          }
+        },
+        "defaultProvider": "openai",
+        "models": {
+          "main": {
+            "provider": "openai",
+            "model": "model-a",
+            "maxContextSize": 1000,
+            "maxOutputSize": 100
+          }
+        },
+        "permission": {
+          "rules": [{ "decision": "ask", "scope": "user", "pattern": "shell" }]
+        },
+        "experimental": { "one": true },
+        "raw": { "preserved": true }
+      },
+      "patch": {
+        "providers": {
+          "openai": {
+            "baseUrl": "https://api.example.invalid/v1",
+            "env": { "REGION": "two", "ZONE": "test" }
+          }
+        },
+        "defaultModel": "main",
+        "models": { "main": { "maxOutputSize": 200 } },
+        "permission": {
+          "rules": [{ "decision": "deny", "scope": "project", "pattern": "shell(command=rm *)" }]
+        },
+        "experimental": { "two": false }
+      },
+      "expected": {
+        "providers": {
+          "openai": {
+            "type": "openai",
+            "apiKey": "${OPENAI_API_KEY}",
+            "baseUrl": "https://api.example.invalid/v1",
+            "env": { "REGION": "two", "ZONE": "test" }
+          }
+        },
+        "defaultProvider": "openai",
+        "defaultModel": "main",
+        "models": {
+          "main": {
+            "provider": "openai",
+            "model": "model-a",
+            "maxContextSize": 1000,
+            "maxOutputSize": 200
+          }
+        },
+        "permission": {
+          "rules": [{ "decision": "deny", "scope": "project", "pattern": "shell(command=rm *)" }]
+        },
+        "experimental": { "one": true, "two": false },
+        "raw": { "preserved": true }
+      }
+    }
+  ],
+  "serdeFailures": [
+    {
+      "name": "unknown provider type",
+      "target": "mycel",
+      "value": { "providers": { "bad": { "type": "bedrock" } } }
+    },
+    {
+      "name": "unsupported keyring credential storage",
+      "target": "mycel",
+      "value": {
+        "providers": {
+          "bad": { "type": "openai", "oauth": { "storage": "keyring", "key": "openai" } }
+        }
+      }
+    },
+    {
+      "name": "unknown hook field",
+      "target": "mycel",
+      "value": {
+        "providers": {},
+        "hooks": [{ "event": "PreToolUse", "command": "true", "unexpected": true }]
+      }
+    },
+    {
+      "name": "unknown MCP transport",
+      "target": "mcp",
+      "value": {
+        "mcpServers": { "bad": { "transport": "websocket", "url": "wss://example.invalid" } }
+      }
+    },
+    {
+      "name": "config patch rejects unknown fields",
+      "target": "patch",
+      "value": { "defaultModel": "main", "unknownSection": { "enabled": true } }
+    }
+  ],
+  "validationFailures": [
+    {
+      "name": "empty provider name",
+      "value": { "providers": { "": { "type": "openai" } } },
+      "error": "provider name must not be empty"
+    },
+    {
+      "name": "empty OAuth key",
+      "value": {
+        "providers": {
+          "openai": { "type": "openai", "oauth": { "storage": "codex", "key": " " } }
+        }
+      },
+      "error": "provider \"openai\" has an empty OAuth key"
+    },
+    {
+      "name": "zero context size",
+      "value": {
+        "providers": { "openai": { "type": "openai" } },
+        "models": { "bad": { "provider": "openai", "model": "x", "maxContextSize": 0 } }
+      },
+      "error": "model \"bad\" must define a positive max_context_size"
+    },
+    {
+      "name": "zero output size",
+      "value": {
+        "providers": { "openai": { "type": "openai" } },
+        "models": {
+          "bad": {
+            "provider": "openai",
+            "model": "x",
+            "maxContextSize": 1,
+            "maxOutputSize": 0
+          }
+        }
+      },
+      "error": "model \"bad\" must define a positive max_output_size"
+    },
+    {
+      "name": "unknown model provider",
+      "runtimeOnly": true,
+      "value": {
+        "providers": {},
+        "models": {
+          "bad": { "provider": "missing", "model": "x", "maxContextSize": 1 }
+        }
+      },
+      "error": "model \"bad\" references unknown provider \"missing\""
+    },
+    {
+      "name": "empty permission pattern",
+      "value": {
+        "providers": {},
+        "permission": { "rules": [{ "decision": "ask", "pattern": " " }] }
+      },
+      "error": "permission rule pattern must not be empty"
+    },
+    {
+      "name": "compaction ratio out of range",
+      "value": { "providers": {}, "loopControl": { "compactionTriggerRatio": 0.1 } },
+      "error": "compaction trigger ratio must be between 0.5 and 0.99"
+    },
+    {
+      "name": "Ralph iteration sentinel out of range",
+      "value": { "providers": {}, "loopControl": { "maxRalphIterations": -2 } },
+      "error": "max_ralph_iterations must be -1 or greater"
+    },
+    {
+      "name": "empty hook command",
+      "value": {
+        "providers": {},
+        "hooks": [{ "event": "Stop", "command": " " }]
+      },
+      "error": "hook command must not be empty"
+    },
+    {
+      "name": "hook timeout out of range",
+      "value": {
+        "providers": {},
+        "hooks": [{ "event": "Stop", "command": "true", "timeout": 601 }]
+      },
+      "error": "hook timeout must be between 1 and 600 seconds"
+    },
+    {
+      "name": "zero background task limit",
+      "value": { "providers": {}, "background": { "maxRunningTasks": 0 } },
+      "error": "background max_running_tasks must be positive"
+    },
+    {
+      "name": "zero image limit",
+      "value": { "providers": {}, "image": { "maxEdgePx": 0 } },
+      "error": "image limits must be positive"
+    }
+  ]
+}

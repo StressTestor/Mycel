@@ -2,14 +2,8 @@
 
 # rust
 target/
+.octo/
 **/*.rs.bk
-
-# node/typescript
-dist/
-build/
-node_modules/
-.pnpm-store/
-coverage/
 
 # python
 .venv/
@@ -30,6 +24,3 @@ __pycache__/
 .env
 .env.*
 !.env.example
-harness/node_modules/
-harness/**/dist/
-harness/**/dist-web/
