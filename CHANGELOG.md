@@ -9,6 +9,12 @@
   dependency after the Rust fixture, adversarial, CLI, PTY, and ecology gates
   passed. Upstream MIT notices remain in `THIRD_PARTY_NOTICES.md`.
 - `/delegate` now uses Mycel's capability-bounded native child-agent runtime.
+- skill roots deduplicate by canonical path, so launching from `$HOME` no
+  longer scans `~/.agents/skills` twice and reports every skill as shadowing
+  itself. user, extra, builtin, and plugin skill roots follow symlinks again
+  (project roots stay confined), which brings back skill trees linked into
+  `~/.agents/skills` from other harnesses. a new per-root directory cap
+  (`max_dirs`, 4096) bounds the walk with a single `DirLimit` warning.
 
 ## v0.2.0
 
