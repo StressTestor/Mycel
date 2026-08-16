@@ -71,6 +71,15 @@ impl SkillRoot {
         Self::new(path, SkillSource::Project, None)
     }
 
+    /// Project roots live inside a checkout the user may not have authored,
+    /// so a symlink pointing outside the root is refused. Every other source
+    /// is user-owned or user-configured: a symlink there is intent, and the
+    /// scanner follows it. Cycle detection and the depth, directory, file,
+    /// and byte limits apply either way.
+    pub fn confines_to_root(&self) -> bool {
+        matches!(self.source, SkillSource::Project)
+    }
+
     fn new(path: impl Into<PathBuf>, source: SkillSource, namespace: Option<String>) -> Self {
         Self {
             path: path.into(),
@@ -83,6 +92,10 @@ impl SkillRoot {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SkillScanLimits {
     pub max_depth: usize,
+    /// Directories visited per root. `max_files` only counts `SKILL.md`
+    /// reads, so without this a followed symlink into a wide tree would
+    /// `read_dir` its way through the filesystem up to `max_depth`.
+    pub max_dirs: usize,
     pub max_files: usize,
     pub max_file_bytes: u64,
     pub max_total_bytes: u64,
@@ -92,6 +105,7 @@ impl Default for SkillScanLimits {
     fn default() -> Self {
         Self {
             max_depth: 8,
+            max_dirs: 4_096,
             max_files: 4_096,
             max_file_bytes: 1024 * 1024,
             max_total_bytes: 16 * 1024 * 1024,
@@ -231,12 +245,14 @@ pub enum SkillDiagnosticCode {
     EscapesRoot,
     Io,
     DepthLimit,
+    DirLimit,
     FileLimit,
     FileTooLarge,
     TotalBytesLimit,
     InvalidUtf8,
     InvalidFrontmatter,
     Duplicate,
+    DuplicateRoot,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -465,6 +481,7 @@ fn scan_skills<F: SkillFileSystem>(
             .then_with(|| left.path.cmp(&right.path))
             .then_with(|| left.namespace.cmp(&right.namespace))
     });
+    let mut scanned_roots: BTreeSet<PathBuf> = BTreeSet::new();
     for root in roots {
         state.visited_dirs.clear();
         if let Some(namespace) = root.namespace.as_deref() {
@@ -499,6 +516,20 @@ fn scan_skills<F: SkillFileSystem>(
                 continue;
             }
         };
+        if !scanned_roots.insert(canonical_root.clone()) {
+            // The same directory registered under two sources (for example
+            // ~/.agents/skills as both project and user root when the working
+            // directory is $HOME) is one tree; scanning it twice would report
+            // every skill as shadowing itself.
+            state.push(
+                SkillDiagnosticLevel::Info,
+                SkillDiagnosticCode::DuplicateRoot,
+                root.path.clone(),
+                "skill root already scanned; the same directory is registered more than once"
+                    .to_owned(),
+            );
+            continue;
+        }
         match fs.metadata(&canonical_root) {
             Ok(metadata) if metadata.is_dir => {}
             Ok(_) => {
@@ -589,11 +620,28 @@ impl<F: SkillFileSystem> ScanState<'_, F> {
             );
             return;
         }
-        let canonical_dir = match self.confined(canonical_root, path) {
+        let canonical_dir = match self.confined(root, canonical_root, path) {
             Some(path) => path,
             None => return,
         };
         if !self.visited_dirs.insert(canonical_dir.clone()) {
+            return;
+        }
+        if self.visited_dirs.len() > self.limits.max_dirs {
+            // Inserts are monotonic, so this is exactly one warning per root;
+            // every later directory past the cap is skipped silently instead
+            // of adding another line to the startup warning.
+            if self.visited_dirs.len() == self.limits.max_dirs + 1 {
+                self.push(
+                    SkillDiagnosticLevel::Warning,
+                    SkillDiagnosticCode::DirLimit,
+                    path.to_path_buf(),
+                    format!(
+                        "skill scan directory limit of {} reached; remaining directories skipped",
+                        self.limits.max_dirs
+                    ),
+                );
+            }
             return;
         }
 
@@ -611,7 +659,7 @@ impl<F: SkillFileSystem> ScanState<'_, F> {
                 let full_id = skill.definition.id.clone();
                 self.candidates.push(skill);
                 if recurse {
-                    for child in self.child_directories(canonical_root, &canonical_dir) {
+                    for child in self.child_directories(root, canonical_root, &canonical_dir) {
                         self.walk_directory(
                             root,
                             canonical_root,
@@ -625,7 +673,7 @@ impl<F: SkillFileSystem> ScanState<'_, F> {
             return;
         }
 
-        for child in self.child_directories(canonical_root, &canonical_dir) {
+        for child in self.child_directories(root, canonical_root, &canonical_dir) {
             self.walk_directory(
                 root,
                 canonical_root,
@@ -636,7 +684,12 @@ impl<F: SkillFileSystem> ScanState<'_, F> {
         }
     }
 
-    fn child_directories(&mut self, canonical_root: &Path, path: &Path) -> Vec<PathBuf> {
+    fn child_directories(
+        &mut self,
+        root: &SkillRoot,
+        canonical_root: &Path,
+        path: &Path,
+    ) -> Vec<PathBuf> {
         let mut children = match self.fs.read_dir(path) {
             Ok(children) => children,
             Err(error) => {
@@ -653,7 +706,7 @@ impl<F: SkillFileSystem> ScanState<'_, F> {
         children
             .into_iter()
             .filter(|child| {
-                let Some(canonical) = self.confined(canonical_root, child) else {
+                let Some(canonical) = self.confined(root, canonical_root, child) else {
                     return false;
                 };
                 self.fs
@@ -682,7 +735,7 @@ impl<F: SkillFileSystem> ScanState<'_, F> {
             return None;
         }
         self.files_seen += 1;
-        let canonical_file = self.confined(canonical_root, path)?;
+        let canonical_file = self.confined(root, canonical_root, path)?;
         let metadata = match self.fs.metadata(&canonical_file) {
             Ok(metadata) if metadata.is_file => metadata,
             Ok(_) => return None,
@@ -788,9 +841,15 @@ impl<F: SkillFileSystem> ScanState<'_, F> {
         })
     }
 
-    fn confined(&mut self, root: &Path, path: &Path) -> Option<PathBuf> {
+    fn confined(
+        &mut self,
+        root: &SkillRoot,
+        canonical_root: &Path,
+        path: &Path,
+    ) -> Option<PathBuf> {
         match self.fs.canonicalize(path) {
-            Ok(canonical) if canonical.starts_with(root) => Some(canonical),
+            Ok(canonical) if canonical.starts_with(canonical_root) => Some(canonical),
+            Ok(canonical) if !root.confines_to_root() => Some(canonical),
             Ok(canonical) => {
                 self.push(
                     SkillDiagnosticLevel::Error,
@@ -1445,6 +1504,114 @@ mod tests {
             .diagnostics()
             .iter()
             .any(|diagnostic| diagnostic.code == SkillDiagnosticCode::EscapesRoot));
+    }
+
+    #[test]
+    fn symlink_escape_from_user_root_is_followed() {
+        // Same alias layout as the project-root rejection above, but the root
+        // is user-owned. A user symlinking another harness's skill tree into
+        // ~/.agents/skills is intent, not an escape.
+        let fs = Arc::new(MemoryFs::default());
+        for path in ["/root", "/outside", "/outside/bad"] {
+            fs.directory(path);
+        }
+        fs.file("/outside/bad/SKILL.md", skill("linked", "linked body"));
+        fs.directory("/root/link");
+        fs.alias("/root/link", "/outside/bad");
+        let mut registry = SkillRegistry::new(
+            fs,
+            vec![root("/root", SkillSource::User)],
+            SkillScanLimits::default(),
+        );
+        registry.reload();
+        assert_eq!(
+            registry
+                .catalog()
+                .get("linked")
+                .map(|skill| skill.body.as_str()),
+            Some("linked body")
+        );
+        assert!(!registry
+            .catalog()
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.code == SkillDiagnosticCode::EscapesRoot));
+    }
+
+    #[test]
+    fn same_directory_under_two_sources_is_scanned_once() {
+        // cwd under $HOME with no .git makes the project root equal the user
+        // home, so ~/.agents/skills arrives as both a Project and a User root.
+        let fs = Arc::new(MemoryFs::default());
+        for path in [
+            "/home",
+            "/home/.agents",
+            "/home/.agents/skills",
+            "/home/.agents/skills/tool",
+        ] {
+            fs.directory(path);
+        }
+        fs.file(
+            "/home/.agents/skills/tool/SKILL.md",
+            skill("tool", "tool body"),
+        );
+        let mut registry = SkillRegistry::new(
+            fs,
+            vec![
+                root("/home/.agents/skills", SkillSource::Project),
+                root("/home/.agents/skills", SkillSource::User),
+            ],
+            SkillScanLimits::default(),
+        );
+        let reload = registry.reload();
+        assert_eq!(reload.loaded, 1);
+        assert!(registry.catalog().get("tool").is_some());
+        assert!(
+            !registry
+                .catalog()
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| diagnostic.code == SkillDiagnosticCode::Duplicate),
+            "identical directory must not be reported as a shadowed duplicate: {:?}",
+            registry.catalog().diagnostics()
+        );
+        assert!(registry
+            .catalog()
+            .diagnostics()
+            .iter()
+            .all(|diagnostic| diagnostic.level == SkillDiagnosticLevel::Info
+                && diagnostic.code == SkillDiagnosticCode::DuplicateRoot));
+    }
+
+    #[test]
+    fn directory_visit_limit_bounds_the_walk() {
+        let fs = Arc::new(MemoryFs::default());
+        fs.directory("/skills");
+        for index in 0..6 {
+            let dir = format!("/skills/tree-{index}");
+            fs.directory(&dir);
+            fs.directory(&format!("{dir}/nested"));
+        }
+        fs.file("/skills/tree-0/SKILL.md", skill("first", "first"));
+        fs.file("/skills/tree-5/nested/SKILL.md", skill("last", "last"));
+        let limits = SkillScanLimits {
+            max_dirs: 4,
+            ..SkillScanLimits::default()
+        };
+        let mut registry = SkillRegistry::new(fs, vec![root("/skills", SkillSource::User)], limits);
+        registry.reload();
+        assert!(registry.catalog().get("first").is_some());
+        assert!(registry.catalog().get("last").is_none());
+        assert_eq!(
+            registry
+                .catalog()
+                .diagnostics()
+                .iter()
+                .filter(|diagnostic| diagnostic.code == SkillDiagnosticCode::DirLimit)
+                .count(),
+            1,
+            "the directory cap warns once per root, not once per skipped directory"
+        );
     }
 
     #[test]

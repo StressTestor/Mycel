@@ -166,6 +166,19 @@ and special files, is capped at 1 MiB, and is written by private atomic replace.
 CLI `--add-dir` values and remembered roots are merged and deduplicated before
 session resolution.
 
+Skill roots, in precedence order: project `.mycel/skills` and `.agents/skills`
+(or the `--skills-dir` list instead of both), user `MYCEL_HOME/skills` and
+`~/.agents/skills`, `extra_skill_dirs`, then plugin roots. Roots are
+deduplicated by canonical path before scanning, so launching from `$HOME` (no
+`.git`, project root == user home) scans `~/.agents/skills` once. Trust is per
+source: a **project** root is confined to itself and a symlink resolving outside
+it is refused (`EscapesRoot`), because the checkout may not be the user's;
+**user / extra / builtin / plugin** roots follow symlinks, so a tree like
+`~/.agents/skills/claude-octopus -> ~/.codex/claude-octopus/skills` loads.
+Cycle detection and depth/directory/file/byte limits apply either way (a
+followed symlink into a wide tree stops at the directory-visit cap with a
+`DirLimit` warning).
+
 ### terminal client state and side questions
 
 Client-only preferences live in private `MYCEL_HOME/tui.toml`, separate from
@@ -257,6 +270,8 @@ do not autoapprove tools.
 | gate blocks everything after a db delete | by design: missing db = guard disarmed | re-run `install.sh` to re-init the substrate |
 | `mycel` not found after install | PATH rc line not sourced | restart shell or `export PATH="$HOME/.mycel/bin:$PATH"` |
 | fresh-HOME install fails at cargo | changing `HOME` unroots rustup | keep `RUSTUP_HOME`/`CARGO_HOME` pointed at the real dirs |
+| startup warns `skill scan EscapesRoot` for a symlinked skill dir | the root is a **project** root (confined by design) | move the link under `~/.agents/skills` or `MYCEL_HOME/skills`, or add the real dir to `extra_skill_dirs` |
+| startup warns `skill ... shadowed by a higher-precedence source` for every skill in `~/.agents/skills` | pre-fix double scan when project root == `$HOME`; fixed by canonical-root dedupe | update; if it persists the two roots really are different dirs holding the same skill name |
 
 ## key patterns
 
@@ -418,6 +433,11 @@ mycel-substrate maintain --db <path> --workspace <dir> [--now <ts>]
 ```
 
 ## last updated
+
+2026-08-16 — skill roots deduplicate by canonical path and follow symlinks on
+user/extra/builtin/plugin roots (project roots stay confined). Fixes the
+post-cutover startup noise and the 54 octo skills that silently stopped loading
+from `~/.agents/skills`.
 
 2026-08-14 — completed the Rust-only cutover. The installed CLI now owns real
 providers, durable sessions, streaming turns, bounded prompts and workspace

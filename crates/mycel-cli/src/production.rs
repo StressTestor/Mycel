@@ -10621,6 +10621,62 @@ fail_mode = "closed"
             .is_err());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn home_working_dir_scans_user_agents_skills_once_and_follows_symlinks() {
+        // Launching from $HOME with no .git makes the project root equal the
+        // user home: ~/.agents/skills used to arrive twice (Project + User)
+        // and a symlinked skill tree inside it was refused as an escape.
+        fn write_skill(root: &Path, directory: &str, name: &str) {
+            let bundle = root.join(directory);
+            fs::create_dir_all(&bundle).expect("skill bundle");
+            fs::write(
+                bundle.join("SKILL.md"),
+                format!("---\nname: {name}\ndescription: {name} skill\n---\n{name} body\n"),
+            )
+            .expect("skill definition");
+        }
+
+        let temp = TempDir::new().expect("temp");
+        let user_home = temp.path().join("home");
+        let agents_skills = user_home.join(".agents/skills");
+        let elsewhere = temp.path().join("other-harness/skills");
+        write_skill(&agents_skills, "plain", "plain");
+        write_skill(&elsewhere, "linked", "linked");
+        std::os::unix::fs::symlink(&elsewhere, agents_skills.join("linked-tree"))
+            .expect("symlink into another skill tree");
+        let parsed = parse_config(&config()).expect("config");
+
+        let composed = compose_skills(
+            &parsed,
+            &[],
+            &user_home.join(".mycel"),
+            Some(&user_home),
+            &user_home,
+            &[],
+        )
+        .expect("skill composition");
+        assert!(
+            composed.warnings.is_empty(),
+            "unexpected skill warnings: {:?}",
+            composed.warnings
+        );
+        let activation = composed.activation.expect("loaded skill port");
+        for id in ["plain", "linked"] {
+            assert!(
+                activation
+                    .activate(
+                        id,
+                        &[],
+                        mycel_agent_runtime::SkillTrigger::ModelTool,
+                        "session-home-skills",
+                    )
+                    .is_ok(),
+                "skill {id} should load from ~/.agents/skills"
+            );
+        }
+    }
+
     #[test]
     fn startup_plan_uses_one_global_opaque_file_and_replays_without_sibling_access() {
         let temp = TempDir::new().expect("temp");
