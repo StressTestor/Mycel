@@ -3,6 +3,7 @@
 mod driver;
 mod input;
 mod render;
+pub mod style;
 mod unicode;
 mod virtual_terminal;
 
