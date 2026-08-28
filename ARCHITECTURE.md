@@ -77,6 +77,7 @@ Mycel/
   tests/e2e/
   docs/
     adr/
+    design/                  static TUI mockups (self-contained HTML, not product code)
     RUST_PORT_PARITY.md
     VISION.md
 ```
@@ -433,6 +434,10 @@ mycel-substrate maintain --db <path> --workspace <dir> [--now <ts>]
 ```
 
 ## last updated
+
+2026-08-28 — added `docs/design/`: two self-contained HTML design references for
+the TUI (a frozen mid-session frame showing a gate DENY, and a looping boot
+sequence). Design artifacts only; no product code, no build step, no network.
 
 2026-08-16 — skill roots deduplicate by canonical path and follow symlinks on
 user/extra/builtin/plugin roots (project roots stay confined). Fixes the
