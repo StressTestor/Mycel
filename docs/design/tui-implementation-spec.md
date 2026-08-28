@@ -244,12 +244,9 @@ raw hex, so theme changes don't churn tests). One integration test per theme ass
 every role resolves and the frame renders without panic at a few widths. A snapshot
 of the amanita frozen frame (the mockup's exact scenario) guards against regressions.
 
-## 11. Open assumption (flagged)
+## 11. Theming scope (decided)
 
-The design defines the 7 themes only for the startup video; the TUI mockup is
-amanita-only. This spec themes the **whole** TUI across all 7 (amanita pixel-exact;
-the other 6 recolored via the §4 derivation) on the read that theming is a
-cross-cutting feature of this update. If the intent is instead an amanita-only TUI
-with themes limited to the startup video, PR1's theme set collapses to amanita + the
-existing light palette and PRs 2–5 drop their theme parameterization. This is the one
-decision that changes scope; everything else follows the mockups exactly.
+Decided 2026-08-28: all 7 themes theme the **whole** TUI, not just the startup
+video. Amanita is pixel-exact from the mockup; the other 6 recolor the entire TUI
+via the §4 derivation for the TUI-only roles the design defines only for the
+startup. Every component (PRs 2–5) is theme-parameterized; PR1 ships all 7 themes.
