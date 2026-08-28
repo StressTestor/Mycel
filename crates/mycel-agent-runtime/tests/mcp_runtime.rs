@@ -241,7 +241,7 @@ async fn modern_http_connect_registers_tools_and_persists_before_live() {
     assert_eq!(discovery.payload.get("ttlMs"), Some(&json!(1500)));
     assert_eq!(discovery.payload.get("cacheScope"), Some(&json!("private")));
     let trace = sink.trace();
-    for pair in trace.chunks_exact(2) {
+    for pair in trace.as_chunks::<2>().0 {
         assert!(pair[0].starts_with("persist:"), "{trace:?}");
         assert!(pair[1].starts_with("publish:"), "{trace:?}");
     }
