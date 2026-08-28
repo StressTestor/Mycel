@@ -88,6 +88,60 @@ impl Theme {
             selection: Rgb::from_hex("#2a332a"),
         }
     }
+
+    /// Fill the 13 TUI-only roles from the base roles by fixed rules. The rules
+    /// are anchored so that applying them to amanita's base roles reproduces its
+    /// explicit overrides within tolerance. Amanita ships overrides and does not
+    /// call this; the other six themes do.
+    pub fn derive_tui_roles(&mut self) {
+        self.panel_bg = lighten(self.bg, 0.02);
+        self.border = blend(self.fg, self.bg, 0.80);
+        self.value = blend(self.fg, self.bright, 0.5);
+        self.secondary = self.prompt;
+        self.muted = self.dim;
+        self.faint = blend(self.dim, self.bg, 0.5);
+        self.accent_dim = darken(self.accent, 0.45);
+        self.diff_bg = blend(self.bg, self.accent, 0.06);
+        self.diff_add = blend(self.fg, self.bright, 0.4);
+        self.diff_del = self.dim;
+        self.deny_border = darken(self.accent, 0.55);
+        self.deny_bg = darken(self.accent, 0.88);
+        self.selection = lighten(self.bg, 0.06);
+    }
+}
+
+/// Linear interpolation of one channel from `a` to `b` by `t` in `0.0..=1.0`.
+fn lerp(a: u8, b: u8, t: f32) -> u8 {
+    (a as f32 + (b as f32 - a as f32) * t)
+        .round()
+        .clamp(0.0, 255.0) as u8
+}
+
+/// Mix `a` toward `b` by `t`: `a + (b - a) * t` per channel.
+pub fn blend(a: Rgb, b: Rgb, t: f32) -> Rgb {
+    Rgb {
+        r: lerp(a.r, b.r, t),
+        g: lerp(a.g, b.g, t),
+        b: lerp(a.b, b.b, t),
+    }
+}
+
+/// Darken toward black by `f`: `c * (1 - f)` per channel.
+pub fn darken(c: Rgb, f: f32) -> Rgb {
+    blend(c, Rgb { r: 0, g: 0, b: 0 }, f)
+}
+
+/// Lighten toward white by `f`: `c + (255 - c) * f` per channel.
+pub fn lighten(c: Rgb, f: f32) -> Rgb {
+    blend(
+        c,
+        Rgb {
+            r: 255,
+            g: 255,
+            b: 255,
+        },
+        f,
+    )
 }
 
 #[cfg(test)]
@@ -104,5 +158,23 @@ mod tests {
         assert_eq!(t.deny_border, Rgb::from_hex("#6b3111"));
         assert_eq!(t.diff_add, Rgb::from_hex("#a8b0a3"));
         assert!(!t.glow);
+    }
+
+    fn close(a: Rgb, b: Rgb, tol: i16) -> bool {
+        (a.r as i16 - b.r as i16).abs() <= tol
+            && (a.g as i16 - b.g as i16).abs() <= tol
+            && (a.b as i16 - b.b as i16).abs() <= tol
+    }
+
+    #[test]
+    fn derivation_approximates_amanita_tui_roles() {
+        let base = Theme::amanita(); // base roles are ground truth
+        let mut d = base.clone();
+        // re-derive the TUI roles from the base roles and check they land near
+        // amanita's real (explicit) TUI values, proving the rules are anchored.
+        d.derive_tui_roles();
+        assert!(close(d.border, Rgb::from_hex("#2c332c"), 24));
+        assert!(close(d.accent_dim, Rgb::from_hex("#8a3c18"), 24));
+        assert!(close(d.deny_border, Rgb::from_hex("#6b3111"), 28));
     }
 }
