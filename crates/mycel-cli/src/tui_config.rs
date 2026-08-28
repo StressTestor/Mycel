@@ -6,32 +6,41 @@ use std::{
 
 use toml::Value;
 
+use crate::tui::theme::Theme;
+
 const CONFIG_LIMIT: u64 = 1024 * 1024;
 pub(crate) const INVALID_TUI_CONFIG_MESSAGE: &str =
     "Invalid TUI config in ~/.mycel/tui.toml; using defaults.";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ThemeName {
     Auto,
     Dark,
     Light,
+    Named(String),
 }
 
 impl ThemeName {
-    pub const fn as_str(self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::Auto => "auto",
             Self::Dark => "dark",
             Self::Light => "light",
+            Self::Named(name) => name.as_str(),
         }
     }
 
     pub fn parse(value: &str) -> Result<Self, String> {
-        match value.trim().to_ascii_lowercase().as_str() {
+        let value = value.trim().to_ascii_lowercase();
+        match value.as_str() {
             "auto" => Ok(Self::Auto),
             "dark" => Ok(Self::Dark),
             "light" => Ok(Self::Light),
-            _ => Err("theme must be auto, dark, or light".to_owned()),
+            named if Theme::by_name(named).is_some() => Ok(Self::Named(value)),
+            _ => Err(format!(
+                "theme must be one of: auto, dark, light, {}",
+                Theme::ALL.join(", ")
+            )),
         }
     }
 }
@@ -282,5 +291,13 @@ mod tests {
         let (_, warning) = load_tui_config(temp.path());
         assert_eq!(warning.as_deref(), Some(INVALID_TUI_CONFIG_MESSAGE));
         assert!(save_tui_config(temp.path(), &TuiConfig::default()).is_err());
+    }
+
+    #[test]
+    fn theme_names_parse() {
+        assert!(ThemeName::parse("hacker").is_ok());
+        assert!(ThemeName::parse("amanita").is_ok());
+        assert!(ThemeName::parse("dark").is_ok());
+        assert!(ThemeName::parse("bogus").is_err());
     }
 }

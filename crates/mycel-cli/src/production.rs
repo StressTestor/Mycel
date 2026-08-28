@@ -4526,7 +4526,7 @@ impl InteractiveLoopState {
                     self.last_view.clear();
                     self.status(format!(
                         "theme set to {} · {}",
-                        theme.as_str(),
+                        self.tui_config.theme.as_str(),
                         path.display()
                     ));
                 }
@@ -6802,7 +6802,7 @@ fn interactive_view(
         lines.extend(frame_lines(
             frame,
             width,
-            resolved_theme(state.tui_config.theme),
+            resolved_theme(&state.tui_config.theme),
         ));
     }
     if state.reducer.phase != SessionPhase::Idle {
@@ -6821,7 +6821,7 @@ fn interactive_view(
             lines.extend(frame_lines(
                 frame,
                 width,
-                resolved_theme(state.tui_config.theme),
+                resolved_theme(&state.tui_config.theme),
             ));
         }
         lines.push(if panel.active.is_some() {
@@ -7112,10 +7112,13 @@ enum ResolvedTheme {
     Light,
 }
 
-fn resolved_theme(theme: ThemeName) -> ResolvedTheme {
+fn resolved_theme(theme: &ThemeName) -> ResolvedTheme {
     match theme {
         ThemeName::Dark => ResolvedTheme::Dark,
         ThemeName::Light => ResolvedTheme::Light,
+        // The seven named themes all use dark backgrounds; the palette wiring
+        // that maps them onto the renderer lands in a later TUI PR.
+        ThemeName::Named(_) => ResolvedTheme::Dark,
         ThemeName::Auto => std::env::var("COLORFGBG")
             .ok()
             .and_then(|value| value.rsplit(';').next()?.parse::<u8>().ok())
