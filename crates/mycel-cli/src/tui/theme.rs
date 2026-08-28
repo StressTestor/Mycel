@@ -108,6 +108,232 @@ impl Theme {
         self.deny_bg = darken(self.accent, 0.88);
         self.selection = lighten(self.bg, 0.06);
     }
+
+    /// Every built-in theme name, amanita first.
+    pub const ALL: [&'static str; 7] = [
+        "amanita",
+        "hacker",
+        "foxfire",
+        "cordyceps",
+        "phosphor",
+        "amber",
+        "synthwave",
+    ];
+
+    /// Resolve a theme by name, or `None` if the name is not built in.
+    pub fn by_name(name: &str) -> Option<Self> {
+        match name {
+            "amanita" => Some(Self::amanita()),
+            "hacker" => Some(Self::hacker()),
+            "foxfire" => Some(Self::foxfire()),
+            "cordyceps" => Some(Self::cordyceps()),
+            "phosphor" => Some(Self::phosphor()),
+            "amber" => Some(Self::amber()),
+            "synthwave" => Some(Self::synthwave()),
+            _ => None,
+        }
+    }
+
+    pub fn hacker() -> Self {
+        themed(
+            "hacker",
+            true,
+            "v0.4.2 — substrate ecology · fail-closed // trust nothing, verify everything",
+            [
+                Rgb::from_hex("#060109"), // bg
+                Rgb::from_hex("#9fb4c8"), // fg
+                Rgb::from_hex("#eaf7ff"), // bright
+                Rgb::from_hex("#5a6b80"), // dim
+                Rgb::from_hex("#333f52"), // dimmer
+                Rgb::from_hex("#ff2d78"), // cap
+                Rgb::from_hex("#7d1043"), // rim
+                Rgb::from_hex("#22e6ff"), // speck
+                Rgb::from_hex("#6f7f96"), // stem
+                Rgb::from_hex("#12855f"), // thread
+                Rgb::from_hex("#0c5340"), // thread2
+                Rgb::from_hex("#ff2d78"), // accent
+                Rgb::from_hex("#39ff88"), // ok
+                Rgb::from_hex("#22e6ff"), // prompt
+                Rgb::from_hex("#241033"), // frame
+                Rgb::from_hex("#2a1440"), // ground
+            ],
+        )
+    }
+
+    pub fn foxfire() -> Self {
+        themed(
+            "foxfire",
+            true,
+            "v0.4.2 — substrate ecology · fail-closed by design",
+            [
+                Rgb::from_hex("#02070a"), // bg
+                Rgb::from_hex("#9fc2b8"), // fg
+                Rgb::from_hex("#e2fff6"), // bright
+                Rgb::from_hex("#527066"), // dim
+                Rgb::from_hex("#31453f"), // dimmer
+                Rgb::from_hex("#2ee6a8"), // cap
+                Rgb::from_hex("#14735a"), // rim
+                Rgb::from_hex("#c8fff0"), // speck
+                Rgb::from_hex("#5e7a72"), // stem
+                Rgb::from_hex("#1f6e58"), // thread
+                Rgb::from_hex("#123f33"), // thread2
+                Rgb::from_hex("#2ee6a8"), // accent
+                Rgb::from_hex("#54ffb0"), // ok
+                Rgb::from_hex("#66f0c8"), // prompt
+                Rgb::from_hex("#0f2a24"), // frame
+                Rgb::from_hex("#123028"), // ground
+            ],
+        )
+    }
+
+    pub fn cordyceps() -> Self {
+        themed(
+            "cordyceps",
+            false,
+            "v0.4.2 — substrate ecology · fail-closed by design",
+            [
+                Rgb::from_hex("#0a0404"), // bg
+                Rgb::from_hex("#bfb3a4"), // fg
+                Rgb::from_hex("#ecdfd0"), // bright
+                Rgb::from_hex("#6e6055"), // dim
+                Rgb::from_hex("#443a33"), // dimmer
+                Rgb::from_hex("#b8402e"), // cap
+                Rgb::from_hex("#6e2417"), // rim
+                Rgb::from_hex("#e8d9c4"), // speck
+                Rgb::from_hex("#8f8468"), // stem
+                Rgb::from_hex("#54432e"), // thread
+                Rgb::from_hex("#382c1e"), // thread2
+                Rgb::from_hex("#c74b32"), // accent
+                Rgb::from_hex("#8faf5c"), // ok
+                Rgb::from_hex("#a08b6a"), // prompt
+                Rgb::from_hex("#241412"), // frame
+                Rgb::from_hex("#2a1a14"), // ground
+            ],
+        )
+    }
+
+    pub fn phosphor() -> Self {
+        themed(
+            "phosphor",
+            true,
+            "v0.4.2 — substrate ecology · fail-closed by design",
+            [
+                Rgb::from_hex("#020803"), // bg
+                Rgb::from_hex("#7dcf96"), // fg
+                Rgb::from_hex("#d8ffe4"), // bright
+                Rgb::from_hex("#3f7a52"), // dim
+                Rgb::from_hex("#26492f"), // dimmer
+                Rgb::from_hex("#33ff66"), // cap
+                Rgb::from_hex("#1a8f3c"), // rim
+                Rgb::from_hex("#ccffdd"), // speck
+                Rgb::from_hex("#2a9e52"), // stem
+                Rgb::from_hex("#155c30"), // thread
+                Rgb::from_hex("#0d3d20"), // thread2
+                Rgb::from_hex("#33ff66"), // accent
+                Rgb::from_hex("#33ff66"), // ok
+                Rgb::from_hex("#33ff66"), // prompt
+                Rgb::from_hex("#123420"), // frame
+                Rgb::from_hex("#143a24"), // ground
+            ],
+        )
+    }
+
+    pub fn amber() -> Self {
+        themed(
+            "amber",
+            true,
+            "v0.4.2 — substrate ecology · fail-closed by design",
+            [
+                Rgb::from_hex("#0a0602"), // bg
+                Rgb::from_hex("#d1a35c"), // fg
+                Rgb::from_hex("#ffe6bb"), // bright
+                Rgb::from_hex("#7a5c2e"), // dim
+                Rgb::from_hex("#4a3820"), // dimmer
+                Rgb::from_hex("#ffb000"), // cap
+                Rgb::from_hex("#8f5e00"), // rim
+                Rgb::from_hex("#ffe8b3"), // speck
+                Rgb::from_hex("#b8842e"), // stem
+                Rgb::from_hex("#5c451f"), // thread
+                Rgb::from_hex("#3d2e14"), // thread2
+                Rgb::from_hex("#ffb000"), // accent
+                Rgb::from_hex("#ffb000"), // ok
+                Rgb::from_hex("#ffb000"), // prompt
+                Rgb::from_hex("#2e2210"), // frame
+                Rgb::from_hex("#332611"), // ground
+            ],
+        )
+    }
+
+    pub fn synthwave() -> Self {
+        themed(
+            "synthwave",
+            true,
+            "v0.4.2 — substrate ecology · fail-closed // wake up, operator",
+            [
+                Rgb::from_hex("#0c0518"), // bg
+                Rgb::from_hex("#b3a6d9"), // fg
+                Rgb::from_hex("#f2ecff"), // bright
+                Rgb::from_hex("#6a5c99"), // dim
+                Rgb::from_hex("#3d3366"), // dimmer
+                Rgb::from_hex("#ff3ea5"), // cap
+                Rgb::from_hex("#8f1f66"), // rim
+                Rgb::from_hex("#ffde59"), // speck
+                Rgb::from_hex("#8f7bd9"), // stem
+                Rgb::from_hex("#5b3fd1"), // thread
+                Rgb::from_hex("#372680"), // thread2
+                Rgb::from_hex("#ff3ea5"), // accent
+                Rgb::from_hex("#3ef0c0"), // ok
+                Rgb::from_hex("#3edbff"), // prompt
+                Rgb::from_hex("#2a1a4d"), // frame
+                Rgb::from_hex("#301f57"), // ground
+            ],
+        )
+    }
+}
+
+/// Build a theme from its base roles (order: bg, fg, bright, dim, dimmer, cap,
+/// rim, speck, stem, thread, thread2, accent, ok, prompt, frame, ground) and
+/// derive its TUI-only roles.
+fn themed(name: &'static str, glow: bool, tag: &'static str, base: [Rgb; 16]) -> Theme {
+    let [bg, fg, bright, dim, dimmer, cap, rim, speck, stem, thread, thread2, accent, ok, prompt, frame, ground] =
+        base;
+    let mut theme = Theme {
+        name,
+        glow,
+        tag,
+        bg,
+        fg,
+        bright,
+        dim,
+        dimmer,
+        cap,
+        rim,
+        speck,
+        stem,
+        thread,
+        thread2,
+        accent,
+        ok,
+        prompt,
+        frame,
+        ground,
+        // Placeholders; derive_tui_roles fills these from the base roles.
+        panel_bg: Rgb::default(),
+        border: Rgb::default(),
+        value: Rgb::default(),
+        secondary: Rgb::default(),
+        muted: Rgb::default(),
+        faint: Rgb::default(),
+        accent_dim: Rgb::default(),
+        diff_bg: Rgb::default(),
+        diff_add: Rgb::default(),
+        diff_del: Rgb::default(),
+        deny_border: Rgb::default(),
+        deny_bg: Rgb::default(),
+        selection: Rgb::default(),
+    };
+    theme.derive_tui_roles();
+    theme
 }
 
 /// Linear interpolation of one channel from `a` to `b` by `t` in `0.0..=1.0`.
@@ -176,5 +402,18 @@ mod tests {
         assert!(close(d.border, Rgb::from_hex("#2c332c"), 24));
         assert!(close(d.accent_dim, Rgb::from_hex("#8a3c18"), 24));
         assert!(close(d.deny_border, Rgb::from_hex("#6b3111"), 28));
+    }
+
+    #[test]
+    fn every_theme_resolves_and_is_distinct_bg() {
+        let mut seen = std::collections::HashSet::new();
+        for name in Theme::ALL {
+            let t = Theme::by_name(name).unwrap();
+            assert_eq!(t.name, name);
+            // accent + bg are set (non-zero struct, all roles present by construction)
+            seen.insert((t.bg.r, t.bg.g, t.bg.b));
+        }
+        assert_eq!(seen.len(), 7, "themes must have distinct backgrounds");
+        assert!(Theme::by_name("nope").is_none());
     }
 }
