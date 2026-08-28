@@ -5,6 +5,7 @@ mod dialogs;
 mod editor;
 mod overlay;
 mod session;
+pub mod theme;
 mod transcript;
 
 pub use dialogs::*;
