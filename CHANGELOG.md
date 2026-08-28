@@ -2,6 +2,10 @@
 
 ## unreleased
 
+## v0.3.0
+
+the cutover release. one implementation now, and it is the rust one.
+
 - the installer now ships the native Rust `mycel` binary directly. Node, pnpm,
   the repo-bound TypeScript shim, and the retired external `claude -p`
   delegation package are no longer part of the product install.
@@ -15,6 +19,14 @@
   (project roots stay confined), which brings back skill trees linked into
   `~/.agents/skills` from other harnesses. a new per-root directory cap
   (`max_dirs`, 4096) bounds the walk with a single `DirLimit` warning.
+- `docs/design/` holds two self-contained HTML design references for the TUI: a
+  frozen mid-session frame ending on a gate DENY, and a looping boot sequence.
+  They inline their own fonts and JS, so they open offline with no build step.
+- CI runs clippy with `-D warnings` against a floating `stable`, so clippy
+  1.98.0 promoting `chunks_exact_to_as_chunks` turned every PR red on a line no
+  PR had touched. the test now uses `as_chunks::<2>().0`, which drops the
+  trailing remainder the same way. the toolchain still floats behind a pinned
+  action SHA, so the next promoted lint lands the same way.
 
 ## v0.2.0
 
