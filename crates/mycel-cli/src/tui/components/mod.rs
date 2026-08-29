@@ -8,6 +8,7 @@ pub mod inspector;
 pub mod logo;
 pub mod notification;
 pub mod session_rail;
+pub mod status_bar;
 pub mod transcript;
 
 use crate::terminal::compose::clip_and_pad;

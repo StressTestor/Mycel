@@ -100,6 +100,7 @@ use crate::{
         components::inspector::{inspector, inspector_collapsed, AntibodyDetail, InspectorData},
         components::notification::notification_strip,
         components::session_rail::{session_rail, session_rail_collapsed, RailData},
+        components::status_bar::{status_bar, StatusBarData},
         components::transcript::{transcript_frame_lines, FrameCtx},
         theme::Theme,
         ApprovalChoice, ApprovalDecision as DialogApprovalDecision, ApprovalDialogAction,
@@ -7220,14 +7221,36 @@ fn interactive_view(
     width: usize,
     height: usize,
 ) -> (Vec<String>, usize, usize) {
+    // The terminal's bottom row is reserved for the status bar whenever at
+    // least two rows exist; the body band composes above it. A one-row
+    // terminal keeps the editor over the bar.
+    let body_h = if height >= 2 { height - 1 } else { height };
+    let bar = (body_h < height).then(|| {
+        status_bar(
+            &StatusBarData {
+                gate: state.header.substrate.gate,
+                model: state.header.model.clone(),
+                antibodies: state.header.substrate.antibodies,
+                candidates_pending: state.header.substrate.candidates_pending,
+            },
+            &state.theme,
+            width,
+            state.truecolor,
+        )
+    });
     let (rail_w, center_w, inspector_w) = resolve_body_layout(
         width,
         state.tui_config.rails_session_open,
         state.tui_config.rails_inspector_open,
     );
-    let (center, cursor_row, center_cursor_column) =
-        interactive_center_view(state, center_w, height);
+    let (mut center, cursor_row, center_cursor_column) =
+        interactive_center_view(state, center_w, body_h);
     let (Some(rail_w), Some(inspector_w)) = (rail_w, inspector_w) else {
+        if let Some(bar) = bar {
+            // Pad short content so the bar still pins to the bottom row.
+            center.resize(body_h, String::new());
+            center.push(bar);
+        }
         return (center, cursor_row, center_cursor_column);
     };
 
@@ -7235,15 +7258,15 @@ fn interactive_view(
     let truecolor = state.truecolor;
     let rail_data = state.rail_data();
     let rail_lines = if rail_w > COLLAPSED_RAIL_W {
-        session_rail(&rail_data, &theme, rail_w, height, truecolor)
+        session_rail(&rail_data, &theme, rail_w, body_h, truecolor)
     } else {
-        session_rail_collapsed(&rail_data, &theme, rail_w, height, truecolor)
+        session_rail_collapsed(&rail_data, &theme, rail_w, body_h, truecolor)
     };
     let inspector_data = state.inspector_data();
     let inspector_lines = if inspector_w > COLLAPSED_RAIL_W {
-        inspector(&inspector_data, &theme, inspector_w, height, truecolor)
+        inspector(&inspector_data, &theme, inspector_w, body_h, truecolor)
     } else {
-        inspector_collapsed(&inspector_data, &theme, inspector_w, height, truecolor)
+        inspector_collapsed(&inspector_data, &theme, inspector_w, body_h, truecolor)
     };
 
     // Pre-rendered lines wrap as single default-style spans: `visible_width`
@@ -7262,10 +7285,11 @@ fn interactive_view(
         to_region(inspector_w, inspector_lines),
     ];
     let border = Style::fg(Color::Rgb(theme.border));
-    let composed = assemble(&columns, height, border)
+    let mut composed: Vec<String> = assemble(&columns, body_h, border)
         .into_iter()
         .map(|row| row.render(width, truecolor))
         .collect();
+    composed.extend(bar);
     (
         composed,
         cursor_row,
@@ -11725,6 +11749,17 @@ fail_mode = "closed"
             "{narrow_text}"
         );
         assert!(narrow_text.contains("[0 running]"), "{narrow_text}");
+        // The status bar pins to the terminal's last row even without rails,
+        // and a one-row terminal gives that row back to the editor.
+        assert_eq!(narrow.len(), 24);
+        assert!(
+            strip_ansi(narrow.last().expect("bar row")).contains("▸▸ gate fail-closed"),
+            "{narrow_text}"
+        );
+        let (single_row, _, _) = interactive_view(&mut state, 80, 1);
+        assert!(!single_row
+            .iter()
+            .any(|line| strip_ansi(line).contains("▸▸")));
 
         // Multi-line input wraps inside the box and pulls the cursor down one
         // row per wrapped line; the wrap width is the box interior, not the
@@ -11753,16 +11788,27 @@ fail_mode = "closed"
         assert_eq!(wide_column, 5 + 2 + 1 + 3 + 1);
         let stripped: Vec<String> = wide.iter().map(|line| strip_ansi(line)).collect();
         assert!(
-            stripped.iter().all(|line| line.contains('╎')),
-            "every row carries the column borders"
+            stripped[..stripped.len() - 1]
+                .iter()
+                .all(|line| line.contains('╎')),
+            "every body row carries the column borders"
+        );
+        assert!(
+            stripped
+                .last()
+                .expect("bar row")
+                .contains("▸▸ gate fail-closed"),
+            "the status bar takes the reserved bottom row"
         );
         // Collapsed strips show their expand chevrons.
         assert!(stripped.iter().any(|line| line.starts_with(" ›")));
         assert!(stripped.iter().any(|line| line.trim_end().ends_with('‹')));
 
         // Open the session rail: live section content and a wider offset.
+        // One extra row: the status bar now owns the bottom row, so height 25
+        // gives the open rail the same 24 body rows the pre-bar layout had.
         state.tui_config.rails_session_open = true;
-        let (open, _, open_column) = interactive_view(&mut state, 120, 24);
+        let (open, _, open_column) = interactive_view(&mut state, 120, 25);
         assert_eq!(open_column, 5 + 2 + 1 + 38 + 1);
         let joined = open
             .iter()
