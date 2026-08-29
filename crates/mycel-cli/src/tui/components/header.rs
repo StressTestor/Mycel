@@ -64,7 +64,7 @@ pub fn header_card(data: &HeaderData, theme: &Theme, width: usize, truecolor: bo
     for (row, logo_line) in logo.iter().enumerate() {
         let mut spans = vec![Span::new("╎ ", border)];
         spans.extend(fit_spans(logo_line.0.clone(), LOGO_WIDTH));
-        spans.push(Span::new("  ", gap));
+        spans.push(Span::new(" ".repeat(GAP), gap));
         spans.extend(fit_spans(cell_at(&identity, IDENT_OFFSET, row), IDENT_W));
         spans.push(Span::new(" ╎ ", border));
         spans.extend(fit_spans(cell_at(&right, RIGHT_OFFSET, row), right_w));
