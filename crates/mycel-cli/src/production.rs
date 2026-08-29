@@ -94,6 +94,7 @@ use crate::{
     },
     tui::{
         components::header::{header_card, GateDisplay, HeaderData, SubstrateSummary},
+        components::inspector::{AntibodyDetail, InspectorData},
         components::session_rail::RailData,
         components::transcript::{transcript_frame_lines, FrameCtx},
         theme::Theme,
@@ -3585,6 +3586,10 @@ struct InteractiveLoopState {
     /// Bounded ring of observed gate decisions feeding the inspector; fed from
     /// the main session's event stream (BTW side-channel events stay out).
     gate_log: GateLog,
+    /// Substrate record behind the most recent denial, resolved at deny time
+    /// from the reason's `(source: antibody:<id>)` pointer. `None` when the
+    /// deny came from the protected-path floor or the pointer did not resolve.
+    last_deny_antibody: Option<AntibodyDetail>,
     swarm_mode: bool,
     hyphae_task_active: bool,
     pasted_images: PastedImageStore,
@@ -3731,6 +3736,7 @@ impl InteractiveLoopState {
             header: build_header(prepared),
             substrate: prepared.substrate,
             gate_log: GateLog::default(),
+            last_deny_antibody: None,
             swarm_mode: prepared.swarm_mode,
             hyphae_task_active: false,
             pasted_images: PastedImageStore::default(),
@@ -3758,6 +3764,19 @@ impl InteractiveLoopState {
         self.theme = active_theme(&self.tui_config.theme);
         self.truecolor = truecolor_enabled();
         self.header_cache = None;
+    }
+
+    // Consumed by the body-band composition in this PR's final task; the
+    // allow goes with it.
+    #[allow(dead_code)]
+    /// Snapshot the inspector's data: the decision ring, the resolved
+    /// last-deny antibody, and the cached candidate count. Pure reads only.
+    fn inspector_data(&self) -> InspectorData {
+        InspectorData {
+            activity: self.gate_log.decisions().cloned().collect(),
+            antibody: self.last_deny_antibody.clone(),
+            candidates_pending: self.substrate.candidates_pending,
+        }
     }
 
     // Consumed by the body-band composition in this PR's final task; the
@@ -6064,9 +6083,17 @@ impl InteractiveLoopState {
                     }
                     // A recorded denial means the gate captured a sentinel
                     // event into the substrate: re-read the summary so the
-                    // candidate count moves with it.
+                    // candidate count moves with it, and resolve the denial's
+                    // antibody pointer for the inspector while still at the
+                    // event boundary (the render tick must not gain I/O).
                     if self.gate_log.observe(event.as_ref(), now) {
                         self.refresh_substrate(prepared);
+                        self.last_deny_antibody = self
+                            .gate_log
+                            .last()
+                            .and_then(|decision| parse_antibody_source(&decision.detail))
+                            .and_then(|id| prepared.ecology.find_antibody(id))
+                            .map(|antibody| antibody_detail(&antibody));
                     }
                     project_interactive_event(*event, &mut self.transcript, now);
                 }
@@ -6982,6 +7009,74 @@ fn substrate_summary_display(substrate: &SubstrateStatus) -> SubstrateSummary {
             GateStatus::Disarmed => GateDisplay::Disarmed,
             GateStatus::Unknown => GateDisplay::Unknown,
         },
+    }
+}
+
+/// Pull the antibody id out of a gate deny reason. Substrate-matched refusals
+/// end in `(source: antibody:<uuid>)` (crates/mycel-core/src/lib.rs `refusal`
+/// construction; crates/mycel-gate/src/main.rs `emit_block`); floor and
+/// structural denies carry `mycel-gate:` pointers instead and resolve to
+/// `None`. `rfind` guards against remediation text containing the marker.
+fn parse_antibody_source(detail: &str) -> Option<uuid::Uuid> {
+    const MARKER: &str = "(source: antibody:";
+    let start = detail.rfind(MARKER)? + MARKER.len();
+    let rest = &detail[start..];
+    let end = rest.find(')')?;
+    rest[..end].trim().parse().ok()
+}
+
+/// Snapshot the substrate record for the inspector's detail box. Labels match
+/// the enums' snake_case serde names; the mockup's `name`, last-hit date, and
+/// per-decision trace do not exist in the record (see `AntibodyDetail`).
+fn antibody_detail(antibody: &mycel_core::Antibody) -> AntibodyDetail {
+    use mycel_core::{AntibodySource, Confidence, RefusalMode, Severity, SignatureScope};
+    let mut signature = Vec::new();
+    for (field, value) in [
+        ("command_pattern", &antibody.signature.command_pattern),
+        ("tool_pattern", &antibody.signature.tool_pattern),
+        ("file_pattern", &antibody.signature.file_pattern),
+        ("error_class", &antibody.signature.error_class),
+        ("agent_role", &antibody.signature.agent_role),
+    ] {
+        if let Some(value) = value {
+            signature.push((field.to_owned(), value.clone()));
+        }
+    }
+    AntibodyDetail {
+        id: crate::util::short_id(&antibody.id.to_string()),
+        source: match antibody.source {
+            AntibodySource::SentinelBlock => "sentinel_block",
+            AntibodySource::FailedRun => "failed_run",
+            AntibodySource::Manual => "manual",
+        }
+        .to_owned(),
+        scope: match antibody.signature.scope {
+            SignatureScope::Project => "project",
+            SignatureScope::Global => "global",
+            SignatureScope::Personal => "personal",
+        }
+        .to_owned(),
+        severity: match antibody.severity {
+            Severity::Refuse => "refuse",
+            Severity::Warn => "warn",
+            Severity::Info => "info",
+        }
+        .to_owned(),
+        confidence: match antibody.confidence {
+            Confidence::Solid => "solid",
+            Confidence::Directional => "directional",
+            Confidence::Vibes => "vibes",
+        }
+        .to_owned(),
+        refusal: match antibody.refusal_mode {
+            RefusalMode::Hard => "hard",
+            RefusalMode::Soft => "soft",
+            RefusalMode::LogOnly => "log-only",
+        }
+        .to_owned(),
+        hits: antibody.hit_count,
+        signature,
+        remediation: antibody.remediation.clone(),
     }
 }
 
@@ -11243,6 +11338,124 @@ fail_mode = "closed"
             .hyphae_last
             .expect("hyphae line")
             .starts_with("test-runner · exited"));
+
+        state.event_pump.abort();
+        adapter
+            .executor
+            .block_on(shutdown_orchestration(Some(
+                prepared.orchestration.as_ref(),
+            )))
+            .expect("shut down orchestration");
+        adapter
+            .executor
+            .block_on(shutdown_mcp(prepared.mcp.as_ref()))
+            .expect("shut down MCP");
+        adapter
+            .executor
+            .block_on(prepared.session.close())
+            .expect("close session");
+    }
+
+    #[test]
+    fn projected_gate_deny_resolves_the_antibody_for_the_inspector() {
+        let temp = TempDir::new().expect("temp");
+        let home = temp.path().join("mycel");
+        fs::create_dir_all(home.join("substrate")).expect("substrate dir");
+        let antibody_id = uuid::Uuid::new_v4();
+        let antibody = mycel_core::Antibody {
+            id: antibody_id,
+            signature: mycel_core::Signature {
+                error_class: None,
+                file_pattern: Some("~/.mycel/**".to_owned()),
+                agent_role: None,
+                tool_pattern: Some("write".to_owned()),
+                command_pattern: None,
+                scope: mycel_core::SignatureScope::Project,
+            },
+            source: mycel_core::AntibodySource::Manual,
+            severity: mycel_core::Severity::Refuse,
+            confidence: mycel_core::Confidence::Solid,
+            refusal_mode: mycel_core::RefusalMode::Hard,
+            remediation: "stage the change in-repo".to_owned(),
+            examples: Vec::new(),
+            created_at: Utc::now(),
+            expires_at: None,
+            hit_count: 3,
+        };
+        let ecology = EcologyService::new(&home);
+        mycel_mcp::McpTools::open(&ecology.paths().database)
+            .expect("initialize db")
+            .insert_antibodies([antibody])
+            .expect("insert antibody");
+
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Manual))
+            .expect("prepare");
+        let mut state = InteractiveLoopState::new(
+            &adapter.executor,
+            &prepared,
+            TerminalSize {
+                columns: 120,
+                rows: 30,
+            },
+        );
+        // Replay the exact event shapes the runtime publishes for a denied
+        // call (turn.rs `emit_hook_report` + the synthetic result).
+        state
+            .message_sender
+            .send(InteractiveRuntimeMessage::Event(Box::new(
+                AgentEvent::ToolCallStarted {
+                    turn_id: 1,
+                    tool_call_id: "call/1".to_owned(),
+                    name: "write".to_owned(),
+                    args: serde_json::json!({"file_path": "~/.mycel/config.toml"}),
+                    description: None,
+                    display: None,
+                },
+            )))
+            .expect("send started");
+        state
+            .message_sender
+            .send(InteractiveRuntimeMessage::Event(Box::new(
+                AgentEvent::HookResult {
+                    turn_id: Some(1),
+                    hook_event: "PreToolUse".to_owned(),
+                    content: format!("Denied by operator. (source: antibody:{antibody_id})"),
+                    blocked: Some(true),
+                },
+            )))
+            .expect("send deny");
+        state
+            .process_runtime_messages(&adapter.executor, &prepared)
+            .expect("process events");
+
+        let detail = state
+            .last_deny_antibody
+            .clone()
+            .expect("deny resolved its antibody");
+        assert_eq!(detail.id, crate::util::short_id(&antibody_id.to_string()));
+        assert_eq!(detail.source, "manual");
+        assert_eq!(detail.severity, "refuse");
+        assert_eq!(detail.refusal, "hard");
+        assert_eq!(detail.hits, 3);
+        assert!(detail
+            .signature
+            .contains(&("file_pattern".to_owned(), "~/.mycel/**".to_owned())));
+
+        let inspector = state.inspector_data();
+        assert_eq!(inspector.antibody.as_ref(), Some(&detail));
+        let last = inspector.activity.last().expect("deny in the ring");
+        assert_eq!(last.verdict, crate::tui::GateVerdict::Deny);
+        assert_eq!(last.tool, "write");
+        assert_eq!(last.target, "~/.mycel/config.toml");
 
         state.event_pump.abort();
         adapter

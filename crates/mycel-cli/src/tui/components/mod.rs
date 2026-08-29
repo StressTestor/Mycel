@@ -3,6 +3,7 @@
 //! against the produced strings so a theme change never churns the tests.
 
 pub mod header;
+pub mod inspector;
 pub mod logo;
 pub mod session_rail;
 pub mod transcript;

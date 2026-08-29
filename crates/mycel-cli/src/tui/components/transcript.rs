@@ -272,8 +272,9 @@ fn gutter_span(at_ms: u64, theme: &Theme) -> Span {
 
 /// The frame's creation time as local wall-clock `HH:MM:SS`. `at_ms` is unix
 /// epoch milliseconds; a value chrono cannot map (out of range, DST gap)
-/// renders as a placeholder rather than panicking.
-fn gutter_text(at_ms: u64) -> String {
+/// renders as a placeholder rather than panicking. Shared with the
+/// inspector's activity log so both columns stamp identically.
+pub(crate) fn gutter_text(at_ms: u64) -> String {
     use chrono::TimeZone;
     i64::try_from(at_ms)
         .ok()

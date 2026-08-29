@@ -273,6 +273,18 @@ impl EcologyService {
         }
     }
 
+    /// Look up one antibody for the inspector's detail box. Event-driven:
+    /// called when a projected gate denial resolves to a
+    /// `(source: antibody:<id>)` pointer, never on the render tick.
+    pub fn find_antibody(&self, id: Uuid) -> Option<Antibody> {
+        let tools = self.open_existing().ok()?;
+        tools
+            .list_antibodies()
+            .ok()?
+            .into_iter()
+            .find(|antibody| antibody.id == id)
+    }
+
     fn open_existing(&self) -> Result<McpTools, EcologyError> {
         if !self.paths.database.is_file() {
             return Err(EcologyError::DatabaseMissing(self.paths.database.clone()));
