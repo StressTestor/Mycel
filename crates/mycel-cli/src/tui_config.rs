@@ -30,13 +30,19 @@ impl ThemeName {
         }
     }
 
+    // `Theme::ALL` is `[&'static str]`; `contains(&named)` fails the lifetime
+    // check because `named` is a non-`'static` `&str`, so the manual scan is
+    // required. It also avoids constructing a throwaway `Theme` just to validate.
+    #[allow(clippy::manual_contains)]
     pub fn parse(value: &str) -> Result<Self, String> {
         let value = value.trim().to_ascii_lowercase();
         match value.as_str() {
             "auto" => Ok(Self::Auto),
             "dark" => Ok(Self::Dark),
             "light" => Ok(Self::Light),
-            named if Theme::by_name(named).is_some() => Ok(Self::Named(value)),
+            named if Theme::ALL.iter().any(|candidate| *candidate == named) => {
+                Ok(Self::Named(value))
+            }
             _ => Err(format!(
                 "theme must be one of: auto, dark, light, {}",
                 Theme::ALL.join(", ")

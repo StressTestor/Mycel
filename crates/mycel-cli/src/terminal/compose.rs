@@ -20,10 +20,9 @@ pub struct Region {
 
 /// Build one full-screen row from the columns: each region's `row`-th line
 /// padded (or truncated) to its width, columns separated by a border span.
-/// Color encoding happens later in `StyledLine::render`, so `truecolor` is
-/// accepted for signature symmetry and threaded by `assemble`.
-pub fn join_row(cols: &[&Region], row: usize, border: Style, truecolor: bool) -> StyledLine {
-    let _ = truecolor;
+/// Color encoding happens later in `StyledLine::render`; this stays purely
+/// structural.
+pub fn join_row(cols: &[&Region], row: usize, border: Style) -> StyledLine {
     let mut spans = Vec::new();
     for (index, col) in cols.iter().enumerate() {
         if index > 0 {
@@ -35,10 +34,10 @@ pub fn join_row(cols: &[&Region], row: usize, border: Style, truecolor: bool) ->
 }
 
 /// Assemble `height` rows from the columns.
-pub fn assemble(cols: &[Region], height: usize, border: Style, truecolor: bool) -> Vec<StyledLine> {
+pub fn assemble(cols: &[Region], height: usize, border: Style) -> Vec<StyledLine> {
     let refs: Vec<&Region> = cols.iter().collect();
     (0..height)
-        .map(|row| join_row(&refs, row, border, truecolor))
+        .map(|row| join_row(&refs, row, border))
         .collect()
 }
 
@@ -84,7 +83,7 @@ mod tests {
             width: 5,
             lines: vec![StyledLine(vec![Span::new("yo", Style::default())])],
         };
-        let row = join_row(&[&a, &b], 0, Style::default(), true);
+        let row = join_row(&[&a, &b], 0, Style::default());
         let text: String = row.0.iter().map(|s| s.text.as_str()).collect();
         // "hi  " (4) + border + "yo   " (5)
         assert!(text.contains("hi") && text.contains("yo"));

@@ -393,15 +393,41 @@ mod tests {
     }
 
     #[test]
-    fn derivation_approximates_amanita_tui_roles() {
-        let base = Theme::amanita(); // base roles are ground truth
-        let mut d = base.clone();
-        // re-derive the TUI roles from the base roles and check they land near
-        // amanita's real (explicit) TUI values, proving the rules are anchored.
+    fn derivation_stays_in_family_with_amanita_for_every_role() {
+        // Amanita ships explicit TUI overrides; the other six themes derive
+        // theirs. Re-derive amanita's from its base roles and confirm every one
+        // of the 13 derived roles lands in-family with the real override. This
+        // is a coarse anchor (per-theme fidelity is eyeballed when components
+        // render them), but it catches a rule that produces a garbage color.
+        let real = Theme::amanita();
+        let mut d = real.clone();
         d.derive_tui_roles();
-        assert!(close(d.border, Rgb::from_hex("#2c332c"), 24));
-        assert!(close(d.accent_dim, Rgb::from_hex("#8a3c18"), 24));
-        assert!(close(d.deny_border, Rgb::from_hex("#6b3111"), 28));
+        const TOL: i16 = 36;
+        assert!(close(d.panel_bg, real.panel_bg, TOL), "panel_bg");
+        assert!(close(d.border, real.border, TOL), "border");
+        assert!(close(d.value, real.value, TOL), "value");
+        assert!(close(d.secondary, real.secondary, TOL), "secondary");
+        assert!(close(d.muted, real.muted, TOL), "muted");
+        assert!(close(d.faint, real.faint, TOL), "faint");
+        assert!(close(d.accent_dim, real.accent_dim, TOL), "accent_dim");
+        assert!(close(d.diff_bg, real.diff_bg, TOL), "diff_bg");
+        assert!(close(d.diff_add, real.diff_add, TOL), "diff_add");
+        assert!(close(d.diff_del, real.diff_del, TOL), "diff_del");
+        assert!(close(d.deny_border, real.deny_border, TOL), "deny_border");
+        assert!(close(d.deny_bg, real.deny_bg, TOL), "deny_bg");
+        assert!(close(d.selection, real.selection, TOL), "selection");
+    }
+
+    #[test]
+    fn nonamanita_themes_carry_their_source_values() {
+        // One distinctive base role per theme, to catch a transposed or
+        // mistyped hex in the hand-copied startup values.
+        assert_eq!(Theme::hacker().accent, Rgb::from_hex("#ff2d78"));
+        assert_eq!(Theme::foxfire().ok, Rgb::from_hex("#54ffb0"));
+        assert_eq!(Theme::cordyceps().rim, Rgb::from_hex("#6e2417"));
+        assert_eq!(Theme::phosphor().bg, Rgb::from_hex("#020803"));
+        assert_eq!(Theme::amber().accent, Rgb::from_hex("#ffb000"));
+        assert_eq!(Theme::synthwave().speck, Rgb::from_hex("#ffde59"));
     }
 
     #[test]

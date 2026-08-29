@@ -17,9 +17,15 @@ pub struct Rgb {
 }
 
 impl Rgb {
-    /// Parse a `#rrggbb` hex string. Malformed channels fall back to 0.
+    /// Parse a `#rrggbb` hex string. In release a malformed channel falls back
+    /// to 0; a debug assert makes a malformed literal loud in tests and dev,
+    /// since every call site here passes a compile-time color constant.
     pub fn from_hex(hex: &str) -> Self {
         let hex = hex.strip_prefix('#').unwrap_or(hex);
+        debug_assert!(
+            hex.len() == 6 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()),
+            "malformed hex color: {hex:?}"
+        );
         let channel = |start: usize| {
             hex.get(start..start + 2)
                 .and_then(|pair| u8::from_str_radix(pair, 16).ok())
