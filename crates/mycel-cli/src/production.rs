@@ -2885,6 +2885,9 @@ struct PreparedInteractive {
     plan_file: PathBuf,
     plan_mode: bool,
     swarm_mode: bool,
+    /// Welcome-card recent-session titles, captured from the discovery the
+    /// startup register/refresh already produced.
+    recent_sessions: Vec<String>,
     warning: Option<String>,
     tui_config: TuiConfig,
     mcp: Option<McpRuntime>,
@@ -3087,19 +3090,34 @@ async fn prepare_interactive(
     let session_index = SessionIndex::new(&home);
     let session_id = session_handle.id().as_str().to_owned();
     let indexed = if is_new {
-        session_index.register_session(&session_id, &working_dir, &additional_dirs)
+        session_index.register_session_discovering(&session_id, &working_dir, &additional_dirs)
     } else {
-        session_index.refresh(&session_id)
+        session_index.refresh_discovering(&session_id)
     };
-    if let Err(error) = indexed {
-        let close = session_handle.close().await;
-        return Err(match close {
-            Ok(()) => format!("could not update session index: {error}"),
-            Err(close) => format!(
-                "could not update session index: {error}; additionally session cleanup failed: {close}"
-            ),
-        });
-    }
+    // The register/refresh already ran the full locked repair scan; keep its
+    // discovery for the welcome card's recent-sessions list so startup never
+    // pays a second index lock and repair (review item 5, option (a)).
+    let recent_sessions = match indexed {
+        Ok((_, discovery)) => discovery
+            .sessions
+            .into_iter()
+            .take(3)
+            .map(|summary| {
+                summary
+                    .title
+                    .unwrap_or_else(|| crate::util::short_id(&summary.id))
+            })
+            .collect(),
+        Err(error) => {
+            let close = session_handle.close().await;
+            return Err(match close {
+                Ok(()) => format!("could not update session index: {error}"),
+                Err(close) => format!(
+                    "could not update session index: {error}; additionally session cleanup failed: {close}"
+                ),
+            });
+        }
+    };
     let current_permission = session_handle.snapshot().await.state.permission_mode;
     if current_permission != permission {
         if let Err(error) = session_handle.set_permission_mode(permission).await {
@@ -3322,6 +3340,7 @@ async fn prepare_interactive(
         plan_file,
         plan_mode,
         swarm_mode,
+        recent_sessions,
         warning,
         tui_config,
         mcp: mcp_runtime,
@@ -6807,25 +6826,10 @@ fn render_interactive<B: TerminalBackend>(
 /// Snapshot the welcome-card data from the prepared session. The substrate
 /// summary is zeroed here; PR4 owns the live substrate-summary queries (spec §8),
 /// which need a substrate DB read that is not available as a cheap field at
-/// construction. Recent sessions are best-effort — an index error must never
-/// block startup, so it degrades to an empty list.
+/// construction. Recent sessions were captured in `prepare_interactive` from
+/// the discovery its register/refresh produced, so building the header never
+/// re-acquires the cross-process index lock or re-runs the repair scan.
 fn build_header(prepared: &PreparedInteractive) -> HeaderData {
-    let recent = prepared
-        .session_index
-        .list(None)
-        .map(|discovery| {
-            discovery
-                .sessions
-                .into_iter()
-                .take(3)
-                .map(|summary| {
-                    summary
-                        .title
-                        .unwrap_or_else(|| crate::util::short_id(&summary.id))
-                })
-                .collect()
-        })
-        .unwrap_or_default();
     HeaderData {
         model: prepared.model_alias.clone(),
         provider: prepared.provider.clone(),
@@ -6840,7 +6844,7 @@ fn build_header(prepared: &PreparedInteractive) -> HeaderData {
             candidates_pending: 0,
             gate: GateDisplay::Unknown,
         },
-        recent,
+        recent: prepared.recent_sessions.clone(),
     }
 }
 
