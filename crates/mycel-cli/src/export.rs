@@ -281,8 +281,7 @@ fn validate_summary_location(
 }
 
 fn default_export_name(id: &str) -> String {
-    let short: String = id.chars().take(8).collect();
-    format!("mycel-debug-{short}.zip")
+    format!("mycel-debug-{}.zip", crate::util::short_id(id))
 }
 
 fn normalize_path(path: &Path) -> PathBuf {

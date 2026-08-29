@@ -6814,7 +6814,7 @@ fn build_header(prepared: &PreparedInteractive) -> HeaderData {
                 .map(|summary| {
                     summary
                         .title
-                        .unwrap_or_else(|| short_session_id(&summary.id))
+                        .unwrap_or_else(|| crate::util::short_id(&summary.id))
                 })
                 .collect()
         })
@@ -6834,11 +6834,6 @@ fn build_header(prepared: &PreparedInteractive) -> HeaderData {
         },
         recent,
     }
-}
-
-/// A session id shortened for display when a session has no title.
-fn short_session_id(id: &str) -> String {
-    id.chars().take(8).collect()
 }
 
 /// Wall-clock unix epoch milliseconds, shared by the loop tick and the

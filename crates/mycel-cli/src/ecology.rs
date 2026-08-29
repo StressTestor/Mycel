@@ -22,6 +22,8 @@ use mycel_mcp::McpTools;
 use serde::Deserialize;
 use uuid::Uuid;
 
+use crate::util::short_id;
+
 const DENY_REMEDIATION: &str =
     "Denied by operator via /deny. Do not run this command; use an approved alternative.";
 const MAX_CANDIDATES: usize = 50;
@@ -857,10 +859,6 @@ fn signature_fields(signature: &Signature) -> Vec<String> {
 
 fn one_line(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn short_id(value: &str) -> &str {
-    value.get(..8).unwrap_or(value)
 }
 
 fn severity_label(value: Severity) -> &'static str {
