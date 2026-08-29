@@ -3622,18 +3622,14 @@ impl InteractiveLoopState {
                 }
             }
         });
-        let mut transcript = TranscriptReducer::default();
-        transcript.push(
-            TranscriptEvent::Status(format!(
+        let transcript = seed_transcript(
+            format!(
                 "session {} · model {}",
                 prepared.session.id(),
                 prepared.model_alias
-            )),
-            0,
+            ),
+            prepared.warning.as_deref(),
         );
-        if let Some(warning) = &prepared.warning {
-            transcript.push(TranscriptEvent::Status(format!("warning: {warning}")), 0);
-        }
         let dialog_receiver = prepared
             .dialog_receiver
             .lock()
@@ -3681,11 +3677,7 @@ impl InteractiveLoopState {
     /// the gutter can render local `HH:MM:SS`; the reducer only ever compares
     /// differences, so the epoch base does not change coalescing.
     fn now_ms(&self) -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |since| {
-                u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
-            })
+        epoch_now_ms()
     }
 
     fn open_btw(
@@ -6848,6 +6840,28 @@ fn short_session_id(id: &str) -> String {
     id.chars().take(8).collect()
 }
 
+/// Wall-clock unix epoch milliseconds, shared by the loop tick and the
+/// construction-time seed frames so every gutter timestamp is real.
+fn epoch_now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| {
+            u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+        })
+}
+
+/// Seed the transcript shown at construction: the session/model line plus any
+/// startup warning. Both frames share one wall-clock stamp.
+fn seed_transcript(session_line: String, warning: Option<&str>) -> TranscriptReducer {
+    let now = epoch_now_ms();
+    let mut transcript = TranscriptReducer::default();
+    transcript.push(TranscriptEvent::Status(session_line), now);
+    if let Some(warning) = warning {
+        transcript.push(TranscriptEvent::Status(format!("warning: {warning}")), now);
+    }
+    transcript
+}
+
 /// Render a path with the user's home directory collapsed to `~`.
 fn display_home_path(path: &Path, home: Option<&Path>) -> String {
     if let Some(home) = home {
@@ -9694,6 +9708,19 @@ fail_mode = "closed"
         // process's COLORTERM, so assert styling exists without pinning codes.
         assert!(rendered.contains("\x1b["));
         assert!(transport.requests.lock().expect("requests").is_empty());
+    }
+
+    #[test]
+    fn seed_frames_carry_the_real_wall_clock() {
+        let transcript =
+            seed_transcript("session s · model m".to_owned(), Some("substrate warning"));
+        let frames = transcript.frames();
+        assert_eq!(frames.len(), 2);
+        for frame in frames {
+            assert_ne!(frame.at_ms, 0, "seed frames must not render as epoch 0");
+        }
+        // Both seed frames share one stamp so the gutter shows a single time.
+        assert_eq!(frames[0].at_ms, frames[1].at_ms);
     }
 
     #[test]
