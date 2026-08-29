@@ -86,17 +86,18 @@ use crate::{
         INIT_PROMPT,
     },
     terminal::{
-        visible_width, wrap_text, DifferentialRenderer, InputDecoder, InputEvent, KeyCode,
-        ProcessTerminalBackend, TerminalBackend, TerminalDriver, TerminalEvent, TerminalSession,
-        TerminalSignal, TerminalSink, TerminalSize,
+        style::truecolor_enabled, visible_width, wrap_text, DifferentialRenderer, InputDecoder,
+        InputEvent, KeyCode, ProcessTerminalBackend, TerminalBackend, TerminalDriver,
+        TerminalEvent, TerminalSession, TerminalSignal, TerminalSink, TerminalSize,
     },
     tui::{
+        components::header::{header_card, HeaderData, SubstrateSummary},
         ApprovalChoice, ApprovalDecision as DialogApprovalDecision, ApprovalDialogAction,
         ApprovalDialogReducer, FrameKind, LogicalAction, QuestionDialogAction,
         QuestionDialogReducer, QuestionItem, QuestionOption as DialogQuestionOption, SessionPhase,
         SessionReducer, SubmissionMode, TranscriptEvent, TranscriptFrame, TranscriptReducer,
     },
-    tui_config::{load_tui_config, save_tui_config, ThemeName, TuiConfig},
+    tui_config::{active_theme, load_tui_config, save_tui_config, ThemeName, TuiConfig},
     workspace_config::{
         load_workspace_local_config, remember_workspace_additional_dir, resolve_workspace_directory,
     },
@@ -2870,6 +2871,8 @@ struct PreparedInteractive {
     system_prompt: Arc<str>,
     model_alias: String,
     model_aliases: Vec<String>,
+    provider: String,
+    context_window: u64,
     thinking_effort: Option<ThinkingEffort>,
     effort_options: Vec<String>,
     allow_unknown_effort: bool,
@@ -3298,6 +3301,8 @@ async fn prepare_interactive(
         btw_engine_config: engine_config,
         compaction,
         system_prompt,
+        provider: resolved.provider_id.clone(),
+        context_window: resolved.max_context_tokens,
         model_alias: resolved.alias,
         model_aliases,
         thinking_effort: resolved.thinking_effort,
@@ -3512,6 +3517,7 @@ struct InteractiveLoopState {
     system_queue: VecDeque<(String, String)>,
     thinking_effort: Option<ThinkingEffort>,
     tui_config: TuiConfig,
+    header: HeaderData,
     swarm_mode: bool,
     hyphae_task_active: bool,
     pasted_images: PastedImageStore,
@@ -3654,6 +3660,7 @@ impl InteractiveLoopState {
             system_queue: VecDeque::new(),
             thinking_effort: prepared.thinking_effort.clone(),
             tui_config: prepared.tui_config.clone(),
+            header: build_header(prepared),
             swarm_mode: prepared.swarm_mode,
             hyphae_task_active: false,
             pasted_images: PastedImageStore::default(),
@@ -6789,12 +6796,73 @@ fn render_interactive<B: TerminalBackend>(
     Ok(())
 }
 
+/// Snapshot the welcome-card data from the prepared session. The substrate
+/// summary is zeroed here; PR4 owns the live substrate-summary queries (spec §8),
+/// which need a substrate DB read that is not available as a cheap field at
+/// construction. Recent sessions are best-effort — an index error must never
+/// block startup, so it degrades to an empty list.
+fn build_header(prepared: &PreparedInteractive) -> HeaderData {
+    let recent = prepared
+        .session_index
+        .list(None)
+        .map(|discovery| {
+            discovery
+                .sessions
+                .into_iter()
+                .take(3)
+                .map(|summary| {
+                    summary
+                        .title
+                        .unwrap_or_else(|| short_session_id(&summary.id))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    HeaderData {
+        model: prepared.model_alias.clone(),
+        provider: prepared.provider.clone(),
+        cwd: display_home_path(&prepared.working_dir, prepared.user_home.as_deref()),
+        ctx_used: 0,
+        ctx_window: prepared.context_window,
+        // TODO(PR4): live substrate summary
+        substrate: SubstrateSummary {
+            antibodies: 0,
+            candidates_pending: 0,
+            gate_ok: true,
+        },
+        recent,
+    }
+}
+
+/// A session id shortened for display when a session has no title.
+fn short_session_id(id: &str) -> String {
+    id.chars().take(8).collect()
+}
+
+/// Render a path with the user's home directory collapsed to `~`.
+fn display_home_path(path: &Path, home: Option<&Path>) -> String {
+    if let Some(home) = home {
+        if let Ok(relative) = path.strip_prefix(home) {
+            if relative.as_os_str().is_empty() {
+                return "~".to_owned();
+            }
+            return format!("~/{}", relative.display());
+        }
+    }
+    path.display().to_string()
+}
+
 fn interactive_view(
     state: &InteractiveLoopState,
     width: usize,
     height: usize,
 ) -> (Vec<String>, usize, usize) {
-    let mut lines = Vec::new();
+    let mut lines = header_card(
+        &state.header,
+        &active_theme(&state.tui_config.theme),
+        width,
+        truecolor_enabled(),
+    );
     for frame in state.transcript.frames() {
         if !lines.is_empty() {
             lines.push(String::new());
@@ -8488,6 +8556,21 @@ mod tests {
             BackendEvent, TerminalBackend, DISABLE_BRACKETED_PASTE, LEAVE_ALTERNATE_SCREEN,
         },
     };
+
+    #[test]
+    fn display_home_path_collapses_home_prefix() {
+        let home = Path::new("/Users/joe");
+        assert_eq!(
+            display_home_path(Path::new("/Users/joe/dev/mycoforge"), Some(home)),
+            "~/dev/mycoforge"
+        );
+        assert_eq!(display_home_path(home, Some(home)), "~");
+        assert_eq!(
+            display_home_path(Path::new("/etc/hosts"), Some(home)),
+            "/etc/hosts"
+        );
+        assert_eq!(display_home_path(Path::new("/tmp/x"), None), "/tmp/x");
+    }
 
     #[derive(Default)]
     struct TestEnvironment(Mutex<HashMap<String, String>>);
