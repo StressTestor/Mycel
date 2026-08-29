@@ -93,6 +93,7 @@ use crate::{
     tui::{
         components::header::{header_card, GateDisplay, HeaderData, SubstrateSummary},
         components::transcript::{transcript_frame_lines, FrameCtx},
+        theme::Theme,
         ApprovalChoice, ApprovalDecision as DialogApprovalDecision, ApprovalDialogAction,
         ApprovalDialogReducer, FrameKind, LogicalAction, QuestionDialogAction,
         QuestionDialogReducer, QuestionItem, QuestionOption as DialogQuestionOption, SessionPhase,
@@ -3545,6 +3546,14 @@ struct InteractiveLoopState {
     system_queue: VecDeque<(String, String)>,
     thinking_effort: Option<ThinkingEffort>,
     tui_config: TuiConfig,
+    /// Theme and truecolor support resolved once at construction and
+    /// re-resolved by `refresh_render_caches` when the TUI config changes;
+    /// the ~40Hz render loop must not re-read config or the environment.
+    theme: Theme,
+    truecolor: bool,
+    /// The header card rendered at a given width; the card's data is fixed at
+    /// construction, so this only invalidates on resize or theme change.
+    header_cache: Option<(usize, Vec<String>)>,
     header: HeaderData,
     swarm_mode: bool,
     hyphae_task_active: bool,
@@ -3685,6 +3694,9 @@ impl InteractiveLoopState {
             event_pump,
             system_queue: VecDeque::new(),
             thinking_effort: prepared.thinking_effort.clone(),
+            theme: active_theme(&prepared.tui_config.theme),
+            truecolor: truecolor_enabled(),
+            header_cache: None,
             tui_config: prepared.tui_config.clone(),
             header: build_header(prepared),
             swarm_mode: prepared.swarm_mode,
@@ -3704,6 +3716,16 @@ impl InteractiveLoopState {
     /// differences, so the epoch base does not change coalescing.
     fn now_ms(&self) -> u64 {
         epoch_now_ms()
+    }
+
+    /// Re-resolve the cached theme and truecolor support from the current TUI
+    /// config and drop the cached header render. Every path that replaces
+    /// `tui_config` with a possibly different theme (`/theme`, `/reload-tui`)
+    /// must call this, or the view keeps rendering the stale theme forever.
+    fn refresh_render_caches(&mut self) {
+        self.theme = active_theme(&self.tui_config.theme);
+        self.truecolor = truecolor_enabled();
+        self.header_cache = None;
     }
 
     fn open_btw(
@@ -4514,6 +4536,7 @@ impl InteractiveLoopState {
             }
             let (config, warning) = load_tui_config(&prepared.home);
             self.tui_config = config;
+            self.refresh_render_caches();
             self.renderer.reset();
             self.last_view.clear();
             self.status(warning.unwrap_or_else(|| {
@@ -4555,6 +4578,7 @@ impl InteractiveLoopState {
             match save_tui_config(&prepared.home, &config) {
                 Ok(path) => {
                     self.tui_config = config;
+                    self.refresh_render_caches();
                     self.renderer.reset();
                     self.last_view.clear();
                     self.status(format!(
@@ -6717,6 +6741,7 @@ fn interactive_terminal_body<B: TerminalBackend>(
             }
             TerminalEvent::Resize(size) => {
                 state.size = size;
+                state.header_cache = None;
                 state.renderer.reset();
                 state.last_view.clear();
                 state.last_cursor = None;
@@ -6884,17 +6909,29 @@ fn display_home_path(path: &Path, home: Option<&Path>) -> String {
 }
 
 fn interactive_view(
-    state: &InteractiveLoopState,
+    state: &mut InteractiveLoopState,
     width: usize,
     height: usize,
 ) -> (Vec<String>, usize, usize) {
-    let theme = active_theme(&state.tui_config.theme);
+    // Theme and truecolor come from the caches `refresh_render_caches`
+    // maintains; resolving them here would re-read config and the environment
+    // at ~40Hz. The header render is likewise cached: its data is fixed at
+    // construction, so it only re-renders when the width or theme changed.
     let frame_ctx = FrameCtx {
         width,
-        truecolor: truecolor_enabled(),
+        truecolor: state.truecolor,
         spinner_phase: state.spinner_phase,
     };
-    let mut lines = header_card(&state.header, &theme, width, frame_ctx.truecolor);
+    if state.header_cache.as_ref().map(|(cached, _)| *cached) != Some(width) {
+        let rendered = header_card(&state.header, &state.theme, width, state.truecolor);
+        state.header_cache = Some((width, rendered));
+    }
+    let theme = state.theme.clone();
+    let mut lines = state
+        .header_cache
+        .as_ref()
+        .map(|(_, rendered)| rendered.clone())
+        .unwrap_or_default();
     for frame in state.transcript.frames() {
         if !lines.is_empty() {
             lines.push(String::new());
@@ -9773,6 +9810,42 @@ fail_mode = "closed"
         }
         // Both seed frames share one stamp so the gutter shows a single time.
         assert_eq!(frames[0].at_ms, frames[1].at_ms);
+    }
+
+    #[test]
+    fn theme_command_recolors_the_live_view_through_the_cache() {
+        let temp = TempDir::new().expect("temp");
+        let transport = Arc::new(ScriptedTransport::default());
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            transport.clone(),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Auto))
+            .expect("prepare");
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let mut backend = MemoryBackend::scripted([
+            BackendEvent::Input(b"/theme phosphor\r".to_vec()),
+            BackendEvent::Input(vec![0x04]),
+        ]);
+        backend.output = output.clone();
+        let mut driver = TerminalDriver::new(backend);
+        adapter
+            .run_prepared_interactive(prepared, &mut driver)
+            .expect("run");
+        let rendered = String::from_utf8_lossy(&output.lock().expect("output")).into_owned();
+        // The renders after the command must carry phosphor's accent (#33ff66):
+        // truecolor SGR or its 256-cube downgrade (index 84), depending on the
+        // test environment's COLORTERM. A stale cached theme keeps painting
+        // amanita and neither appears.
+        assert!(
+            rendered.contains("38;2;51;255;102") || rendered.contains("38;5;84"),
+            "no phosphor accent in the post-/theme render"
+        );
     }
 
     #[test]
