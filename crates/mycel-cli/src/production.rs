@@ -94,6 +94,7 @@ use crate::{
     },
     tui::{
         components::header::{header_card, GateDisplay, HeaderData, SubstrateSummary},
+        components::session_rail::RailData,
         components::transcript::{transcript_frame_lines, FrameCtx},
         theme::Theme,
         ApprovalChoice, ApprovalDecision as DialogApprovalDecision, ApprovalDialogAction,
@@ -2891,6 +2892,9 @@ struct PreparedInteractive {
     /// Welcome-card recent-session titles, captured from the discovery the
     /// startup register/refresh already produced.
     recent_sessions: Vec<String>,
+    /// The current session's title (or short id) for the session rail, from
+    /// the same discovery.
+    session_name: String,
     warning: Option<String>,
     tui_config: TuiConfig,
     mcp: Option<McpRuntime>,
@@ -3103,17 +3107,28 @@ async fn prepare_interactive(
     // The register/refresh already ran the full locked repair scan; keep its
     // discovery for the welcome card's recent-sessions list so startup never
     // pays a second index lock and repair (review item 5, option (a)).
-    let recent_sessions = match indexed {
-        Ok((_, discovery)) => discovery
-            .sessions
-            .into_iter()
-            .take(3)
-            .map(|summary| {
-                summary
-                    .title
-                    .unwrap_or_else(|| crate::util::short_id(&summary.id))
-            })
-            .collect(),
+    let (session_name, recent_sessions) = match indexed {
+        Ok((_, discovery)) => {
+            // The rail's session name comes from the same discovery: the
+            // current session's title when one is set, else its short id.
+            let name = discovery
+                .sessions
+                .iter()
+                .find(|summary| summary.id == session_id)
+                .and_then(|summary| summary.title.clone())
+                .unwrap_or_else(|| crate::util::short_id(&session_id));
+            let recent = discovery
+                .sessions
+                .into_iter()
+                .take(3)
+                .map(|summary| {
+                    summary
+                        .title
+                        .unwrap_or_else(|| crate::util::short_id(&summary.id))
+                })
+                .collect();
+            (name, recent)
+        }
         Err(error) => {
             let close = session_handle.close().await;
             return Err(match close {
@@ -3348,6 +3363,7 @@ async fn prepare_interactive(
         plan_mode,
         swarm_mode,
         recent_sessions,
+        session_name,
         warning,
         tui_config,
         mcp: mcp_runtime,
@@ -3742,6 +3758,49 @@ impl InteractiveLoopState {
         self.theme = active_theme(&self.tui_config.theme);
         self.truecolor = truecolor_enabled();
         self.header_cache = None;
+    }
+
+    // Consumed by the body-band composition in this PR's final task; the
+    // allow goes with it.
+    #[allow(dead_code)]
+    /// Snapshot the session rail's data from state the loop already holds.
+    /// Pure reads only: the substrate snapshot is the event-driven cache, and
+    /// the hyphae stats come from the transcript's Subagent frames — the only
+    /// hyphae state reachable without an async orchestration read (`/hyphae`
+    /// goes through a host-tool turn, `handle_hyphae_command`).
+    fn rail_data(&self, prepared: &PreparedInteractive) -> RailData {
+        let now = self.now_ms();
+        let mut hyphae_active = 0usize;
+        let mut hyphae_last = None;
+        for frame in self.transcript.frames() {
+            if frame.kind != FrameKind::Subagent {
+                continue;
+            }
+            if frame.streaming {
+                hyphae_active += 1;
+            }
+            let name = frame.text.lines().next().unwrap_or_default();
+            let state = frame.state.as_deref().unwrap_or("unknown");
+            hyphae_last = Some(format!(
+                "{name} · {state} · {}",
+                format_age(now.saturating_sub(frame.at_ms))
+            ));
+        }
+        RailData {
+            name: prepared.session_name.clone(),
+            model: self.header.model.clone(),
+            provider: self.header.provider.clone(),
+            cwd: self.header.cwd.clone(),
+            shell_mode: self.reducer.input_mode == crate::tui::InputMode::Shell,
+            plan: self.reducer.plan,
+            // See `build_header`: occupancy is not carried by the event
+            // stream, so the rail renders the window alone.
+            ctx_used: None,
+            ctx_window: self.header.ctx_window,
+            substrate: self.substrate,
+            hyphae_active,
+            hyphae_last,
+        }
     }
 
     /// Re-read the substrate summary and invalidate the header render.
@@ -6923,6 +6982,19 @@ fn substrate_summary_display(substrate: &SubstrateStatus) -> SubstrateSummary {
             GateStatus::Disarmed => GateDisplay::Disarmed,
             GateStatus::Unknown => GateDisplay::Unknown,
         },
+    }
+}
+
+/// Compact age for the rail's hyphae line: `now` under a minute, then whole
+/// minutes, then whole hours.
+fn format_age(elapsed_ms: u64) -> String {
+    let minutes = elapsed_ms / 60_000;
+    if minutes == 0 {
+        "now".to_owned()
+    } else if minutes < 60 {
+        format!("{minutes}m ago")
+    } else {
+        format!("{}h ago", minutes / 60)
     }
 }
 
@@ -11096,6 +11168,83 @@ fail_mode = "closed"
         assert!(rendered.contains("1 antibodies"));
         assert!(rendered.contains("38;2;85;168;104m●"), "{rendered}");
 
+        adapter
+            .executor
+            .block_on(shutdown_orchestration(Some(
+                prepared.orchestration.as_ref(),
+            )))
+            .expect("shut down orchestration");
+        adapter
+            .executor
+            .block_on(shutdown_mcp(prepared.mcp.as_ref()))
+            .expect("shut down MCP");
+        adapter
+            .executor
+            .block_on(prepared.session.close())
+            .expect("close session");
+    }
+
+    #[test]
+    fn rail_data_snapshots_session_identity_and_transcript_hyphae() {
+        let temp = TempDir::new().expect("temp");
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Manual))
+            .expect("prepare");
+        let mut state = InteractiveLoopState::new(
+            &adapter.executor,
+            &prepared,
+            TerminalSize {
+                columns: 120,
+                rows: 30,
+            },
+        );
+        let now = state.now_ms();
+        state.transcript.push(
+            TranscriptEvent::SubagentState {
+                id: "sub/1".to_owned(),
+                name: "test-runner".to_owned(),
+                state: "started".to_owned(),
+                detail: None,
+            },
+            now,
+        );
+        let data = state.rail_data(&prepared);
+        // A fresh session carries the index's default title
+        // (session_index.rs DEFAULT_TITLE), which the rail shows verbatim.
+        assert_eq!(data.name, "New Session");
+        assert_eq!(data.model, prepared.model_alias);
+        assert_eq!(data.provider, prepared.provider);
+        assert_eq!(data.ctx_window, prepared.context_window);
+        assert_eq!(data.substrate, prepared.substrate);
+        assert_eq!(data.hyphae_active, 1);
+        let last = data.hyphae_last.expect("hyphae line");
+        assert!(last.starts_with("test-runner · started · "), "{last}");
+
+        state.transcript.push(
+            TranscriptEvent::SubagentState {
+                id: "sub/1".to_owned(),
+                name: "test-runner".to_owned(),
+                state: "exited".to_owned(),
+                detail: None,
+            },
+            now,
+        );
+        let data = state.rail_data(&prepared);
+        assert_eq!(data.hyphae_active, 0);
+        assert!(data
+            .hyphae_last
+            .expect("hyphae line")
+            .starts_with("test-runner · exited"));
+
+        state.event_pump.abort();
         adapter
             .executor
             .block_on(shutdown_orchestration(Some(

@@ -4,6 +4,7 @@
 
 pub mod header;
 pub mod logo;
+pub mod session_rail;
 pub mod transcript;
 
 use crate::terminal::compose::clip_and_pad;
