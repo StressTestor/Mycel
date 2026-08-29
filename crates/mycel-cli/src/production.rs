@@ -9767,6 +9767,7 @@ fail_mode = "closed"
             tool_status: None,
             entity_id: None,
             state: None,
+            at_ms: 0,
         };
         for theme in [ResolvedTheme::Dark, ResolvedTheme::Light] {
             let line = frame_lines(&frame, 80, theme).join("");
