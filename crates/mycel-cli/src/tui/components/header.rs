@@ -35,6 +35,10 @@ pub struct HeaderData {
     pub recent: Vec<String>,
 }
 
+/// Design copy shared by the identity line and the substrate row; the wording
+/// is frozen from the mockup.
+const GATE_TAGLINE: &str = "gate fail-closed";
+
 /// Cells between the logo and the identity block.
 const GAP: usize = 2;
 /// Width reserved for the identity block (fits `<model> (NNNk context)`).
@@ -114,7 +118,7 @@ fn identity_lines(data: &HeaderData, theme: &Theme) -> Vec<StyledLine> {
             Span::new(format!(" ({} context)", format_k(data.ctx_window)), muted),
         ]),
         StyledLine(vec![Span::new(
-            format!("{} · gate fail-closed", data.provider),
+            format!("{} · {GATE_TAGLINE}", data.provider),
             secondary,
         )]),
         StyledLine(vec![Span::new(data.cwd.clone(), muted)]),
@@ -162,7 +166,7 @@ fn right_lines(data: &HeaderData, theme: &Theme) -> Vec<StyledLine> {
                 format!("{} candidate pending", data.substrate.candidates_pending),
                 candidate_style,
             ),
-            Span::new(" · gate fail-closed ", muted),
+            Span::new(format!(" · {GATE_TAGLINE} "), muted),
             Span::new("●", dot_style),
             Span::new(format!(" {gate_word}"), muted),
         ]),
