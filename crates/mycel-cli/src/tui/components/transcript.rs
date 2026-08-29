@@ -105,13 +105,16 @@ fn deny_lines(frame: &TranscriptFrame, theme: &Theme, ctx: &FrameCtx) -> Vec<Str
             _ => secondary,
         };
         for wrapped in wrap_text(text, inner_w) {
-            lines.push(boxed_line(vec![Span::new(wrapped, style)], theme, inner_w, ctx));
+            lines.push(boxed_line(
+                vec![Span::new(wrapped, style)],
+                theme,
+                inner_w,
+                ctx,
+            ));
         }
     }
 
-    lines.push(
-        StyledLine(vec![indent, Span::new(rule, border)]).render(ctx.width, ctx.truecolor),
-    );
+    lines.push(StyledLine(vec![indent, Span::new(rule, border)]).render(ctx.width, ctx.truecolor));
     lines
 }
 
@@ -332,8 +335,11 @@ mod tests {
 
     #[test]
     fn user_frame_has_prompt_marker_and_bright_text() {
-        let lines =
-            transcript_frame_lines(&frame(FrameKind::User, "bump the timeout"), &Theme::amanita(), &ctx());
+        let lines = transcript_frame_lines(
+            &frame(FrameKind::User, "bump the timeout"),
+            &Theme::amanita(),
+            &ctx(),
+        );
         let joined = lines.join("\n");
         assert!(joined.contains('❯'));
         assert!(joined.contains("bump the timeout"));

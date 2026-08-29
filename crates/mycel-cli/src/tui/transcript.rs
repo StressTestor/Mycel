@@ -510,9 +510,15 @@ mod tests {
         reducer.push(TranscriptEvent::UserMessage("hi".to_owned()), 9_000_000);
         assert_eq!(reducer.frames()[0].at_ms, 9_000_000);
 
-        reducer.push(TranscriptEvent::AssistantDelta("first".to_owned()), 9_000_100);
+        reducer.push(
+            TranscriptEvent::AssistantDelta("first".to_owned()),
+            9_000_100,
+        );
         reducer.flush_now();
-        reducer.push(TranscriptEvent::AssistantDelta(" second".to_owned()), 9_500_000);
+        reducer.push(
+            TranscriptEvent::AssistantDelta(" second".to_owned()),
+            9_500_000,
+        );
         reducer.flush_now();
         let frame = reducer
             .frames()

@@ -92,10 +92,11 @@ use crate::{
     },
     tui::{
         components::header::{header_card, HeaderData, SubstrateSummary},
+        components::transcript::{transcript_frame_lines, FrameCtx},
         ApprovalChoice, ApprovalDecision as DialogApprovalDecision, ApprovalDialogAction,
         ApprovalDialogReducer, FrameKind, LogicalAction, QuestionDialogAction,
         QuestionDialogReducer, QuestionItem, QuestionOption as DialogQuestionOption, SessionPhase,
-        SessionReducer, SubmissionMode, TranscriptEvent, TranscriptFrame, TranscriptReducer,
+        SessionReducer, SubmissionMode, TranscriptEvent, TranscriptReducer,
     },
     tui_config::{active_theme, load_tui_config, save_tui_config, ThemeName, TuiConfig},
     workspace_config::{
@@ -111,6 +112,8 @@ const CODEX_FLAG: &str = "codex_subscription_auth";
 const CODEX_FLAG_ENV: &str = "MYCEL_EXPERIMENTAL_CODEX_SUBSCRIPTION_AUTH";
 const GOOGLE_APPLICATION_CREDENTIALS: &str = "GOOGLE_APPLICATION_CREDENTIALS";
 const INTERACTIVE_POLL: Duration = Duration::from_millis(25);
+/// How long each braille spinner frame is held on running tool rows.
+const SPINNER_INTERVAL_MS: u64 = 90;
 /// After an exit is requested while a turn is in flight (Ctrl-D once, then
 /// stdin closes), how long the session waits for that turn to finish on its
 /// own before cancelling it and exiting anyway. Bounded on purpose: a stalled
@@ -3505,7 +3508,6 @@ struct InteractiveLoopState {
     decoder: InputDecoder,
     renderer: DifferentialRenderer,
     size: TerminalSize,
-    started: Instant,
     active: Option<ActiveTurn>,
     btw: Option<BtwPanelState>,
     exit_after_turn: bool,
@@ -3526,6 +3528,9 @@ struct InteractiveLoopState {
     terminal_sequences: VecDeque<Vec<u8>>,
     last_view: Vec<String>,
     last_cursor: Option<(usize, usize)>,
+    /// Braille spinner frame index for running tool rows; advanced from
+    /// `now_ms` on every loop tick so it is deterministic per wall-clock time.
+    spinner_phase: usize,
 }
 
 impl InteractiveLoopState {
@@ -3648,7 +3653,6 @@ impl InteractiveLoopState {
             decoder: InputDecoder::default(),
             renderer: DifferentialRenderer::default(),
             size,
-            started: Instant::now(),
             active: None,
             btw: None,
             exit_after_turn: false,
@@ -3669,15 +3673,19 @@ impl InteractiveLoopState {
             terminal_sequences: VecDeque::new(),
             last_view: Vec::new(),
             last_cursor: None,
+            spinner_phase: 0,
         }
     }
 
+    /// Wall-clock unix epoch milliseconds. Transcript frames stamp this so
+    /// the gutter can render local `HH:MM:SS`; the reducer only ever compares
+    /// differences, so the epoch base does not change coalescing.
     fn now_ms(&self) -> u64 {
-        self.started
-            .elapsed()
-            .as_millis()
-            .try_into()
-            .unwrap_or(u64::MAX)
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| {
+                u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+            })
     }
 
     fn open_btw(
@@ -6618,6 +6626,7 @@ fn interactive_terminal_body<B: TerminalBackend>(
         state.dialogs.poll();
         state.poll_cron(executor, prepared)?;
         let now = state.now_ms();
+        state.spinner_phase = usize::try_from(now / SPINNER_INTERVAL_MS).unwrap_or(0);
         state.transcript.tick(now);
         if let Some(panel) = state.btw.as_mut() {
             panel.transcript.tick(now);
@@ -6857,21 +6866,18 @@ fn interactive_view(
     width: usize,
     height: usize,
 ) -> (Vec<String>, usize, usize) {
-    let mut lines = header_card(
-        &state.header,
-        &active_theme(&state.tui_config.theme),
+    let theme = active_theme(&state.tui_config.theme);
+    let frame_ctx = FrameCtx {
         width,
-        truecolor_enabled(),
-    );
+        truecolor: truecolor_enabled(),
+        spinner_phase: state.spinner_phase,
+    };
+    let mut lines = header_card(&state.header, &theme, width, frame_ctx.truecolor);
     for frame in state.transcript.frames() {
         if !lines.is_empty() {
             lines.push(String::new());
         }
-        lines.extend(frame_lines(
-            frame,
-            width,
-            resolved_theme(&state.tui_config.theme),
-        ));
+        lines.extend(transcript_frame_lines(frame, &theme, &frame_ctx));
     }
     if state.reducer.phase != SessionPhase::Idle {
         lines.push(match state.reducer.phase {
@@ -6886,11 +6892,7 @@ fn interactive_view(
         lines.push(String::new());
         lines.push("┌─ BTW ─ side channel ─────────────────────────".to_owned());
         for frame in panel.transcript.frames() {
-            lines.extend(frame_lines(
-                frame,
-                width,
-                resolved_theme(&state.tui_config.theme),
-            ));
+            lines.extend(transcript_frame_lines(frame, &theme, &frame_ctx));
         }
         lines.push(if panel.active.is_some() {
             "└─ running · ctrl-c cancels · esc closes".to_owned()
@@ -7174,32 +7176,6 @@ fn push_wrapped(lines: &mut Vec<String>, text: &str, width: usize) {
     lines.extend(wrap_text(&sanitized, width));
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ResolvedTheme {
-    Dark,
-    Light,
-}
-
-fn resolved_theme(theme: &ThemeName) -> ResolvedTheme {
-    match theme {
-        ThemeName::Dark => ResolvedTheme::Dark,
-        ThemeName::Light => ResolvedTheme::Light,
-        // The seven named themes all use dark backgrounds; the palette wiring
-        // that maps them onto the renderer lands in a later TUI PR.
-        ThemeName::Named(_) => ResolvedTheme::Dark,
-        ThemeName::Auto => std::env::var("COLORFGBG")
-            .ok()
-            .and_then(|value| value.rsplit(';').next()?.parse::<u8>().ok())
-            .map_or(ResolvedTheme::Dark, |background| {
-                if background >= 8 {
-                    ResolvedTheme::Light
-                } else {
-                    ResolvedTheme::Dark
-                }
-            }),
-    }
-}
-
 fn format_tui_settings(config: &TuiConfig) -> String {
     format!(
         "theme: {}\neditor: {}\npaste burst fallback: {}\nnotifications: {} ({})\nconfig: ~/.mycel/tui.toml",
@@ -7217,46 +7193,6 @@ fn format_tui_settings(config: &TuiConfig) -> String {
         },
         config.notification_condition.as_str(),
     )
-}
-
-fn frame_lines(frame: &TranscriptFrame, width: usize, theme: ResolvedTheme) -> Vec<String> {
-    let label = match frame.kind {
-        FrameKind::User => "you",
-        FrameKind::Thinking => "thinking",
-        FrameKind::Assistant => "assistant",
-        FrameKind::Tool => "tool",
-        FrameKind::Hook => "hook",
-        FrameKind::Status => "status",
-        FrameKind::Subagent => "subagent",
-        FrameKind::BackgroundTask => "task",
-        FrameKind::Goal => "goal",
-        FrameKind::Mcp => "mcp",
-        FrameKind::Compaction => "compaction",
-    };
-    let color = match (theme, frame.kind) {
-        (ResolvedTheme::Dark, FrameKind::User) => "38;5;81",
-        (ResolvedTheme::Dark, FrameKind::Assistant) => "38;5;114",
-        (ResolvedTheme::Dark, FrameKind::Thinking) => "38;5;244",
-        (ResolvedTheme::Dark, FrameKind::Tool) => "38;5;215",
-        (ResolvedTheme::Dark, FrameKind::Goal | FrameKind::Subagent) => "38;5;141",
-        (ResolvedTheme::Dark, _) => "38;5;250",
-        (ResolvedTheme::Light, FrameKind::User) => "38;5;25",
-        (ResolvedTheme::Light, FrameKind::Assistant) => "38;5;28",
-        (ResolvedTheme::Light, FrameKind::Thinking) => "38;5;242",
-        (ResolvedTheme::Light, FrameKind::Tool) => "38;5;130",
-        (ResolvedTheme::Light, FrameKind::Goal | FrameKind::Subagent) => "38;5;90",
-        (ResolvedTheme::Light, _) => "38;5;238",
-    };
-    wrap_text(&format!("{label}: {}", frame.text), width)
-        .into_iter()
-        .map(|line| {
-            if line.is_empty() {
-                line
-            } else {
-                format!("\x1b[{color}m{line}\x1b[0m")
-            }
-        })
-        .collect()
 }
 
 fn project_interactive_event(event: AgentEvent, transcript: &mut TranscriptReducer, now_ms: u64) {
@@ -8555,6 +8491,7 @@ mod tests {
         terminal::{
             BackendEvent, TerminalBackend, DISABLE_BRACKETED_PASTE, LEAVE_ALTERNATE_SCREEN,
         },
+        tui::TranscriptFrame,
     };
 
     #[test]
@@ -9753,7 +9690,9 @@ fail_mode = "closed"
         let rendered = String::from_utf8_lossy(&output.lock().expect("output")).into_owned();
         assert!(rendered.contains("theme: light"));
         assert!(rendered.contains("editor: nvim"));
-        assert!(rendered.contains("\x1b[38;5;238mstatus:"));
+        // Frames render styled; the exact SGR encoding depends on the test
+        // process's COLORTERM, so assert styling exists without pinning codes.
+        assert!(rendered.contains("\x1b["));
         assert!(transport.requests.lock().expect("requests").is_empty());
     }
 
@@ -9769,10 +9708,19 @@ fail_mode = "closed"
             state: None,
             at_ms: 0,
         };
-        for theme in [ResolvedTheme::Dark, ResolvedTheme::Light] {
-            let line = frame_lines(&frame, 80, theme).join("");
-            assert!(line.starts_with("\x1b["));
-            assert_eq!(visible_width(&line), visible_width("assistant: hello 界"));
+        let ctx = FrameCtx {
+            width: 80,
+            truecolor: true,
+            spinner_phase: 0,
+        };
+        for theme_name in ["amanita", "phosphor"] {
+            let theme = active_theme(&ThemeName::Named(theme_name.to_owned()));
+            let lines = transcript_frame_lines(&frame, &theme, &ctx);
+            for line in &lines {
+                assert!(line.starts_with("\x1b["));
+                assert!(line.contains("hello 界"));
+                assert!(visible_width(line) <= 80);
+            }
         }
     }
 
