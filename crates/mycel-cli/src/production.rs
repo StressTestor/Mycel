@@ -97,7 +97,7 @@ use crate::{
         components::transcript::{transcript_frame_lines, FrameCtx},
         theme::Theme,
         ApprovalChoice, ApprovalDecision as DialogApprovalDecision, ApprovalDialogAction,
-        ApprovalDialogReducer, FrameKind, LogicalAction, QuestionDialogAction,
+        ApprovalDialogReducer, FrameKind, GateLog, LogicalAction, QuestionDialogAction,
         QuestionDialogReducer, QuestionItem, QuestionOption as DialogQuestionOption, SessionPhase,
         SessionReducer, SubmissionMode, TranscriptEvent, TranscriptReducer,
     },
@@ -3566,6 +3566,9 @@ struct InteractiveLoopState {
     /// Live substrate snapshot for the header and rails. Refreshed by
     /// `refresh_substrate` on ecology-mutating events only.
     substrate: SubstrateStatus,
+    /// Bounded ring of observed gate decisions feeding the inspector; fed from
+    /// the main session's event stream (BTW side-channel events stay out).
+    gate_log: GateLog,
     swarm_mode: bool,
     hyphae_task_active: bool,
     pasted_images: PastedImageStore,
@@ -3711,6 +3714,7 @@ impl InteractiveLoopState {
             tui_config: prepared.tui_config.clone(),
             header: build_header(prepared),
             substrate: prepared.substrate,
+            gate_log: GateLog::default(),
             swarm_mode: prepared.swarm_mode,
             hyphae_task_active: false,
             pasted_images: PastedImageStore::default(),
@@ -5998,6 +6002,12 @@ impl InteractiveLoopState {
                     } = event.as_ref()
                     {
                         self.reducer.plan = *plan_mode;
+                    }
+                    // A recorded denial means the gate captured a sentinel
+                    // event into the substrate: re-read the summary so the
+                    // candidate count moves with it.
+                    if self.gate_log.observe(event.as_ref(), now) {
+                        self.refresh_substrate(prepared);
                     }
                     project_interactive_event(*event, &mut self.transcript, now);
                 }
