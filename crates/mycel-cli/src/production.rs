@@ -6823,6 +6823,7 @@ fn build_header(prepared: &PreparedInteractive) -> HeaderData {
         model: prepared.model_alias.clone(),
         provider: prepared.provider.clone(),
         cwd: display_home_path(&prepared.working_dir, prepared.user_home.as_deref()),
+        // TODO(PR4): wire live context usage (rail data)
         ctx_used: 0,
         ctx_window: prepared.context_window,
         // TODO(PR4): live substrate summary

@@ -28,6 +28,7 @@ pub struct HeaderData {
     pub model: String,
     pub provider: String,
     pub cwd: String,
+    // TODO(PR4): wire live context usage (rail data)
     pub ctx_used: u64,
     pub ctx_window: u64,
     pub substrate: SubstrateSummary,
