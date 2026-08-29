@@ -1,6 +1,7 @@
 //! Logical TUI state reducers. Rendering and process terminal ownership stay
 //! outside this module, so raw-input and event traces are deterministic.
 
+pub mod components;
 mod dialogs;
 mod editor;
 mod overlay;
