@@ -98,7 +98,9 @@ use crate::{
         QuestionDialogReducer, QuestionItem, QuestionOption as DialogQuestionOption, SessionPhase,
         SessionReducer, SubmissionMode, TranscriptEvent, TranscriptReducer,
     },
-    tui_config::{active_theme, load_tui_config, save_tui_config, ThemeName, TuiConfig},
+    tui_config::{
+        active_theme, load_tui_config, save_tui_config, ThemeName, TuiConfig, LIGHT_THEME_WARNING,
+    },
     workspace_config::{
         load_workspace_local_config, remember_workspace_additional_dir, resolve_workspace_directory,
     },
@@ -2945,6 +2947,10 @@ async fn prepare_interactive(
         plugins,
     } = context;
     let (tui_config, tui_config_warning) = load_tui_config(&home);
+    // The rebuilt TUI has no light palette; `light` resolves to amanita (see
+    // `active_theme`), and pretending otherwise would be silent.
+    let light_theme_warning =
+        (tui_config.theme == ThemeName::Light).then(|| LIGHT_THEME_WARNING.to_owned());
     let mut factory = ProviderFactory::new(transport, home.clone(), version);
     if let Some(path) = resolved.google_application_credentials.clone() {
         factory = factory.with_google_application_credentials(path);
@@ -3275,6 +3281,7 @@ async fn prepare_interactive(
     let swarm_mode = state.swarm_mode;
     let warning = std::iter::once(session_handle.warning().map(str::to_owned))
         .chain(std::iter::once(tui_config_warning))
+        .chain(std::iter::once(light_theme_warning))
         .chain(skills.warnings.into_iter().map(Some))
         .chain(system_prompt_warnings.into_iter().map(Some))
         .chain(plugins.warnings.iter().cloned().map(Some))
@@ -9704,6 +9711,50 @@ fail_mode = "closed"
         // process's COLORTERM, so assert styling exists without pinning codes.
         assert!(rendered.contains("\x1b["));
         assert!(transport.requests.lock().expect("requests").is_empty());
+    }
+
+    #[test]
+    fn configured_light_theme_warns_at_startup_and_named_themes_do_not() {
+        for (theme, expect_warning) in [("light", true), ("amanita", false)] {
+            let temp = TempDir::new().expect("temp");
+            let home = temp.path().join("mycel");
+            fs::create_dir_all(&home).expect("home");
+            fs::write(home.join("tui.toml"), format!("theme = \"{theme}\"\n")).expect("tui config");
+            let transport = Arc::new(ScriptedTransport::default());
+            let adapter = adapter(
+                &temp,
+                Arc::new(RecordingConfig {
+                    source: config(),
+                    paths: Mutex::new(Vec::new()),
+                }),
+                transport.clone(),
+            );
+            let prepared = adapter
+                .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Auto))
+                .expect("prepare");
+            let warned = prepared
+                .warning
+                .as_deref()
+                .is_some_and(|warning| warning.contains(LIGHT_THEME_WARNING));
+            assert_eq!(
+                warned, expect_warning,
+                "theme {theme}: {:?}",
+                prepared.warning
+            );
+            let output = Arc::new(Mutex::new(Vec::new()));
+            let mut backend = MemoryBackend::scripted([BackendEvent::Input(vec![0x04])]);
+            backend.output = output.clone();
+            let mut driver = TerminalDriver::new(backend);
+            adapter
+                .run_prepared_interactive(prepared, &mut driver)
+                .expect("run");
+            let rendered = String::from_utf8_lossy(&output.lock().expect("output")).into_owned();
+            assert_eq!(
+                rendered.contains("light theme is not supported"),
+                expect_warning,
+                "theme {theme} rendering"
+            );
+        }
     }
 
     #[test]

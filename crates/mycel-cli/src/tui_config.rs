@@ -11,6 +11,10 @@ use crate::tui::theme::Theme;
 const CONFIG_LIMIT: u64 = 1024 * 1024;
 pub(crate) const INVALID_TUI_CONFIG_MESSAGE: &str =
     "Invalid TUI config in ~/.mycel/tui.toml; using defaults.";
+/// Startup warning surfaced when the configured theme is `light`, which the
+/// rebuilt TUI resolves to amanita (see `active_theme`).
+pub(crate) const LIGHT_THEME_WARNING: &str =
+    "light theme is not supported by the rebuilt TUI yet; using amanita";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ThemeName {
@@ -251,9 +255,9 @@ fn ensure_private_directory(path: &Path) -> Result<(), String> {
 
 /// Resolve a configured theme name to a concrete `Theme`. Named themes map by
 /// name (falling back to amanita if the name is somehow unknown). The
-/// auto/dark/light aliases all resolve to amanita: the seven built-in themes are
-/// dark, and a light-palette TUI is out of scope. The card paints its own dark
-/// panel, so amanita reads as an intentional dark widget under any of them.
+/// auto/dark/light aliases all resolve to amanita: the seven built-in themes
+/// are dark and no light palette has been designed, so a configured `light`
+/// gets `LIGHT_THEME_WARNING` at startup rather than a silent dark card.
 pub(crate) fn active_theme(name: &ThemeName) -> Theme {
     match name {
         ThemeName::Named(named) => Theme::by_name(named).unwrap_or_else(Theme::amanita),

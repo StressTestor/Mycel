@@ -91,8 +91,9 @@ session, and event plumbing are unchanged; only the composition step is replaced
 
 One `Theme` = a set of named color roles. 7 built-in themes, selected by
 `~/.mycel/tui.toml` `theme = "<name>"` (extends the current auto/dark/light enum;
-`dark` aliases `amanita`, `light` keeps the current light palette, `auto` →
-`amanita`). Exposed for `/theme` cycling.
+`dark` aliases `amanita`, `light` is a warned alias of `amanita` until a light
+palette is designed (a startup warning says so), `auto` → `amanita`). Exposed
+for `/theme` cycling.
 
 Themes (from the design project): **amanita** (default), **hacker**, **foxfire**,
 **cordyceps**, **phosphor**, **amber**, **synthwave**.
