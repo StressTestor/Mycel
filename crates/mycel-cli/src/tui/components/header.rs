@@ -44,7 +44,9 @@ pub struct HeaderData {
     pub model: String,
     pub provider: String,
     pub cwd: String,
-    // TODO(PR4): wire live context usage (rail data)
+    // Context OCCUPANCY is not derivable from the interactive loop's event
+    // stream (see `build_header` in production.rs); 0 renders the window
+    // alone, never a made-up fill.
     pub ctx_used: u64,
     pub ctx_window: u64,
     pub substrate: SubstrateSummary,

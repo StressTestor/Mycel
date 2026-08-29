@@ -88,7 +88,7 @@ use crate::{
         INIT_PROMPT,
     },
     terminal::{
-        compose::{join_row, Region},
+        compose::{assemble, Region},
         style::{truecolor_enabled, Color, Span, Style, StyledLine},
         visible_width, wrap_text, DifferentialRenderer, InputDecoder, InputEvent, KeyCode,
         ProcessTerminalBackend, TerminalBackend, TerminalDriver, TerminalEvent, TerminalSession,
@@ -7245,10 +7245,10 @@ fn interactive_view(
         to_region(center_w, center),
         to_region(inspector_w, inspector_lines),
     ];
-    let column_refs: Vec<&Region> = columns.iter().collect();
     let border = Style::fg(Color::Rgb(theme.border));
-    let composed = (0..height)
-        .map(|row| join_row(&column_refs, row, border).render(width, truecolor))
+    let composed = assemble(&columns, height, border)
+        .into_iter()
+        .map(|row| row.render(width, truecolor))
         .collect();
     (
         composed,
