@@ -73,6 +73,18 @@ fn nearest_256(rgb: Rgb) -> u16 {
     16 + 36 * level(rgb.r) + 6 * level(rgb.g) + level(rgb.b)
 }
 
+/// Whether a `COLORTERM` value advertises 24-bit truecolor. Kept separate from
+/// the env lookup so it is testable without touching process-global state.
+pub fn truecolor_from(value: Option<&str>) -> bool {
+    matches!(value, Some("truecolor") | Some("24bit"))
+}
+
+/// Detect truecolor support from the `COLORTERM` environment variable; anything
+/// else (including an unset variable) downgrades to the 256-color cube.
+pub fn truecolor_enabled() -> bool {
+    truecolor_from(std::env::var("COLORTERM").ok().as_deref())
+}
+
 /// Bold/italic/underline text attributes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Attrs {
@@ -225,5 +237,14 @@ mod tests {
         // 3 visible cells max; ANSI stripped length of the text region == 3
         let out = line.render(3, true);
         assert!(out.contains("abc") && !out.contains("abcd"));
+    }
+
+    #[test]
+    fn truecolor_detection_reads_colorterm_value() {
+        assert!(truecolor_from(Some("truecolor")));
+        assert!(truecolor_from(Some("24bit")));
+        assert!(!truecolor_from(Some("256")));
+        assert!(!truecolor_from(Some("")));
+        assert!(!truecolor_from(None));
     }
 }

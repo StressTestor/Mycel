@@ -249,11 +249,40 @@ fn ensure_private_directory(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Resolve a configured theme name to a concrete `Theme`. Named themes map by
+/// name (falling back to amanita if the name is somehow unknown). The
+/// auto/dark/light aliases all resolve to amanita: the seven built-in themes are
+/// dark, and a light-palette TUI is out of scope. The card paints its own dark
+/// panel, so amanita reads as an intentional dark widget under any of them.
+pub(crate) fn active_theme(name: &ThemeName) -> Theme {
+    match name {
+        ThemeName::Named(named) => Theme::by_name(named).unwrap_or_else(Theme::amanita),
+        ThemeName::Auto | ThemeName::Dark | ThemeName::Light => Theme::amanita(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    #[test]
+    fn active_theme_resolves_named_and_aliases_to_amanita() {
+        assert_eq!(
+            active_theme(&ThemeName::Named("hacker".to_owned())).name,
+            "hacker"
+        );
+        assert_eq!(active_theme(&ThemeName::Auto).name, "amanita");
+        assert_eq!(active_theme(&ThemeName::Dark).name, "amanita");
+        assert_eq!(active_theme(&ThemeName::Light).name, "amanita");
+        // An unknown named theme cannot occur through `ThemeName::parse`, but the
+        // resolver still falls back rather than panicking.
+        assert_eq!(
+            active_theme(&ThemeName::Named("nope".to_owned())).name,
+            "amanita"
+        );
+    }
 
     #[test]
     fn defaults_partial_config_and_private_round_trip_are_stable() {
