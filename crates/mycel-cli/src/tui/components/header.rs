@@ -41,8 +41,11 @@ const GATE_TAGLINE: &str = "gate fail-closed";
 
 /// Cells between the logo and the identity block.
 const GAP: usize = 2;
-/// Width reserved for the identity block (fits `<model> (NNNk context)`).
-const IDENT_W: usize = 34;
+/// Bounds for the identity column, which is sized from its content: wide
+/// enough for a provider-qualified alias, never so wide it starves the right
+/// block.
+const IDENT_MIN_W: usize = 24;
+const IDENT_MAX_W: usize = 48;
 /// Cells the box frame spends on its side borders: `╎ ` and ` ╎`.
 const BORDERS_W: usize = 4;
 /// Cells of the dashed divider between the identity and right blocks: ` ╎ `.
@@ -69,7 +72,15 @@ pub fn header_card(data: &HeaderData, theme: &Theme, width: usize, truecolor: bo
     let identity = identity_lines(data, theme);
     let right = right_lines(data, theme);
 
-    let (ident_col, right_col) = collapse_columns(width, IDENT_W);
+    // Size the identity column from its widest line so a long qualified alias
+    // is not clipped by a sample-string constant.
+    let ident_w = identity
+        .iter()
+        .map(|line| line.0.iter().map(|span| visible_width(&span.text)).sum())
+        .max()
+        .unwrap_or(0)
+        .clamp(IDENT_MIN_W, IDENT_MAX_W);
+    let (ident_col, right_col) = collapse_columns(width, ident_w);
     let box_w = BORDERS_W
         + LOGO_WIDTH
         + ident_col.map_or(0, |ident_w| GAP + ident_w)
@@ -322,6 +333,23 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn qualified_model_alias_renders_fully_at_comfortable_widths() {
+        let mut data = sample();
+        // A provider-qualified collision alias (see provider_commands.rs), 37
+        // chars: wider than any fixed sample-string column.
+        data.model = "anthropic:claude-sonnet-4-6-20250929".to_owned();
+        let joined = header_card(&data, &Theme::amanita(), 120, true)
+            .iter()
+            .map(|line| strip_ansi(line))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("anthropic:claude-sonnet-4-6-20250929"),
+            "alias must not be clipped: {joined}"
+        );
     }
 
     #[test]
