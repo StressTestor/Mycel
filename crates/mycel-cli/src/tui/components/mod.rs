@@ -4,6 +4,7 @@
 
 pub mod header;
 pub mod logo;
+pub mod transcript;
 
 use crate::terminal::style::{Span, Style};
 use crate::terminal::{truncate_to_width, visible_width};
