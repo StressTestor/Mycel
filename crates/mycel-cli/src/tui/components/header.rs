@@ -225,11 +225,25 @@ fn right_lines(data: &HeaderData, theme: &Theme, right_w: usize) -> Vec<StyledLi
 
     let counts = vec![
         Span::new(
-            format!("{} antibodies · ", data.substrate.antibodies),
+            format!(
+                "{} · ",
+                crate::util::count_noun(
+                    u64::from(data.substrate.antibodies),
+                    "antibody",
+                    "antibodies"
+                )
+            ),
             muted,
         ),
         Span::new(
-            format!("{} candidate pending", data.substrate.candidates_pending),
+            format!(
+                "{} pending",
+                crate::util::count_noun(
+                    u64::from(data.substrate.candidates_pending),
+                    "candidate",
+                    "candidates"
+                )
+            ),
             candidate_style,
         ),
     ];
@@ -472,7 +486,8 @@ mod tests {
         let mut data = sample();
         data.substrate.candidates_pending = 0;
         let joined = header_card(&data, &Theme::amanita(), 120, true).join("\n");
-        // muted #626d61 immediately before the candidate count, not accent.
-        assert!(joined.contains("38;2;98;109;97m0 candidate"));
+        // muted #626d61 immediately before the candidate count, not accent,
+        // and the noun agrees with the zero count.
+        assert!(joined.contains("38;2;98;109;97m0 candidates pending"));
     }
 }

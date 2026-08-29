@@ -7,9 +7,27 @@ pub(crate) fn short_id(id: &str) -> String {
     id.chars().take(8).collect()
 }
 
+/// A live count with its grammatically agreeing noun: "0 candidates",
+/// "1 candidate", "51 candidates".
+pub(crate) fn count_noun(count: u64, singular: &str, plural: &str) -> String {
+    if count == 1 {
+        format!("{count} {singular}")
+    } else {
+        format!("{count} {plural}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn count_noun_agrees_with_the_count() {
+        assert_eq!(count_noun(0, "candidate", "candidates"), "0 candidates");
+        assert_eq!(count_noun(1, "candidate", "candidates"), "1 candidate");
+        assert_eq!(count_noun(51, "candidate", "candidates"), "51 candidates");
+        assert_eq!(count_noun(1, "antibody", "antibodies"), "1 antibody");
+    }
 
     #[test]
     fn short_id_takes_eight_chars_even_for_non_ascii() {

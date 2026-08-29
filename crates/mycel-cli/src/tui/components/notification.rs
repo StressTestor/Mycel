@@ -23,7 +23,10 @@ pub fn notification_strip(
     let line = StyledLine(vec![
         Span::new("▲ ", Style::fg(Color::Rgb(theme.accent))),
         Span::new(
-            format!("{candidates_pending} candidate pending review · run /candidates"),
+            format!(
+                "{} pending review · run /candidates",
+                crate::util::count_noun(u64::from(candidates_pending), "candidate", "candidates")
+            ),
             Style::fg(Color::Rgb(theme.accent_dim)),
         ),
     ]);
@@ -42,6 +45,9 @@ mod tests {
         // Accent (#e05a1e) marker, accent_dim (#8a3c18) copy from the mockup.
         assert!(lines[0].contains("38;2;224;90;30m▲"));
         assert!(lines[0].contains("38;2;138;60;24m1 candidate pending review · run /candidates"));
+        // The noun agrees with larger counts.
+        let plural = notification_strip(3, &Theme::amanita(), 120, true);
+        assert!(plural[0].contains("3 candidates pending review"));
     }
 
     #[test]

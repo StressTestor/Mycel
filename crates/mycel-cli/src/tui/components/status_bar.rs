@@ -62,8 +62,13 @@ pub fn status_bar(data: &StatusBarData, theme: &Theme, width: usize, truecolor: 
         vec![Span::new(data.model.clone(), muted)],
         vec![Span::new(
             format!(
-                "{} antibodies · {} candidate",
-                data.antibodies, data.candidates_pending
+                "{} · {}",
+                crate::util::count_noun(u64::from(data.antibodies), "antibody", "antibodies"),
+                crate::util::count_noun(
+                    u64::from(data.candidates_pending),
+                    "candidate",
+                    "candidates"
+                )
             ),
             muted,
         )],
@@ -189,6 +194,13 @@ mod tests {
         assert!(text.trim_end().ends_with("/candidates"), "{text:?}");
         // `/candidates` carries the accent.
         assert!(line.contains("38;2;224;90;30m/candidates"));
+
+        // Counts pluralize: 1 antibody, 0 candidates.
+        let mut data = sample();
+        data.antibodies = 1;
+        data.candidates_pending = 0;
+        let text = strip_ansi(&status_bar(&data, &Theme::amanita(), 200, true));
+        assert!(text.contains("1 antibody · 0 candidates"), "{text:?}");
     }
 
     #[test]

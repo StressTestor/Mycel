@@ -11448,7 +11448,7 @@ fail_mode = "closed"
         );
         // The live Ok state renders the green dot with its verdict word.
         let rendered = header_card(&header, &Theme::amanita(), 120, true).join("\n");
-        assert!(rendered.contains("1 antibodies"));
+        assert!(rendered.contains("1 antibody ·"), "{rendered}");
         assert!(rendered.contains("38;2;85;168;104m●"), "{rendered}");
 
         adapter
@@ -11875,7 +11875,7 @@ fail_mode = "closed"
         let stripped: Vec<String> = lines.iter().map(|line| strip_ansi(line)).collect();
         let strip_row = stripped
             .iter()
-            .position(|line| line.contains("2 candidate pending review · run /candidates"))
+            .position(|line| line.contains("2 candidates pending review · run /candidates"))
             .expect("notification strip renders");
         let header_bottom = stripped
             .iter()
