@@ -109,29 +109,25 @@ impl Theme {
         self.selection = lighten(self.bg, 0.06);
     }
 
-    /// Every built-in theme name, amanita first.
-    pub const ALL: [&'static str; 7] = [
-        "amanita",
-        "hacker",
-        "foxfire",
-        "cordyceps",
-        "phosphor",
-        "amber",
-        "synthwave",
+    /// Every built-in theme as `(name, constructor)`, amanita first. The
+    /// single source for name validation (`ThemeName::parse`) and resolution
+    /// (`by_name`), so the two can never drift apart.
+    pub const ALL: [(&'static str, fn() -> Theme); 7] = [
+        ("amanita", Self::amanita),
+        ("hacker", Self::hacker),
+        ("foxfire", Self::foxfire),
+        ("cordyceps", Self::cordyceps),
+        ("phosphor", Self::phosphor),
+        ("amber", Self::amber),
+        ("synthwave", Self::synthwave),
     ];
 
     /// Resolve a theme by name, or `None` if the name is not built in.
     pub fn by_name(name: &str) -> Option<Self> {
-        match name {
-            "amanita" => Some(Self::amanita()),
-            "hacker" => Some(Self::hacker()),
-            "foxfire" => Some(Self::foxfire()),
-            "cordyceps" => Some(Self::cordyceps()),
-            "phosphor" => Some(Self::phosphor()),
-            "amber" => Some(Self::amber()),
-            "synthwave" => Some(Self::synthwave()),
-            _ => None,
-        }
+        Self::ALL
+            .iter()
+            .find(|(candidate, _)| *candidate == name)
+            .map(|(_, constructor)| constructor())
     }
 
     pub fn hacker() -> Self {
@@ -433,7 +429,7 @@ mod tests {
     #[test]
     fn every_theme_resolves_and_is_distinct_bg() {
         let mut seen = std::collections::HashSet::new();
-        for name in Theme::ALL {
+        for (name, _) in Theme::ALL {
             let t = Theme::by_name(name).unwrap();
             assert_eq!(t.name, name);
             // accent + bg are set (non-zero struct, all roles present by construction)

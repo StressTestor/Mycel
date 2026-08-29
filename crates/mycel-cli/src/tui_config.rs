@@ -34,22 +34,20 @@ impl ThemeName {
         }
     }
 
-    // `Theme::ALL` is `[&'static str]`; `contains(&named)` fails the lifetime
-    // check because `named` is a non-`'static` `&str`, so the manual scan is
-    // required. It also avoids constructing a throwaway `Theme` just to validate.
-    #[allow(clippy::manual_contains)]
+    // Validates against `Theme::ALL` by name to avoid constructing a
+    // throwaway `Theme`.
     pub fn parse(value: &str) -> Result<Self, String> {
         let value = value.trim().to_ascii_lowercase();
         match value.as_str() {
             "auto" => Ok(Self::Auto),
             "dark" => Ok(Self::Dark),
             "light" => Ok(Self::Light),
-            named if Theme::ALL.iter().any(|candidate| *candidate == named) => {
+            named if Theme::ALL.iter().any(|(candidate, _)| *candidate == named) => {
                 Ok(Self::Named(value))
             }
             _ => Err(format!(
                 "theme must be one of: auto, dark, light, {}",
-                Theme::ALL.join(", ")
+                Theme::ALL.map(|(name, _)| name).join(", ")
             )),
         }
     }
@@ -260,7 +258,13 @@ fn ensure_private_directory(path: &Path) -> Result<(), String> {
 /// gets `LIGHT_THEME_WARNING` at startup rather than a silent dark card.
 pub(crate) fn active_theme(name: &ThemeName) -> Theme {
     match name {
-        ThemeName::Named(named) => Theme::by_name(named).unwrap_or_else(Theme::amanita),
+        // A `Named` value only arises from `ThemeName::parse`, which validated
+        // it against `Theme::ALL`; failing to resolve here means the two paths
+        // drifted. Loud in debug, amanita fallback in release.
+        ThemeName::Named(named) => Theme::by_name(named).unwrap_or_else(|| {
+            debug_assert!(false, "parse-validated theme {named:?} did not resolve");
+            Theme::amanita()
+        }),
         ThemeName::Auto | ThemeName::Dark | ThemeName::Light => Theme::amanita(),
     }
 }
@@ -280,12 +284,24 @@ mod tests {
         assert_eq!(active_theme(&ThemeName::Auto).name, "amanita");
         assert_eq!(active_theme(&ThemeName::Dark).name, "amanita");
         assert_eq!(active_theme(&ThemeName::Light).name, "amanita");
-        // An unknown named theme cannot occur through `ThemeName::parse`, but the
-        // resolver still falls back rather than panicking.
-        assert_eq!(
-            active_theme(&ThemeName::Named("nope".to_owned())).name,
-            "amanita"
-        );
+    }
+
+    #[test]
+    fn every_builtin_name_round_trips_from_parse_to_resolution() {
+        // The end-to-end guarantee behind `active_theme`'s debug_assert: every
+        // name the validator accepts resolves to the theme of that exact name.
+        for (name, _) in Theme::ALL {
+            let parsed = ThemeName::parse(name).expect("builtin name parses");
+            assert_eq!(active_theme(&parsed).name, name);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "did not resolve")]
+    fn unvalidated_named_theme_is_loud_in_debug() {
+        // Constructing `Named` without `parse` is a programming error; the
+        // debug assert makes the drift loud instead of silently amanita.
+        active_theme(&ThemeName::Named("nope".to_owned()));
     }
 
     #[test]
