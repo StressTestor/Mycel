@@ -5,6 +5,7 @@
 pub mod header;
 pub mod inspector;
 pub mod logo;
+pub mod notification;
 pub mod session_rail;
 pub mod transcript;
 

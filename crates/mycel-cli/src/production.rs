@@ -97,6 +97,7 @@ use crate::{
     tui::{
         components::header::{header_card, GateDisplay, HeaderData, SubstrateSummary},
         components::inspector::{inspector, inspector_collapsed, AntibodyDetail, InspectorData},
+        components::notification::notification_strip,
         components::session_rail::{session_rail, session_rail_collapsed, RailData},
         components::transcript::{transcript_frame_lines, FrameCtx},
         theme::Theme,
@@ -7281,6 +7282,18 @@ fn interactive_center_view(
         .as_ref()
         .map(|(_, rendered)| rendered.clone())
         .unwrap_or_default();
+    // The strip reads the same event-driven substrate cache as the header, so
+    // it refreshes with `refresh_substrate` and costs no I/O per render.
+    let strip = notification_strip(
+        state.header.substrate.candidates_pending,
+        &theme,
+        width,
+        state.truecolor,
+    );
+    if !strip.is_empty() {
+        lines.push(String::new());
+        lines.extend(strip);
+    }
     for frame in state.transcript.frames() {
         if !lines.is_empty() {
             lines.push(String::new());
@@ -11705,6 +11718,75 @@ fail_mode = "closed"
         assert!(joined.contains("session ╌"));
         assert!(joined.contains("New Session"));
         assert!(joined.contains("promotion is manual."));
+
+        state.event_pump.abort();
+        adapter
+            .executor
+            .block_on(shutdown_orchestration(Some(
+                prepared.orchestration.as_ref(),
+            )))
+            .expect("shut down orchestration");
+        adapter
+            .executor
+            .block_on(shutdown_mcp(prepared.mcp.as_ref()))
+            .expect("shut down MCP");
+        adapter
+            .executor
+            .block_on(prepared.session.close())
+            .expect("close session");
+    }
+
+    #[test]
+    fn notification_strip_renders_between_header_and_transcript_when_pending() {
+        let temp = TempDir::new().expect("temp");
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Manual))
+            .expect("prepare");
+        let mut state = InteractiveLoopState::new(
+            &adapter.executor,
+            &prepared,
+            TerminalSize {
+                columns: 120,
+                rows: 24,
+            },
+        );
+
+        // A quiet substrate renders no strip.
+        let (quiet, _, _) = interactive_view(&mut state, 80, 24);
+        let quiet_text = quiet
+            .iter()
+            .map(|line| strip_ansi(line))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(!quiet_text.contains("pending review"), "{quiet_text}");
+
+        // Pending candidates render the strip after the header card's bottom
+        // border and before the transcript's seed frame.
+        state.header.substrate.candidates_pending = 2;
+        let (lines, _, _) = interactive_view(&mut state, 80, 24);
+        let stripped: Vec<String> = lines.iter().map(|line| strip_ansi(line)).collect();
+        let strip_row = stripped
+            .iter()
+            .position(|line| line.contains("2 candidate pending review · run /candidates"))
+            .expect("notification strip renders");
+        let header_bottom = stripped
+            .iter()
+            .position(|line| line.starts_with('╰'))
+            .expect("header bottom border");
+        let seed_row = stripped
+            .iter()
+            .position(|line| line.contains("session "))
+            .expect("transcript seed frame");
+        assert!(header_bottom < strip_row, "strip below the header");
+        assert!(strip_row < seed_row, "strip above the transcript");
 
         state.event_pump.abort();
         adapter
