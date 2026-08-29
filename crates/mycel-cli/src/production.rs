@@ -88,14 +88,16 @@ use crate::{
         INIT_PROMPT,
     },
     terminal::{
-        style::truecolor_enabled, visible_width, wrap_text, DifferentialRenderer, InputDecoder,
-        InputEvent, KeyCode, ProcessTerminalBackend, TerminalBackend, TerminalDriver,
-        TerminalEvent, TerminalSession, TerminalSignal, TerminalSink, TerminalSize,
+        compose::{join_row, Region},
+        style::{truecolor_enabled, Color, Span, Style, StyledLine},
+        visible_width, wrap_text, DifferentialRenderer, InputDecoder, InputEvent, KeyCode,
+        ProcessTerminalBackend, TerminalBackend, TerminalDriver, TerminalEvent, TerminalSession,
+        TerminalSignal, TerminalSink, TerminalSize,
     },
     tui::{
         components::header::{header_card, GateDisplay, HeaderData, SubstrateSummary},
-        components::inspector::{AntibodyDetail, InspectorData},
-        components::session_rail::RailData,
+        components::inspector::{inspector, inspector_collapsed, AntibodyDetail, InspectorData},
+        components::session_rail::{session_rail, session_rail_collapsed, RailData},
         components::transcript::{transcript_frame_lines, FrameCtx},
         theme::Theme,
         ApprovalChoice, ApprovalDecision as DialogApprovalDecision, ApprovalDialogAction,
@@ -3590,6 +3592,9 @@ struct InteractiveLoopState {
     /// from the reason's `(source: antibody:<id>)` pointer. `None` when the
     /// deny came from the protected-path floor or the pointer did not resolve.
     last_deny_antibody: Option<AntibodyDetail>,
+    /// The current session's title (or short id) for the rail, copied from
+    /// the prepared discovery so the render path never touches `prepared`.
+    session_name: String,
     swarm_mode: bool,
     hyphae_task_active: bool,
     pasted_images: PastedImageStore,
@@ -3737,6 +3742,7 @@ impl InteractiveLoopState {
             substrate: prepared.substrate,
             gate_log: GateLog::default(),
             last_deny_antibody: None,
+            session_name: prepared.session_name.clone(),
             swarm_mode: prepared.swarm_mode,
             hyphae_task_active: false,
             pasted_images: PastedImageStore::default(),
@@ -3766,9 +3772,6 @@ impl InteractiveLoopState {
         self.header_cache = None;
     }
 
-    // Consumed by the body-band composition in this PR's final task; the
-    // allow goes with it.
-    #[allow(dead_code)]
     /// Snapshot the inspector's data: the decision ring, the resolved
     /// last-deny antibody, and the cached candidate count. Pure reads only.
     fn inspector_data(&self) -> InspectorData {
@@ -3779,15 +3782,12 @@ impl InteractiveLoopState {
         }
     }
 
-    // Consumed by the body-band composition in this PR's final task; the
-    // allow goes with it.
-    #[allow(dead_code)]
     /// Snapshot the session rail's data from state the loop already holds.
     /// Pure reads only: the substrate snapshot is the event-driven cache, and
     /// the hyphae stats come from the transcript's Subagent frames — the only
     /// hyphae state reachable without an async orchestration read (`/hyphae`
     /// goes through a host-tool turn, `handle_hyphae_command`).
-    fn rail_data(&self, prepared: &PreparedInteractive) -> RailData {
+    fn rail_data(&self) -> RailData {
         let now = self.now_ms();
         let mut hyphae_active = 0usize;
         let mut hyphae_last = None;
@@ -3806,7 +3806,7 @@ impl InteractiveLoopState {
             ));
         }
         RailData {
-            name: prepared.session_name.clone(),
+            name: self.session_name.clone(),
             model: self.header.model.clone(),
             provider: self.header.provider.clone(),
             cwd: self.header.cwd.clone(),
@@ -4597,10 +4597,27 @@ impl InteractiveLoopState {
                         self.start_btw_turn(executor, prepared, input.text);
                     }
                 }
+                LogicalAction::ToggleSessionRail => self.toggle_rail(prepared, false),
+                LogicalAction::ToggleInspector => self.toggle_rail(prepared, true),
                 LogicalAction::Queue(_) | LogicalAction::Newline | LogicalAction::Clear => {}
             }
         }
         exit
+    }
+
+    /// Flip one rail's open state and persist it. The in-memory toggle always
+    /// applies (the view must follow the key press); a failed save degrades to
+    /// a status line instead of blocking the toggle.
+    fn toggle_rail(&mut self, prepared: &PreparedInteractive, inspector: bool) {
+        let open = if inspector {
+            &mut self.tui_config.rails_inspector_open
+        } else {
+            &mut self.tui_config.rails_session_open
+        };
+        *open = !*open;
+        if let Err(error) = save_tui_config(&prepared.home, &self.tui_config) {
+            self.status(format!("could not persist rail state: {error}"));
+        }
     }
 
     fn handle_session_command(
@@ -7128,15 +7145,127 @@ fn display_home_path(path: &Path, home: Option<&Path>) -> String {
     path.display().to_string()
 }
 
+/// Below this terminal width no rails render at all: the body is center-only,
+/// exactly the pre-rail behavior.
+const MIN_RAILS_TERM_W: usize = 90;
+/// Width of a collapsed rail strip.
+const COLLAPSED_RAIL_W: usize = 3;
+/// Open rail widths from the mockup's pixel proportions (300px and 452px on
+/// the 13px JetBrains Mono grid, ≈7.9px/cell → 38 and 50 cells).
+const SESSION_RAIL_OPEN_W: usize = 38;
+const INSPECTOR_OPEN_W: usize = 50;
+/// An open rail is honored only while the center keeps at least this many
+/// columns; below it the rail degrades to its collapsed strip.
+const MIN_CENTER_W: usize = 60;
+/// Cells of the dashed border `join_row` draws between body columns.
+const RAIL_BORDER_W: usize = 1;
+
+/// Resolve the body band's `(session_rail_w, center_w, inspector_w)`. Rail
+/// widths are `None` below `MIN_RAILS_TERM_W`. When both rails cannot be open
+/// at once, the inspector collapses first (the session rail is the primary
+/// surface), then the session rail.
+fn resolve_body_layout(
+    width: usize,
+    session_open: bool,
+    inspector_open: bool,
+) -> (Option<usize>, usize, Option<usize>) {
+    if width < MIN_RAILS_TERM_W {
+        return (None, width, None);
+    }
+    let center = |session: usize, inspector: usize| {
+        width.saturating_sub(session + inspector + 2 * RAIL_BORDER_W)
+    };
+    let mut session = if session_open {
+        SESSION_RAIL_OPEN_W
+    } else {
+        COLLAPSED_RAIL_W
+    };
+    let mut inspector = if inspector_open {
+        INSPECTOR_OPEN_W
+    } else {
+        COLLAPSED_RAIL_W
+    };
+    if center(session, inspector) < MIN_CENTER_W {
+        inspector = COLLAPSED_RAIL_W;
+    }
+    if center(session, inspector) < MIN_CENTER_W {
+        session = COLLAPSED_RAIL_W;
+    }
+    (Some(session), center(session, inspector), Some(inspector))
+}
+
+/// Compose the full view: the center column (welcome card, transcript,
+/// editor) flanked by the collapsible rails, joined by `compose::join_row`'s
+/// dashed borders. Returns the visible lines plus the 1-based cursor
+/// position; the cursor's absolute column is offset by the left rail and its
+/// border when rails render.
 fn interactive_view(
+    state: &mut InteractiveLoopState,
+    width: usize,
+    height: usize,
+) -> (Vec<String>, usize, usize) {
+    let (rail_w, center_w, inspector_w) = resolve_body_layout(
+        width,
+        state.tui_config.rails_session_open,
+        state.tui_config.rails_inspector_open,
+    );
+    let (center, cursor_row, center_cursor_column) =
+        interactive_center_view(state, center_w, height);
+    let (Some(rail_w), Some(inspector_w)) = (rail_w, inspector_w) else {
+        return (center, cursor_row, center_cursor_column);
+    };
+
+    let theme = state.theme.clone();
+    let truecolor = state.truecolor;
+    let rail_data = state.rail_data();
+    let rail_lines = if rail_w > COLLAPSED_RAIL_W {
+        session_rail(&rail_data, &theme, rail_w, height, truecolor)
+    } else {
+        session_rail_collapsed(&rail_data, &theme, rail_w, height, truecolor)
+    };
+    let inspector_data = state.inspector_data();
+    let inspector_lines = if inspector_w > COLLAPSED_RAIL_W {
+        inspector(&inspector_data, &theme, inspector_w, height, truecolor)
+    } else {
+        inspector_collapsed(&inspector_data, &theme, inspector_w, height, truecolor)
+    };
+
+    // Pre-rendered lines wrap as single default-style spans: `visible_width`
+    // and `clip_and_pad` are ANSI-aware, and every center line is at most
+    // `center_w` cells, so the compositor only ever pads.
+    let to_region = |region_w: usize, rendered: Vec<String>| Region {
+        width: region_w,
+        lines: rendered
+            .into_iter()
+            .map(|line| StyledLine(vec![Span::new(line, Style::default())]))
+            .collect(),
+    };
+    let columns = [
+        to_region(rail_w, rail_lines),
+        to_region(center_w, center),
+        to_region(inspector_w, inspector_lines),
+    ];
+    let column_refs: Vec<&Region> = columns.iter().collect();
+    let border = Style::fg(Color::Rgb(theme.border));
+    let composed = (0..height)
+        .map(|row| join_row(&column_refs, row, border).render(width, truecolor))
+        .collect();
+    (
+        composed,
+        cursor_row,
+        (center_cursor_column + rail_w + RAIL_BORDER_W).clamp(1, width.saturating_add(1)),
+    )
+}
+
+fn interactive_center_view(
     state: &mut InteractiveLoopState,
     width: usize,
     height: usize,
 ) -> (Vec<String>, usize, usize) {
     // Theme and truecolor come from the caches `refresh_render_caches`
     // maintains; resolving them here would re-read config and the environment
-    // at ~40Hz. The header render is likewise cached: its data is fixed at
-    // construction, so it only re-renders when the width or theme changed.
+    // at ~40Hz. The header render is likewise cached against the CENTER width
+    // (so a rail toggle re-keys it) and invalidated when its data refreshes.
     let frame_ctx = FrameCtx {
         width,
         truecolor: state.truecolor,
@@ -7456,8 +7585,9 @@ fn push_wrapped(lines: &mut Vec<String>, text: &str, width: usize) {
 }
 
 fn format_tui_settings(config: &TuiConfig) -> String {
+    let rail_state = |open: bool| if open { "open" } else { "collapsed" };
     format!(
-        "theme: {}\neditor: {}\npaste burst fallback: {}\nnotifications: {} ({})\nconfig: ~/.mycel/tui.toml",
+        "theme: {}\neditor: {}\npaste burst fallback: {}\nnotifications: {} ({})\nrails: session {} (ctrl+l) · inspector {} (ctrl+r)\nconfig: ~/.mycel/tui.toml",
         config.theme.as_str(),
         config.editor_command.as_deref().unwrap_or("auto"),
         if config.disable_paste_burst {
@@ -7471,6 +7601,8 @@ fn format_tui_settings(config: &TuiConfig) -> String {
             "disabled"
         },
         config.notification_condition.as_str(),
+        rail_state(config.rails_session_open),
+        rail_state(config.rails_inspector_open),
     )
 }
 
@@ -11311,7 +11443,7 @@ fail_mode = "closed"
             },
             now,
         );
-        let data = state.rail_data(&prepared);
+        let data = state.rail_data();
         // A fresh session carries the index's default title
         // (session_index.rs DEFAULT_TITLE), which the rail shows verbatim.
         assert_eq!(data.name, "New Session");
@@ -11332,7 +11464,7 @@ fail_mode = "closed"
             },
             now,
         );
-        let data = state.rail_data(&prepared);
+        let data = state.rail_data();
         assert_eq!(data.hyphae_active, 0);
         assert!(data
             .hyphae_last
@@ -11456,6 +11588,193 @@ fail_mode = "closed"
         assert_eq!(last.verdict, crate::tui::GateVerdict::Deny);
         assert_eq!(last.tool, "write");
         assert_eq!(last.target, "~/.mycel/config.toml");
+
+        state.event_pump.abort();
+        adapter
+            .executor
+            .block_on(shutdown_orchestration(Some(
+                prepared.orchestration.as_ref(),
+            )))
+            .expect("shut down orchestration");
+        adapter
+            .executor
+            .block_on(shutdown_mcp(prepared.mcp.as_ref()))
+            .expect("shut down MCP");
+        adapter
+            .executor
+            .block_on(prepared.session.close())
+            .expect("close session");
+    }
+
+    fn strip_ansi(line: &str) -> String {
+        let mut out = String::new();
+        let mut chars = line.chars();
+        while let Some(character) = chars.next() {
+            if character == '\x1b' {
+                for control in chars.by_ref() {
+                    if control == 'm' {
+                        break;
+                    }
+                }
+            } else {
+                out.push(character);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn body_layout_degrades_open_rails_before_starving_the_center() {
+        // Too narrow for any rail: center-only.
+        assert_eq!(resolve_body_layout(80, true, true), (None, 80, None));
+        // Default collapsed strips.
+        assert_eq!(
+            resolve_body_layout(120, false, false),
+            (Some(3), 112, Some(3))
+        );
+        // One open rail fits at 120.
+        assert_eq!(
+            resolve_body_layout(120, true, false),
+            (Some(38), 77, Some(3))
+        );
+        // Both open would leave a 30-cell center: the inspector collapses
+        // first, then the session rail if still starved.
+        assert_eq!(
+            resolve_body_layout(120, true, true),
+            (Some(38), 77, Some(3))
+        );
+        assert_eq!(
+            resolve_body_layout(200, true, true),
+            (Some(38), 110, Some(50))
+        );
+        assert_eq!(resolve_body_layout(90, true, true), (Some(3), 82, Some(3)));
+    }
+
+    #[test]
+    fn body_band_composes_rails_and_offsets_the_editor_cursor() {
+        let temp = TempDir::new().expect("temp");
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Manual))
+            .expect("prepare");
+        let mut state = InteractiveLoopState::new(
+            &adapter.executor,
+            &prepared,
+            TerminalSize {
+                columns: 120,
+                rows: 24,
+            },
+        );
+        state.reducer.editor.insert_typed("hi");
+
+        // Narrow terminal: no rails, the pre-rail cursor math.
+        let (narrow, _, narrow_column) = interactive_view(&mut state, 80, 24);
+        assert_eq!(narrow_column, 5, "'> hi' puts the cursor at column 5");
+        assert!(!narrow.iter().any(|line| line.contains('›')));
+
+        // Wide terminal, both rails default-collapsed: 3-cell strips on each
+        // side, one border cell each, cursor shifted by rail + border.
+        let (wide, _, wide_column) = interactive_view(&mut state, 120, 24);
+        assert_eq!(wide.len(), 24, "rails span the full height");
+        assert_eq!(wide_column, 5 + 3 + 1);
+        let stripped: Vec<String> = wide.iter().map(|line| strip_ansi(line)).collect();
+        assert!(
+            stripped.iter().all(|line| line.contains('╎')),
+            "every row carries the column borders"
+        );
+        // Collapsed strips show their expand chevrons.
+        assert!(stripped.iter().any(|line| line.starts_with(" ›")));
+        assert!(stripped.iter().any(|line| line.trim_end().ends_with('‹')));
+
+        // Open the session rail: live section content and a wider offset.
+        state.tui_config.rails_session_open = true;
+        let (open, _, open_column) = interactive_view(&mut state, 120, 24);
+        assert_eq!(open_column, 5 + 38 + 1);
+        let joined = open
+            .iter()
+            .map(|line| strip_ansi(line))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("session ╌"));
+        assert!(joined.contains("New Session"));
+        assert!(joined.contains("promotion is manual."));
+
+        state.event_pump.abort();
+        adapter
+            .executor
+            .block_on(shutdown_orchestration(Some(
+                prepared.orchestration.as_ref(),
+            )))
+            .expect("shut down orchestration");
+        adapter
+            .executor
+            .block_on(shutdown_mcp(prepared.mcp.as_ref()))
+            .expect("shut down MCP");
+        adapter
+            .executor
+            .block_on(prepared.session.close())
+            .expect("close session");
+    }
+
+    #[test]
+    fn rail_toggle_keybinds_flip_and_persist_the_state() {
+        let temp = TempDir::new().expect("temp");
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Manual))
+            .expect("prepare");
+        let mut state = InteractiveLoopState::new(
+            &adapter.executor,
+            &prepared,
+            TerminalSize {
+                columns: 120,
+                rows: 24,
+            },
+        );
+        let control = |character: char| {
+            InputEvent::Key(crate::terminal::KeyEvent {
+                code: KeyCode::Char(character),
+                modifiers: crate::terminal::Modifiers {
+                    control: true,
+                    ..crate::terminal::Modifiers::default()
+                },
+                kind: crate::terminal::KeyKind::Press,
+            })
+        };
+
+        assert!(!state.tui_config.rails_session_open);
+        state.reducer.apply(control('l'));
+        assert!(!state.process_actions(&adapter.executor, &prepared));
+        assert!(state.tui_config.rails_session_open);
+        state.reducer.apply(control('r'));
+        assert!(!state.process_actions(&adapter.executor, &prepared));
+        assert!(state.tui_config.rails_inspector_open);
+        // Persisted: a fresh load sees both open.
+        let (loaded, warning) = load_tui_config(&prepared.home);
+        assert!(warning.is_none());
+        assert!(loaded.rails_session_open);
+        assert!(loaded.rails_inspector_open);
+
+        // Toggling back persists the collapse too.
+        state.reducer.apply(control('r'));
+        assert!(!state.process_actions(&adapter.executor, &prepared));
+        assert!(!state.tui_config.rails_inspector_open);
+        let (loaded, _) = load_tui_config(&prepared.home);
+        assert!(!loaded.rails_inspector_open);
 
         state.event_pump.abort();
         adapter

@@ -290,6 +290,8 @@ fn action_json(action: &LogicalAction) -> Value {
         LogicalAction::TogglePlan(enabled) => json!({ "kind": "toggle_plan", "enabled": enabled }),
         LogicalAction::PasteMedia => json!({ "kind": "paste_media" }),
         LogicalAction::ExitArmed => json!({ "kind": "exit_armed" }),
+        LogicalAction::ToggleSessionRail => json!({ "kind": "toggle_session_rail" }),
+        LogicalAction::ToggleInspector => json!({ "kind": "toggle_inspector" }),
     }
 }
 

@@ -208,6 +208,7 @@ fn validate_tui_config(source: &str) -> Result<(), String> {
         &mut issues,
     );
     validate_editor(table.get("editor"), &mut issues);
+    validate_rails(table.get("rails"), &mut issues);
     validate_notifications(table.get("notifications"), &mut issues);
     if issues.is_empty() {
         Ok(())
@@ -230,6 +231,31 @@ fn validate_editor(value: Option<&Value>, issues: &mut Vec<String>) {
         "editor.command",
         Value::is_str,
         "string",
+        issues,
+    );
+}
+
+fn validate_rails(value: Option<&Value>, issues: &mut Vec<String>) {
+    let Some(value) = value else { return };
+    let Some(table) = value.as_table() else {
+        issues.push(format!(
+            "rails: expected table, found {}",
+            value_type(value)
+        ));
+        return;
+    };
+    expect_type(
+        table.get("session_open"),
+        "rails.session_open",
+        Value::is_bool,
+        "boolean",
+        issues,
+    );
+    expect_type(
+        table.get("inspector_open"),
+        "rails.inspector_open",
+        Value::is_bool,
+        "boolean",
         issues,
     );
 }
@@ -394,6 +420,24 @@ mod tests {
         assert!(output
             .stderr
             .contains("notifications.enabled: expected boolean"));
+    }
+
+    #[test]
+    fn flags_non_boolean_rail_state() {
+        let temp = TempDir::new().expect("temp");
+        fs::write(
+            temp.path().join("tui.toml"),
+            "[rails]\nsession_open = 'yes'\ninspector_open = 1\n",
+        )
+        .expect("tui");
+        let output = run_doctor(&args(None), temp.path(), temp.path(), &FileConfigSource);
+        assert_eq!(output.completion, RuntimeCompletion::failure());
+        assert!(output
+            .stderr
+            .contains("rails.session_open: expected boolean"));
+        assert!(output
+            .stderr
+            .contains("rails.inspector_open: expected boolean"));
     }
 
     #[test]

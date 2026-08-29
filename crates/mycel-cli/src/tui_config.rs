@@ -75,6 +75,10 @@ pub(crate) struct TuiConfig {
     pub disable_paste_burst: bool,
     pub notifications_enabled: bool,
     pub notification_condition: NotificationCondition,
+    /// Body-band rail state, persisted across sessions by the toggle
+    /// keybinds. Both default collapsed (the mockup's frozen frame).
+    pub rails_session_open: bool,
+    pub rails_inspector_open: bool,
 }
 
 impl Default for TuiConfig {
@@ -85,6 +89,8 @@ impl Default for TuiConfig {
             disable_paste_burst: false,
             notifications_enabled: true,
             notification_condition: NotificationCondition::Unfocused,
+            rails_session_open: false,
+            rails_inspector_open: false,
         }
     }
 }
@@ -157,6 +163,21 @@ fn try_load_tui_config(path: &Path) -> Result<TuiConfig, String> {
             config.editor_command = (!command.is_empty()).then(|| command.to_owned());
         }
     }
+    if let Some(rails) = table.get("rails") {
+        let rails = rails
+            .as_table()
+            .ok_or_else(|| "rails must be a TOML table".to_owned())?;
+        if let Some(open) = rails.get("session_open") {
+            config.rails_session_open = open
+                .as_bool()
+                .ok_or_else(|| "rails.session_open must be a boolean".to_owned())?;
+        }
+        if let Some(open) = rails.get("inspector_open") {
+            config.rails_inspector_open = open
+                .as_bool()
+                .ok_or_else(|| "rails.inspector_open must be a boolean".to_owned())?;
+        }
+    }
     if let Some(notifications) = table.get("notifications") {
         let notifications = notifications
             .as_table()
@@ -193,10 +214,12 @@ pub(crate) fn save_tui_config(home: &Path, config: &TuiConfig) -> Result<PathBuf
     ensure_private_directory(home)?;
     let editor = config.editor_command.as_deref().unwrap_or("");
     let encoded = format!(
-        "# ~/.mycel/tui.toml\n# Client preferences for Mycel.\n# Agent/runtime settings stay in ~/.mycel/config.toml.\n\ntheme = {}\ndisable_paste_burst = {}\n\n[editor]\ncommand = {}\n\n[notifications]\nenabled = {}\nnotification_condition = {}\n",
+        "# ~/.mycel/tui.toml\n# Client preferences for Mycel.\n# Agent/runtime settings stay in ~/.mycel/config.toml.\n\ntheme = {}\ndisable_paste_burst = {}\n\n[editor]\ncommand = {}\n\n[rails]\nsession_open = {}\ninspector_open = {}\n\n[notifications]\nenabled = {}\nnotification_condition = {}\n",
         toml::Value::String(config.theme.as_str().to_owned()),
         config.disable_paste_burst,
         toml::Value::String(editor.to_owned()),
+        config.rails_session_open,
+        config.rails_inspector_open,
         config.notifications_enabled,
         toml::Value::String(config.notification_condition.as_str().to_owned()),
     );
@@ -316,6 +339,8 @@ mod tests {
             disable_paste_burst: true,
             notifications_enabled: false,
             notification_condition: NotificationCondition::Always,
+            rails_session_open: true,
+            rails_inspector_open: false,
         };
         let path = save_tui_config(temp.path(), &configured).expect("save");
         assert_eq!(load_tui_config(temp.path()), (configured, None));
@@ -346,6 +371,34 @@ mod tests {
         let (_, warning) = load_tui_config(temp.path());
         assert_eq!(warning.as_deref(), Some(INVALID_TUI_CONFIG_MESSAGE));
         assert!(save_tui_config(temp.path(), &TuiConfig::default()).is_err());
+    }
+
+    #[test]
+    fn rails_default_collapsed_and_reject_non_boolean_state() {
+        let temp = tempdir().expect("temp");
+        let (config, warning) = load_tui_config(temp.path());
+        assert!(!config.rails_session_open);
+        assert!(!config.rails_inspector_open);
+        assert!(warning.is_none());
+
+        fs::write(
+            temp.path().join("tui.toml"),
+            "[rails]\nsession_open = true\n",
+        )
+        .expect("partial rails");
+        let (config, warning) = load_tui_config(temp.path());
+        assert!(config.rails_session_open);
+        assert!(!config.rails_inspector_open);
+        assert!(warning.is_none());
+
+        fs::write(
+            temp.path().join("tui.toml"),
+            "[rails]\ninspector_open = \"yes\"\n",
+        )
+        .expect("invalid rails");
+        let (config, warning) = load_tui_config(temp.path());
+        assert_eq!(config, TuiConfig::default());
+        assert_eq!(warning.as_deref(), Some(INVALID_TUI_CONFIG_MESSAGE));
     }
 
     #[test]
