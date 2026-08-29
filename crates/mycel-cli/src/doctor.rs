@@ -209,6 +209,7 @@ fn validate_tui_config(source: &str) -> Result<(), String> {
     );
     validate_editor(table.get("editor"), &mut issues);
     validate_rails(table.get("rails"), &mut issues);
+    validate_startup(table.get("startup"), &mut issues);
     validate_notifications(table.get("notifications"), &mut issues);
     if issues.is_empty() {
         Ok(())
@@ -254,6 +255,24 @@ fn validate_rails(value: Option<&Value>, issues: &mut Vec<String>) {
     expect_type(
         table.get("inspector_open"),
         "rails.inspector_open",
+        Value::is_bool,
+        "boolean",
+        issues,
+    );
+}
+
+fn validate_startup(value: Option<&Value>, issues: &mut Vec<String>) {
+    let Some(value) = value else { return };
+    let Some(table) = value.as_table() else {
+        issues.push(format!(
+            "startup: expected table, found {}",
+            value_type(value)
+        ));
+        return;
+    };
+    expect_type(
+        table.get("flourish"),
+        "startup.flourish",
         Value::is_bool,
         "boolean",
         issues,
@@ -438,6 +457,19 @@ mod tests {
         assert!(output
             .stderr
             .contains("rails.inspector_open: expected boolean"));
+    }
+
+    #[test]
+    fn flags_non_boolean_startup_flourish() {
+        let temp = TempDir::new().expect("temp");
+        fs::write(
+            temp.path().join("tui.toml"),
+            "[startup]\nflourish = 'yes'\n",
+        )
+        .expect("tui");
+        let output = run_doctor(&args(None), temp.path(), temp.path(), &FileConfigSource);
+        assert_eq!(output.completion, RuntimeCompletion::failure());
+        assert!(output.stderr.contains("startup.flourish: expected boolean"));
     }
 
     #[test]

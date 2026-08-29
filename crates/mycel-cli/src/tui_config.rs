@@ -79,6 +79,9 @@ pub(crate) struct TuiConfig {
     /// keybinds. Both default collapsed (the mockup's frozen frame).
     pub rails_session_open: bool,
     pub rails_inspector_open: bool,
+    /// The ~1s startup logo sequence. Off by default: startup latency is only
+    /// spent by explicit opt-in.
+    pub startup_flourish: bool,
 }
 
 impl Default for TuiConfig {
@@ -91,6 +94,7 @@ impl Default for TuiConfig {
             notification_condition: NotificationCondition::Unfocused,
             rails_session_open: false,
             rails_inspector_open: false,
+            startup_flourish: false,
         }
     }
 }
@@ -178,6 +182,16 @@ fn try_load_tui_config(path: &Path) -> Result<TuiConfig, String> {
                 .ok_or_else(|| "rails.inspector_open must be a boolean".to_owned())?;
         }
     }
+    if let Some(startup) = table.get("startup") {
+        let startup = startup
+            .as_table()
+            .ok_or_else(|| "startup must be a TOML table".to_owned())?;
+        if let Some(flourish) = startup.get("flourish") {
+            config.startup_flourish = flourish
+                .as_bool()
+                .ok_or_else(|| "startup.flourish must be a boolean".to_owned())?;
+        }
+    }
     if let Some(notifications) = table.get("notifications") {
         let notifications = notifications
             .as_table()
@@ -214,12 +228,13 @@ pub(crate) fn save_tui_config(home: &Path, config: &TuiConfig) -> Result<PathBuf
     ensure_private_directory(home)?;
     let editor = config.editor_command.as_deref().unwrap_or("");
     let encoded = format!(
-        "# ~/.mycel/tui.toml\n# Client preferences for Mycel.\n# Agent/runtime settings stay in ~/.mycel/config.toml.\n\ntheme = {}\ndisable_paste_burst = {}\n\n[editor]\ncommand = {}\n\n[rails]\nsession_open = {}\ninspector_open = {}\n\n[notifications]\nenabled = {}\nnotification_condition = {}\n",
+        "# ~/.mycel/tui.toml\n# Client preferences for Mycel.\n# Agent/runtime settings stay in ~/.mycel/config.toml.\n\ntheme = {}\ndisable_paste_burst = {}\n\n[editor]\ncommand = {}\n\n[rails]\nsession_open = {}\ninspector_open = {}\n\n[startup]\nflourish = {}\n\n[notifications]\nenabled = {}\nnotification_condition = {}\n",
         toml::Value::String(config.theme.as_str().to_owned()),
         config.disable_paste_burst,
         toml::Value::String(editor.to_owned()),
         config.rails_session_open,
         config.rails_inspector_open,
+        config.startup_flourish,
         config.notifications_enabled,
         toml::Value::String(config.notification_condition.as_str().to_owned()),
     );
@@ -341,6 +356,7 @@ mod tests {
             notification_condition: NotificationCondition::Always,
             rails_session_open: true,
             rails_inspector_open: false,
+            startup_flourish: true,
         };
         let path = save_tui_config(temp.path(), &configured).expect("save");
         assert_eq!(load_tui_config(temp.path()), (configured, None));
@@ -396,6 +412,29 @@ mod tests {
             "[rails]\ninspector_open = \"yes\"\n",
         )
         .expect("invalid rails");
+        let (config, warning) = load_tui_config(temp.path());
+        assert_eq!(config, TuiConfig::default());
+        assert_eq!(warning.as_deref(), Some(INVALID_TUI_CONFIG_MESSAGE));
+    }
+
+    #[test]
+    fn flourish_defaults_off_and_rejects_non_boolean_state() {
+        let temp = tempdir().expect("temp");
+        let (config, warning) = load_tui_config(temp.path());
+        assert!(!config.startup_flourish, "flourish must default off");
+        assert!(warning.is_none());
+
+        fs::write(temp.path().join("tui.toml"), "[startup]\nflourish = true\n")
+            .expect("flourish on");
+        let (config, warning) = load_tui_config(temp.path());
+        assert!(config.startup_flourish);
+        assert!(warning.is_none());
+
+        fs::write(
+            temp.path().join("tui.toml"),
+            "[startup]\nflourish = \"yes\"\n",
+        )
+        .expect("invalid flourish");
         let (config, warning) = load_tui_config(temp.path());
         assert_eq!(config, TuiConfig::default());
         assert_eq!(warning.as_deref(), Some(INVALID_TUI_CONFIG_MESSAGE));

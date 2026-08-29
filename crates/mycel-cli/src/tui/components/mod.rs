@@ -2,6 +2,7 @@
 //! from a plain data snapshot plus a `Theme`: no I/O, no async, unit-tested
 //! against the produced strings so a theme change never churns the tests.
 
+pub mod flourish;
 pub mod header;
 pub mod input_box;
 pub mod inspector;

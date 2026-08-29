@@ -95,6 +95,7 @@ use crate::{
         TerminalSignal, TerminalSink, TerminalSize,
     },
     tui::{
+        components::flourish::flourish_frames,
         components::header::{header_card, GateDisplay, HeaderData, SubstrateSummary},
         components::input_box::{input_box, InputBoxData},
         components::inspector::{inspector, inspector_collapsed, AntibodyDetail, InspectorData},
@@ -6818,127 +6819,236 @@ fn interactive_terminal_body<B: TerminalBackend>(
     // When stdin closes with an exit already requested and a turn still in
     // flight, this marks the start of the bounded grace wait for that turn.
     let mut exit_grace_started: Option<Instant> = None;
-    let result = (|| loop {
-        state.process_runtime_messages(executor, prepared)?;
-        if let Some(transition) = state.session_transition.take() {
-            break Ok(InteractiveTerminalOutcome::Transition(transition));
-        }
-        state.dialogs.poll();
-        state.poll_cron(executor, prepared)?;
-        let now = state.now_ms();
-        state.spinner_phase = usize::try_from(now / SPINNER_INTERVAL_MS).unwrap_or(0);
-        state.transcript.tick(now);
-        if let Some(panel) = state.btw.as_mut() {
-            panel.transcript.tick(now);
-        }
-        while let Some(sequence) = state.terminal_sequences.pop_front() {
-            terminal
-                .write(&sequence)
-                .map_err(|error| format!("could not write terminal control sequence: {error}"))?;
-        }
-        render_interactive(&mut state, terminal)?;
-        if state.exit_after_turn && state.active.is_none() {
-            break Ok(InteractiveTerminalOutcome::Completion(
-                RuntimeCompletion::success(),
-            ));
-        }
-
-        match terminal
-            .read_event(Some(INTERACTIVE_POLL))
-            .map_err(|error| format!("could not read terminal input: {error}"))?
-        {
-            TerminalEvent::Input(bytes) => {
-                let mut exit_requested = false;
-                for input in state.decoder.feed(&bytes) {
-                    if state.dialogs.is_active() {
-                        state.dialogs.apply(input);
-                        continue;
-                    }
-                    if state.btw.is_some() && is_escape(&input) {
-                        state.close_btw(executor, Some("BTW closed."));
-                        continue;
-                    }
-                    if state.btw.is_some() && is_control_c(&input) {
-                        state.cancel_or_close_btw(executor);
-                        continue;
-                    }
-                    if is_control_g(&input) && state.request_external_editor(prepared) {
-                        exit_requested = true;
-                        break;
-                    }
-                    if is_control_d(&input) && state.reducer.editor.text().is_empty() {
-                        if let Some(active) = &state.active {
-                            if state.exit_after_turn {
-                                active.cancellation.cancel();
-                                exit_requested = true;
-                            } else {
-                                state.exit_after_turn = true;
-                                state.status(
-                                    "exit requested; waiting for current turn (Ctrl-D again to cancel)",
-                                );
-                            }
-                        } else {
-                            exit_requested = true;
-                        }
-                        break;
-                    }
-                    state.reducer.apply(input);
-                    if state.process_actions(executor, prepared) {
-                        exit_requested = true;
-                        break;
-                    }
-                }
-                if exit_requested {
-                    break Ok(match state.session_transition.take() {
-                        Some(transition) => InteractiveTerminalOutcome::Transition(transition),
-                        None => {
-                            InteractiveTerminalOutcome::Completion(RuntimeCompletion::success())
-                        }
-                    });
-                }
+    let result = (|| {
+        if prepared.tui_config.startup_flourish {
+            if let Some(outcome) = run_startup_flourish(&mut state, terminal)? {
+                return Ok(outcome);
             }
-            TerminalEvent::Resize(size) => {
-                state.size = size;
-                state.header_cache = None;
-                state.renderer.reset();
-                state.last_view.clear();
-                state.last_cursor = None;
+            // Typed-ahead during the flourish sits buffered in the reducer;
+            // drain its actions now so a submit does not wait for the next
+            // keypress.
+            if state.process_actions(executor, prepared) {
+                return Ok(match state.session_transition.take() {
+                    Some(transition) => InteractiveTerminalOutcome::Transition(transition),
+                    None => InteractiveTerminalOutcome::Completion(RuntimeCompletion::success()),
+                });
             }
-            TerminalEvent::Signal(signal) => {
-                break Ok(InteractiveTerminalOutcome::Completion(
-                    RuntimeCompletion::Signal(map_terminal_signal(signal)),
-                ));
+        }
+        loop {
+            state.process_runtime_messages(executor, prepared)?;
+            if let Some(transition) = state.session_transition.take() {
+                break Ok(InteractiveTerminalOutcome::Transition(transition));
             }
-            TerminalEvent::EndOfInput if state.exit_after_turn && state.active.is_some() => {
-                // Exit already requested, stdin gone, turn still running: give
-                // the turn a bounded grace period to finish on its own, then
-                // cancel it and exit. Never wait on it forever - a stalled
-                // provider must not make the session unkillable.
-                let started = *exit_grace_started.get_or_insert_with(Instant::now);
-                if started.elapsed() >= EXIT_TURN_GRACE {
-                    if let Some(active) = &state.active {
-                        active.cancellation.cancel();
-                    }
-                    state.status(format!(
-                        "exit: current turn did not finish within {}s; cancelled",
-                        EXIT_TURN_GRACE.as_secs()
-                    ));
-                    break Ok(InteractiveTerminalOutcome::Completion(
-                        RuntimeCompletion::success(),
-                    ));
-                }
-                std::thread::sleep(INTERACTIVE_POLL);
+            state.dialogs.poll();
+            state.poll_cron(executor, prepared)?;
+            let now = state.now_ms();
+            state.spinner_phase = usize::try_from(now / SPINNER_INTERVAL_MS).unwrap_or(0);
+            state.transcript.tick(now);
+            if let Some(panel) = state.btw.as_mut() {
+                panel.transcript.tick(now);
             }
-            TerminalEvent::EndOfInput => {
+            while let Some(sequence) = state.terminal_sequences.pop_front() {
+                terminal.write(&sequence).map_err(|error| {
+                    format!("could not write terminal control sequence: {error}")
+                })?;
+            }
+            render_interactive(&mut state, terminal)?;
+            if state.exit_after_turn && state.active.is_none() {
                 break Ok(InteractiveTerminalOutcome::Completion(
                     RuntimeCompletion::success(),
                 ));
             }
-            TerminalEvent::Timeout | TerminalEvent::KeyboardProtocolChanged(_) => {}
+
+            match terminal
+                .read_event(Some(INTERACTIVE_POLL))
+                .map_err(|error| format!("could not read terminal input: {error}"))?
+            {
+                TerminalEvent::Input(bytes) => {
+                    let mut exit_requested = false;
+                    for input in state.decoder.feed(&bytes) {
+                        if state.dialogs.is_active() {
+                            state.dialogs.apply(input);
+                            continue;
+                        }
+                        if state.btw.is_some() && is_escape(&input) {
+                            state.close_btw(executor, Some("BTW closed."));
+                            continue;
+                        }
+                        if state.btw.is_some() && is_control_c(&input) {
+                            state.cancel_or_close_btw(executor);
+                            continue;
+                        }
+                        if is_control_g(&input) && state.request_external_editor(prepared) {
+                            exit_requested = true;
+                            break;
+                        }
+                        if is_control_d(&input) && state.reducer.editor.text().is_empty() {
+                            if let Some(active) = &state.active {
+                                if state.exit_after_turn {
+                                    active.cancellation.cancel();
+                                    exit_requested = true;
+                                } else {
+                                    state.exit_after_turn = true;
+                                    state.status(
+                                    "exit requested; waiting for current turn (Ctrl-D again to cancel)",
+                                );
+                                }
+                            } else {
+                                exit_requested = true;
+                            }
+                            break;
+                        }
+                        state.reducer.apply(input);
+                        if state.process_actions(executor, prepared) {
+                            exit_requested = true;
+                            break;
+                        }
+                    }
+                    if exit_requested {
+                        break Ok(match state.session_transition.take() {
+                            Some(transition) => InteractiveTerminalOutcome::Transition(transition),
+                            None => {
+                                InteractiveTerminalOutcome::Completion(RuntimeCompletion::success())
+                            }
+                        });
+                    }
+                }
+                TerminalEvent::Resize(size) => {
+                    state.size = size;
+                    state.header_cache = None;
+                    state.renderer.reset();
+                    state.last_view.clear();
+                    state.last_cursor = None;
+                }
+                TerminalEvent::Signal(signal) => {
+                    break Ok(InteractiveTerminalOutcome::Completion(
+                        RuntimeCompletion::Signal(map_terminal_signal(signal)),
+                    ));
+                }
+                TerminalEvent::EndOfInput if state.exit_after_turn && state.active.is_some() => {
+                    // Exit already requested, stdin gone, turn still running: give
+                    // the turn a bounded grace period to finish on its own, then
+                    // cancel it and exit. Never wait on it forever - a stalled
+                    // provider must not make the session unkillable.
+                    let started = *exit_grace_started.get_or_insert_with(Instant::now);
+                    if started.elapsed() >= EXIT_TURN_GRACE {
+                        if let Some(active) = &state.active {
+                            active.cancellation.cancel();
+                        }
+                        state.status(format!(
+                            "exit: current turn did not finish within {}s; cancelled",
+                            EXIT_TURN_GRACE.as_secs()
+                        ));
+                        break Ok(InteractiveTerminalOutcome::Completion(
+                            RuntimeCompletion::success(),
+                        ));
+                    }
+                    std::thread::sleep(INTERACTIVE_POLL);
+                }
+                TerminalEvent::EndOfInput => {
+                    break Ok(InteractiveTerminalOutcome::Completion(
+                        RuntimeCompletion::success(),
+                    ));
+                }
+                TerminalEvent::Timeout | TerminalEvent::KeyboardProtocolChanged(_) => {}
+            }
         }
     })();
     state.shutdown(executor);
     result
+}
+
+/// Cadence between flourish frames (~120ms per logo row, per the design).
+const FLOURISH_STEP: Duration = Duration::from_millis(120);
+/// Hold on the final flourish frame before the normal view paints over it.
+const FLOURISH_HOLD: Duration = Duration::from_millis(300);
+
+/// Play the startup flourish before the first differential paint. Returns
+/// `Some(outcome)` when a terminating event arrived mid-sequence.
+///
+/// Raw mode disables ISIG (`cfmakeraw`, terminal/driver.rs
+/// `enable_raw_mode`), so ctrl+c arrives as INPUT (0x03, or its CSI-u form
+/// once the kitty query pushed flags), never as SIGINT — a plain sleep
+/// cadence would sit on it for the whole sequence. The cadence therefore
+/// runs through `read_event`, which surfaces ctrl+c immediately and also
+/// returns external SIGINT/SIGTERM as Signal events with the terminal
+/// already restored (driver.rs `read_event`). Other typed-ahead input is
+/// decoded into the reducer so nothing is dropped.
+fn run_startup_flourish<B: TerminalBackend>(
+    state: &mut InteractiveLoopState,
+    terminal: &mut TerminalSession<'_, B>,
+) -> Result<Option<InteractiveTerminalOutcome>, String> {
+    let width = usize::from(state.size.columns.max(1));
+    let height = usize::from(state.size.rows.max(1));
+    let frames = flourish_frames(
+        &state.header.substrate,
+        &state.theme,
+        width,
+        height,
+        state.truecolor,
+    );
+    let total = frames.len();
+    for (index, frame) in frames.into_iter().enumerate() {
+        let mut bytes = Vec::new();
+        for (row, line) in frame.iter().enumerate() {
+            bytes.extend_from_slice(format!("\x1b[{};1H\x1b[2K", row + 1).as_bytes());
+            bytes.extend_from_slice(line.as_bytes());
+        }
+        terminal
+            .write(&bytes)
+            .map_err(|error| format!("could not write flourish frame: {error}"))?;
+        terminal
+            .flush_output()
+            .map_err(|error| format!("could not flush flourish frame: {error}"))?;
+        let hold = if index + 1 == total {
+            FLOURISH_HOLD
+        } else {
+            FLOURISH_STEP
+        };
+        let deadline = Instant::now() + hold;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match terminal
+                .read_event(Some(remaining))
+                .map_err(|error| format!("could not read terminal input: {error}"))?
+            {
+                TerminalEvent::Input(bytes) => {
+                    for input in state.decoder.feed(&bytes) {
+                        if is_control_c(&input) || is_control_d(&input) {
+                            return Ok(Some(InteractiveTerminalOutcome::Completion(
+                                RuntimeCompletion::success(),
+                            )));
+                        }
+                        state.reducer.apply(input);
+                    }
+                }
+                TerminalEvent::Signal(signal) => {
+                    return Ok(Some(InteractiveTerminalOutcome::Completion(
+                        RuntimeCompletion::Signal(map_terminal_signal(signal)),
+                    )));
+                }
+                TerminalEvent::EndOfInput => {
+                    return Ok(Some(InteractiveTerminalOutcome::Completion(
+                        RuntimeCompletion::success(),
+                    )));
+                }
+                TerminalEvent::Resize(size) => {
+                    // A resize abandons the animation for the real view.
+                    state.size = size;
+                    state.header_cache = None;
+                    state.renderer.reset();
+                    state.last_view.clear();
+                    state.last_cursor = None;
+                    return Ok(None);
+                }
+                TerminalEvent::Timeout | TerminalEvent::KeyboardProtocolChanged(_) => {}
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn is_control_d(event: &InputEvent) -> bool {
@@ -7643,7 +7753,7 @@ fn push_wrapped(lines: &mut Vec<String>, text: &str, width: usize) {
 fn format_tui_settings(config: &TuiConfig) -> String {
     let rail_state = |open: bool| if open { "open" } else { "collapsed" };
     format!(
-        "theme: {}\neditor: {}\npaste burst fallback: {}\nnotifications: {} ({})\nrails: session {} (ctrl+l) · inspector {} (ctrl+r)\nconfig: ~/.mycel/tui.toml",
+        "theme: {}\neditor: {}\npaste burst fallback: {}\nnotifications: {} ({})\nrails: session {} (ctrl+l) · inspector {} (ctrl+r)\nstartup flourish: {}\nconfig: ~/.mycel/tui.toml",
         config.theme.as_str(),
         config.editor_command.as_deref().unwrap_or("auto"),
         if config.disable_paste_burst {
@@ -7659,6 +7769,11 @@ fn format_tui_settings(config: &TuiConfig) -> String {
         config.notification_condition.as_str(),
         rail_state(config.rails_session_open),
         rail_state(config.rails_inspector_open),
+        if config.startup_flourish {
+            "enabled"
+        } else {
+            "disabled"
+        },
     )
 }
 
@@ -10160,6 +10275,50 @@ fail_mode = "closed"
         // Frames render styled; the exact SGR encoding depends on the test
         // process's COLORTERM, so assert styling exists without pinning codes.
         assert!(rendered.contains("\x1b["));
+        assert!(transport.requests.lock().expect("requests").is_empty());
+    }
+
+    #[test]
+    fn startup_flourish_renders_before_the_loop_and_ctrl_c_exits_cleanly() {
+        let temp = TempDir::new().expect("temp");
+        let home = temp.path().join("mycel");
+        fs::create_dir_all(&home).expect("home");
+        fs::write(home.join("tui.toml"), "[startup]\nflourish = true\n").expect("tui config");
+        let transport = Arc::new(ScriptedTransport::default());
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            transport.clone(),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Auto))
+            .expect("prepare");
+        assert!(prepared.tui_config.startup_flourish, "flag loaded");
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let mut backend = MemoryBackend::scripted([BackendEvent::Input(vec![0x03])]);
+        backend.output = output.clone();
+        let restored = backend.restored.clone();
+        let mut driver = TerminalDriver::new(backend);
+        adapter
+            .run_prepared_interactive(prepared, &mut driver)
+            .expect("flourish run");
+
+        let rendered = String::from_utf8_lossy(&output.lock().expect("output")).into_owned();
+        // The first reveal frame (the logo's dashed root row) was painted
+        // before ctrl+c cut the sequence, and the session exited cleanly with
+        // the terminal restored. No later frame content ever rendered.
+        assert!(
+            rendered.contains("╌╌┴"),
+            "flourish frame missing: {rendered}"
+        );
+        assert!(
+            !rendered.contains(Theme::amanita().tag),
+            "ctrl+c must cut the sequence before the wordmark frame"
+        );
+        assert!(restored.load(Ordering::SeqCst), "terminal restored");
         assert!(transport.requests.lock().expect("requests").is_empty());
     }
 
