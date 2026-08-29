@@ -7,6 +7,9 @@
 
 use crate::terminal::style::Rgb;
 
+/// A built-in theme entry: its name and constructor, as listed in `Theme::ALL`.
+pub type ThemeEntry = (&'static str, fn() -> Theme);
+
 /// A full set of named color roles. Base roles come from the design's startup
 /// model; TUI-only roles are pixel-exact for amanita and derived for the rest.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,7 +115,7 @@ impl Theme {
     /// Every built-in theme as `(name, constructor)`, amanita first. The
     /// single source for name validation (`ThemeName::parse`) and resolution
     /// (`by_name`), so the two can never drift apart.
-    pub const ALL: [(&'static str, fn() -> Theme); 7] = [
+    pub const ALL: [ThemeEntry; 7] = [
         ("amanita", Self::amanita),
         ("hacker", Self::hacker),
         ("foxfire", Self::foxfire),
