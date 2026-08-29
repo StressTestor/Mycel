@@ -77,7 +77,11 @@ pub(crate) fn logo_lines(theme: &Theme) -> Vec<StyledLine> {
 }
 
 /// The mushroom as rendered terminal lines, each `LOGO_WIDTH` cells wide.
-pub fn logo(theme: &Theme, truecolor: bool) -> Vec<String> {
+/// Test-only: the header card is the only production consumer and it reaches
+/// the spans through `logo_lines`, so a crate-visible wrapper would be dead
+/// code under `-D warnings`.
+#[cfg(test)]
+fn logo(theme: &Theme, truecolor: bool) -> Vec<String> {
     logo_lines(theme)
         .iter()
         .map(|line| line.render(LOGO_WIDTH, truecolor))
