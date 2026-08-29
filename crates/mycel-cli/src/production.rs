@@ -54,7 +54,9 @@ use crate::{
     },
     clipboard::{read_clipboard_image, PastedImageStore},
     doctor::run_doctor,
-    ecology::{parse_ecology_submission, EcologyDispatch, EcologyService},
+    ecology::{
+        parse_ecology_submission, EcologyDispatch, EcologyService, GateStatus, SubstrateStatus,
+    },
     exit::{GoalStatus, TerminationSignal},
     export::{
         run_export, ExportConfirmation, FilesystemSessionExportStore, ProcessExportConfirmation,
@@ -2895,6 +2897,9 @@ struct PreparedInteractive {
     orchestration: Arc<NativeOrchestrationBundle>,
     orchestration_events: Arc<ProductionOrchestrationEvents>,
     ecology: EcologyService,
+    /// Substrate snapshot taken once during preparation; the loop state
+    /// refreshes it after ecology-mutating events, never per-tick.
+    substrate: SubstrateStatus,
     plugins: PluginComposition,
 }
 
@@ -3311,6 +3316,7 @@ async fn prepare_interactive(
             combined
         });
     let model_aliases = config.models.keys().cloned().collect::<Vec<_>>();
+    let ecology = EcologyService::new(home.clone());
 
     Ok(PreparedInteractive {
         _runtime: runtime,
@@ -3347,7 +3353,8 @@ async fn prepare_interactive(
         mcp: mcp_runtime,
         orchestration,
         orchestration_events,
-        ecology: EcologyService::new(home),
+        substrate: ecology.summary(Utc::now()),
+        ecology,
         plugins,
     })
 }
@@ -3551,10 +3558,14 @@ struct InteractiveLoopState {
     /// the ~40Hz render loop must not re-read config or the environment.
     theme: Theme,
     truecolor: bool,
-    /// The header card rendered at a given width; the card's data is fixed at
-    /// construction, so this only invalidates on resize or theme change.
+    /// The header card rendered at a given width; the card's data changes only
+    /// on substrate refreshes, so this invalidates on resize, theme change,
+    /// or `refresh_substrate`.
     header_cache: Option<(usize, Vec<String>)>,
     header: HeaderData,
+    /// Live substrate snapshot for the header and rails. Refreshed by
+    /// `refresh_substrate` on ecology-mutating events only.
+    substrate: SubstrateStatus,
     swarm_mode: bool,
     hyphae_task_active: bool,
     pasted_images: PastedImageStore,
@@ -3699,6 +3710,7 @@ impl InteractiveLoopState {
             header_cache: None,
             tui_config: prepared.tui_config.clone(),
             header: build_header(prepared),
+            substrate: prepared.substrate,
             swarm_mode: prepared.swarm_mode,
             hyphae_task_active: false,
             pasted_images: PastedImageStore::default(),
@@ -3725,6 +3737,15 @@ impl InteractiveLoopState {
     fn refresh_render_caches(&mut self) {
         self.theme = active_theme(&self.tui_config.theme);
         self.truecolor = truecolor_enabled();
+        self.header_cache = None;
+    }
+
+    /// Re-read the substrate summary and invalidate the header render.
+    /// Event-driven only: called after `/promote`, `/deny`, and projected gate
+    /// denials — never on the render tick, which must not gain I/O.
+    fn refresh_substrate(&mut self, prepared: &PreparedInteractive) {
+        self.substrate = prepared.ecology.summary(Utc::now());
+        self.header.substrate = substrate_summary_display(&self.substrate);
         self.header_cache = None;
     }
 
@@ -4946,9 +4967,16 @@ impl InteractiveLoopState {
             return true;
         }
         if let Some((command, arguments)) = parse_ecology_submission(input) {
+            let mutates = matches!(
+                command,
+                crate::ecology::EcologyCommand::Promote | crate::ecology::EcologyCommand::Deny
+            );
             match prepared.ecology.run(command, arguments, Utc::now()) {
                 EcologyDispatch::Panel { title, lines } => {
                     self.status(format!("{title}\n{}", lines.join("\n")));
+                    if mutates {
+                        self.refresh_substrate(prepared);
+                    }
                 }
                 EcologyDispatch::Error(error) => self.status(format!("ecology error: {error}")),
                 EcologyDispatch::Status(status) => self.status(status),
@@ -6849,27 +6877,42 @@ fn render_interactive<B: TerminalBackend>(
 }
 
 /// Snapshot the welcome-card data from the prepared session. The substrate
-/// summary is zeroed here; PR4 owns the live substrate-summary queries (spec §8),
-/// which need a substrate DB read that is not available as a cheap field at
-/// construction. Recent sessions were captured in `prepare_interactive` from
-/// the discovery its register/refresh produced, so building the header never
-/// re-acquires the cross-process index lock or re-runs the repair scan.
+/// summary was read once in `prepare_interactive`; the loop refreshes it on
+/// ecology-mutating events. Recent sessions were captured in
+/// `prepare_interactive` from the discovery its register/refresh produced, so
+/// building the header never re-acquires the cross-process index lock or
+/// re-runs the repair scan.
 fn build_header(prepared: &PreparedInteractive) -> HeaderData {
     HeaderData {
         model: prepared.model_alias.clone(),
         provider: prepared.provider.clone(),
         cwd: display_home_path(&prepared.working_dir, prepared.user_home.as_deref()),
-        // TODO(PR4): wire live context usage (rail data)
+        // TODO: context OCCUPANCY is not derivable from the loop's event
+        // stream. `AgentEvent::TurnEnded` carries no usage
+        // (crates/mycel-agent-protocol/src/event.rs:692-699) and the session's
+        // `usage_by_model` (read by `/usage` above) accumulates turn totals,
+        // which is not the live context size. Until the runtime exposes
+        // occupancy, 0 here renders as the window alone, never a made-up fill.
         ctx_used: 0,
         ctx_window: prepared.context_window,
-        // TODO(PR4): live substrate summary; until then the gate state is
-        // honestly Unknown, never a green ok nobody verified.
-        substrate: SubstrateSummary {
-            antibodies: 0,
-            candidates_pending: 0,
-            gate: GateDisplay::Unknown,
-        },
+        substrate: substrate_summary_display(&prepared.substrate),
         recent: prepared.recent_sessions.clone(),
+    }
+}
+
+/// Map the ecology-side substrate snapshot onto the header card's display
+/// summary. `Tripwire` (wired fail-closed, db missing: everything refused) is
+/// the card's `blocked`; `Disarmed` covers unwired and fail-open wiring.
+fn substrate_summary_display(substrate: &SubstrateStatus) -> SubstrateSummary {
+    SubstrateSummary {
+        antibodies: substrate.antibodies_active,
+        candidates_pending: substrate.candidates_pending,
+        gate: match substrate.gate {
+            GateStatus::Ok => GateDisplay::Ok,
+            GateStatus::Tripwire => GateDisplay::Blocked,
+            GateStatus::Disarmed => GateDisplay::Disarmed,
+            GateStatus::Unknown => GateDisplay::Unknown,
+        },
     }
 }
 
@@ -10992,6 +11035,71 @@ fail_mode = "closed"
             .executor
             .block_on(resumed.session.close())
             .expect("close resumed session");
+    }
+
+    #[test]
+    fn prepared_header_carries_the_live_substrate_summary() {
+        let temp = TempDir::new().expect("temp");
+        let home = temp.path().join("mycel");
+        fs::create_dir_all(home.join("substrate")).expect("substrate dir");
+        // Seed one live antibody through the same service `/deny` uses, and
+        // arm the gate wiring the summary reads.
+        let ecology = EcologyService::new(&home);
+        mycel_mcp::McpTools::open(&ecology.paths().database).expect("initialize db");
+        ecology.run(crate::ecology::EcologyCommand::Deny, "rm -rf /", Utc::now());
+        fs::write(
+            home.join("config.toml"),
+            "[[hooks]]\nevent = \"PreToolUse\"\nmatcher = \"\"\ncommand = \"$HOME/.mycel/bin/mycel-gate\"\nfail_mode = \"closed\"\n",
+        )
+        .expect("gate wiring");
+
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Manual))
+            .expect("prepare");
+        assert_eq!(
+            prepared.substrate,
+            SubstrateStatus {
+                antibodies_active: 1,
+                candidates_pending: 0,
+                gate: GateStatus::Ok,
+            }
+        );
+        let header = build_header(&prepared);
+        assert_eq!(
+            header.substrate,
+            SubstrateSummary {
+                antibodies: 1,
+                candidates_pending: 0,
+                gate: GateDisplay::Ok,
+            }
+        );
+        // The live Ok state renders the green dot with its verdict word.
+        let rendered = header_card(&header, &Theme::amanita(), 120, true).join("\n");
+        assert!(rendered.contains("1 antibodies"));
+        assert!(rendered.contains("38;2;85;168;104m●"), "{rendered}");
+
+        adapter
+            .executor
+            .block_on(shutdown_orchestration(Some(
+                prepared.orchestration.as_ref(),
+            )))
+            .expect("shut down orchestration");
+        adapter
+            .executor
+            .block_on(shutdown_mcp(prepared.mcp.as_ref()))
+            .expect("shut down MCP");
+        adapter
+            .executor
+            .block_on(prepared.session.close())
+            .expect("close session");
     }
 
     #[test]

@@ -13,13 +13,18 @@ use crate::tui::theme::Theme;
 use super::fit_spans;
 use super::logo::{logo_lines, LOGO_WIDTH};
 
-/// What the card can honestly claim about the gate. `Unknown` until PR4 wires
-/// the live read; it renders as a muted dot with no verdict word, because a
-/// green `ok` on a state nobody checked would be a lie.
+/// What the card can honestly claim about the gate, fed from the live
+/// `EcologyService::summary` read. `Ok` is wired-fail-closed with the db
+/// present; `Blocked` is the tripwire state (wired-fail-closed, db missing:
+/// every routed call refused); `Disarmed` covers unwired and fail-open wiring,
+/// where the fail-closed guarantee does not hold. `Unknown` renders as a muted
+/// dot with no verdict word, because a green `ok` on a state nobody checked
+/// would be a lie.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum GateDisplay {
     Ok,
     Blocked,
+    Disarmed,
     #[default]
     Unknown,
 }
@@ -49,6 +54,10 @@ pub struct HeaderData {
 /// Design copy shared by the identity line and the substrate row; the wording
 /// is frozen from the mockup.
 const GATE_TAGLINE: &str = "gate fail-closed";
+
+/// Cells of the ` · ` joiner between the substrate counts and the gate clause
+/// when they share one row.
+const SUBSTRATE_JOIN_W: usize = 3;
 
 /// Cells between the logo and the identity block.
 const GAP: usize = 2;
@@ -81,7 +90,6 @@ pub fn header_card(data: &HeaderData, theme: &Theme, width: usize, truecolor: bo
 
     let logo = logo_lines(theme);
     let identity = identity_lines(data, theme);
-    let right = right_lines(data, theme);
 
     // Size the identity column from its widest line so a long qualified alias
     // is not clipped by a sample-string constant.
@@ -92,6 +100,9 @@ pub fn header_card(data: &HeaderData, theme: &Theme, width: usize, truecolor: bo
         .unwrap_or(0)
         .clamp(IDENT_MIN_W, IDENT_MAX_W);
     let (ident_col, right_col) = collapse_columns(width, ident_w);
+    // The right block reflows against its final width (the substrate line
+    // splits in two when it would clip), so it is built after the collapse.
+    let right = right_lines(data, theme, right_col.unwrap_or(0));
     let box_w = BORDERS_W
         + LOGO_WIDTH
         + ident_col.map_or(0, |ident_w| GAP + ident_w)
@@ -181,9 +192,13 @@ fn identity_lines(data: &HeaderData, theme: &Theme) -> Vec<StyledLine> {
 
 /// The right block: `tips`, `substrate`, `recent`, with `secondary` headers and
 /// `muted` bodies. The candidate count is `accent` when pending, and the gate
-/// dot is `ok` when the gate is verified healthy, `accent` when blocked, and a
-/// wordless `muted` dot when the state is unknown.
-fn right_lines(data: &HeaderData, theme: &Theme) -> Vec<StyledLine> {
+/// dot is `ok` when the gate is verified healthy, `accent` when blocked or
+/// disarmed, and a wordless `muted` dot when the state is unknown. When the
+/// substrate one-liner would clip at `right_w` (a `blocked` verdict at width
+/// 120 lost its last 5 cells), it reflows onto two rows at the gate-clause
+/// boundary; the logo is 8 rows and the block starts at row 1, so a 7th line
+/// still fits.
+fn right_lines(data: &HeaderData, theme: &Theme, right_w: usize) -> Vec<StyledLine> {
     let secondary = Style::fg(Color::Rgb(theme.secondary));
     let muted = Style::fg(Color::Rgb(theme.muted));
     let accent = Style::fg(Color::Rgb(theme.accent));
@@ -197,6 +212,7 @@ fn right_lines(data: &HeaderData, theme: &Theme) -> Vec<StyledLine> {
     let (dot_style, gate_word) = match data.substrate.gate {
         GateDisplay::Ok => (ok, Some("ok")),
         GateDisplay::Blocked => (accent, Some("blocked")),
+        GateDisplay::Disarmed => (accent, Some("disarmed")),
         GateDisplay::Unknown => (muted, None),
     };
     let recent = if data.recent.is_empty() {
@@ -205,7 +221,7 @@ fn right_lines(data: &HeaderData, theme: &Theme) -> Vec<StyledLine> {
         data.recent.join(" · ")
     };
 
-    let mut substrate_line = vec![
+    let counts = vec![
         Span::new(
             format!("{} antibodies · ", data.substrate.antibodies),
             muted,
@@ -214,24 +230,41 @@ fn right_lines(data: &HeaderData, theme: &Theme) -> Vec<StyledLine> {
             format!("{} candidate pending", data.substrate.candidates_pending),
             candidate_style,
         ),
-        Span::new(format!(" · {GATE_TAGLINE} "), muted),
+    ];
+    let mut gate_clause = vec![
+        Span::new(format!("{GATE_TAGLINE} "), muted),
         Span::new("●", dot_style),
     ];
     if let Some(word) = gate_word {
-        substrate_line.push(Span::new(format!(" {word}"), muted));
+        gate_clause.push(Span::new(format!(" {word}"), muted));
     }
+    let one_line_w: usize = counts
+        .iter()
+        .chain(gate_clause.iter())
+        .map(|span| visible_width(&span.text))
+        .sum::<usize>()
+        + SUBSTRATE_JOIN_W;
 
-    vec![
+    let mut lines = vec![
         StyledLine(vec![Span::new("tips", secondary)]),
         StyledLine(vec![Span::new(
             "/ commands · ! shell · # note · shift+tab plan · esc cancel",
             muted,
         )]),
         StyledLine(vec![Span::new("substrate", secondary)]),
-        StyledLine(substrate_line),
-        StyledLine(vec![Span::new("recent", secondary)]),
-        StyledLine(vec![Span::new(recent, muted)]),
-    ]
+    ];
+    if one_line_w <= right_w {
+        let mut substrate_line = counts;
+        substrate_line.push(Span::new(" · ", muted));
+        substrate_line.extend(gate_clause);
+        lines.push(StyledLine(substrate_line));
+    } else {
+        lines.push(StyledLine(counts));
+        lines.push(StyledLine(gate_clause));
+    }
+    lines.push(StyledLine(vec![Span::new("recent", secondary)]));
+    lines.push(StyledLine(vec![Span::new(recent, muted)]));
+    lines
 }
 
 /// The `row`-th line of a block whose first line sits at grid row `offset`, or an
@@ -397,6 +430,39 @@ mod tests {
         // Blocked: accent #e05a1e dot plus the word.
         assert!(blocked.contains("38;2;224;90;30m●"));
         assert!(strip_ansi(&blocked).contains("blocked"));
+        data.substrate.gate = GateDisplay::Disarmed;
+        let disarmed = header_card(&data, &Theme::amanita(), 140, true).join("\n");
+        assert!(disarmed.contains("38;2;224;90;30m●"));
+        assert!(strip_ansi(&disarmed).contains("disarmed"));
+    }
+
+    #[test]
+    fn blocked_verdict_reflows_instead_of_clipping_at_width_120() {
+        // The cleanup-era regression: at width 120 the one-line substrate row
+        // is 1 cell too wide with a `blocked` verdict, and the verdict word
+        // lost its last cells to the border. The row must reflow onto two
+        // lines and keep the full word.
+        let mut data = sample();
+        data.substrate.gate = GateDisplay::Blocked;
+        let lines = header_card(&data, &Theme::amanita(), 120, true);
+        let stripped = lines
+            .iter()
+            .map(|line| strip_ansi(line))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            stripped.contains("● blocked"),
+            "verdict must survive width 120: {stripped}"
+        );
+        assert!(stripped.contains("23 antibodies"));
+        // The reflow stays inside the closed box.
+        for line in &lines[1..lines.len() - 1] {
+            let text = strip_ansi(line);
+            assert!(
+                text.trim_end().ends_with('╎'),
+                "open-sided row at width 120: {text:?}"
+            );
+        }
     }
 
     #[test]

@@ -141,6 +141,30 @@ impl EcologyPaths {
     }
 }
 
+/// What the gate can honestly claim about itself, condensed from the `/gate`
+/// panel's own wiring/db matrix (see `EcologyService::gate`). `Tripwire` is
+/// wired-fail-closed with the substrate db missing: every routed tool call is
+/// being refused. `Disarmed` covers unwired and wired-fail-open, where the
+/// fail-closed guarantee does not hold.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum GateStatus {
+    Ok,
+    Tripwire,
+    Disarmed,
+    #[default]
+    Unknown,
+}
+
+/// A cheap read-only snapshot of the substrate for the TUI. Built by
+/// `EcologyService::summary` at construction and after ecology-mutating
+/// events; never on the render tick.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SubstrateStatus {
+    pub antibodies_active: u32,
+    pub candidates_pending: u32,
+    pub gate: GateStatus,
+}
+
 #[derive(Debug, Clone)]
 pub struct EcologyService {
     paths: EcologyPaths,
@@ -171,6 +195,81 @@ impl EcologyService {
             EcologyCommand::Promote => self.promote(arguments, now),
             EcologyCommand::Deny => self.deny(arguments, now),
             EcologyCommand::Delegate => Self::delegate(arguments),
+        }
+    }
+
+    /// Snapshot the substrate counts and gate state from the same primitives
+    /// the `/immunity`, `/candidates`, and `/gate` panels read. A missing db is
+    /// a valid state (0 antibodies, 0 candidates, gate per wiring), never an
+    /// error: the summary feeds a status line, and a status line that errors
+    /// out renders nothing at all.
+    pub fn summary(&self, now: DateTime<Utc>) -> SubstrateStatus {
+        let (antibodies_active, candidates_pending) = match self.open_existing() {
+            Ok(tools) => {
+                let antibodies = tools
+                    .list_antibodies()
+                    .map(|antibodies| {
+                        antibodies
+                            .iter()
+                            .filter(|antibody| {
+                                antibody.expires_at.is_none_or(|expires| expires > now)
+                            })
+                            .count()
+                    })
+                    .unwrap_or(0);
+                let candidates = tools
+                    .list_candidates(now)
+                    .map(|candidates| candidates.len())
+                    .unwrap_or(0);
+                (
+                    u32::try_from(antibodies).unwrap_or(u32::MAX),
+                    u32::try_from(candidates).unwrap_or(u32::MAX),
+                )
+            }
+            Err(_) => (0, 0),
+        };
+        // Mirrors the status matrix in `gate()`: ARMED -> Ok, ARMED-TRIPWIRE
+        // -> Tripwire, DISARMED / ARMED-FAIL-OPEN -> Disarmed, and both
+        // unreadable-config and unknown-fail-mode -> Unknown.
+        let gate = match (
+            read_gate_wiring(&self.paths.config),
+            self.paths.database.is_file(),
+        ) {
+            (
+                GateWiring::Wired {
+                    fail_mode: GateFailMode::Closed,
+                    ..
+                },
+                true,
+            ) => GateStatus::Ok,
+            (
+                GateWiring::Wired {
+                    fail_mode: GateFailMode::Closed,
+                    ..
+                },
+                false,
+            ) => GateStatus::Tripwire,
+            (
+                GateWiring::Wired {
+                    fail_mode: GateFailMode::Open,
+                    ..
+                },
+                _,
+            )
+            | (GateWiring::Unwired, _) => GateStatus::Disarmed,
+            (
+                GateWiring::Wired {
+                    fail_mode: GateFailMode::Unknown,
+                    ..
+                },
+                _,
+            )
+            | (GateWiring::Unreadable, _) => GateStatus::Unknown,
+        };
+        SubstrateStatus {
+            antibodies_active,
+            candidates_pending,
+            gate,
         }
     }
 
@@ -1036,6 +1135,100 @@ fail_mode = "closed"
         assert_eq!(antibodies.len(), 1);
         assert_eq!(antibodies[0].refusal_mode, RefusalMode::Soft);
         assert_eq!(antibodies[0].source, AntibodySource::Manual);
+    }
+
+    fn wire_gate(service: &EcologyService, fail_mode: &str) {
+        fs::write(
+            &service.paths.config,
+            format!(
+                "[[hooks]]\nevent = \"PreToolUse\"\nmatcher = \"\"\ncommand = \"$HOME/.mycel/bin/mycel-gate\"\nfail_mode = \"{fail_mode}\"\n"
+            ),
+        )
+        .expect("config");
+    }
+
+    #[test]
+    fn summary_counts_live_antibodies_and_candidates_with_an_armed_gate() {
+        let (_directory, service) = fixture();
+        wire_gate(&service, "closed");
+        let now = Utc::now();
+        service.run(EcologyCommand::Deny, "rm -rf /", now);
+        let tools = McpTools::open(&service.paths.database).expect("tools");
+        tools
+            .ingest_sentinel(
+                r#"{"timestamp":"2026-05-28T08:00:00Z","tool_name":"shell","action":"block","reason":"blocked ssh key access","matched_rule":"deny.paths: ~/.ssh/*","mode":"enforce"}"#.as_bytes(),
+                now,
+            )
+            .expect("ingest candidate");
+        assert_eq!(
+            service.summary(now),
+            SubstrateStatus {
+                antibodies_active: 1,
+                candidates_pending: 1,
+                gate: GateStatus::Ok,
+            }
+        );
+    }
+
+    #[test]
+    fn summary_excludes_expired_antibodies() {
+        let (_directory, service) = fixture();
+        let now = Utc::now();
+        let expired = Antibody {
+            id: Uuid::new_v4(),
+            signature: Signature {
+                error_class: None,
+                file_pattern: None,
+                agent_role: None,
+                tool_pattern: None,
+                command_pattern: Some("old".to_owned()),
+                scope: SignatureScope::Project,
+            },
+            source: AntibodySource::Manual,
+            severity: Severity::Refuse,
+            confidence: Confidence::Solid,
+            refusal_mode: RefusalMode::Hard,
+            remediation: "expired".to_owned(),
+            examples: Vec::new(),
+            created_at: now - chrono::Duration::days(2),
+            expires_at: Some(now - chrono::Duration::days(1)),
+            hit_count: 0,
+        };
+        McpTools::open(&service.paths.database)
+            .expect("tools")
+            .insert_antibodies([expired])
+            .expect("insert");
+        assert_eq!(service.summary(now).antibodies_active, 0);
+    }
+
+    #[test]
+    fn summary_gate_state_mirrors_the_gate_panel_matrix() {
+        // Wired fail-closed without a db: the tripwire state, every call
+        // refused. The db must NOT be created by the summary read.
+        let directory = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(directory.path().join("substrate")).expect("substrate dir");
+        let service = EcologyService::new(directory.path());
+        wire_gate(&service, "closed");
+        let summary = service.summary(Utc::now());
+        assert_eq!(summary.gate, GateStatus::Tripwire);
+        assert_eq!(summary.antibodies_active, 0);
+        assert!(!service.paths.database.exists());
+
+        // Fail-open and unwired both surrender the fail-closed guarantee.
+        wire_gate(&service, "open");
+        assert_eq!(service.summary(Utc::now()).gate, GateStatus::Disarmed);
+        fs::write(&service.paths.config, "").expect("unwired config");
+        assert_eq!(service.summary(Utc::now()).gate, GateStatus::Disarmed);
+
+        // Unreadable config and unknown fail mode are honest Unknowns.
+        fs::write(&service.paths.config, "not toml [").expect("bad config");
+        assert_eq!(service.summary(Utc::now()).gate, GateStatus::Unknown);
+        fs::write(
+            &service.paths.config,
+            "[[hooks]]\nevent = \"PreToolUse\"\ncommand = \"mycel-gate\"\n",
+        )
+        .expect("no fail mode");
+        assert_eq!(service.summary(Utc::now()).gate, GateStatus::Unknown);
     }
 
     #[test]
