@@ -96,6 +96,7 @@ use crate::{
     },
     tui::{
         components::header::{header_card, GateDisplay, HeaderData, SubstrateSummary},
+        components::input_box::{input_box, InputBoxData},
         components::inspector::{inspector, inspector_collapsed, AntibodyDetail, InspectorData},
         components::notification::notification_strip,
         components::session_rail::{session_rail, session_rail_collapsed, RailData},
@@ -3823,6 +3824,20 @@ impl InteractiveLoopState {
         }
     }
 
+    /// Live `[N running]` for the input box's status strip: the in-flight
+    /// main turn (`active`, set by `start_turn`/`start_shell`) plus streaming
+    /// Subagent frames — the same transcript-derived hyphae count the session
+    /// rail renders (see `rail_data`). Pure reads only.
+    fn running_count(&self) -> usize {
+        let hyphae = self
+            .transcript
+            .frames()
+            .iter()
+            .filter(|frame| frame.kind == FrameKind::Subagent && frame.streaming)
+            .count();
+        usize::from(self.active.is_some()) + hyphae
+    }
+
     /// Re-read the substrate summary and invalidate the header render.
     /// Event-driven only: called after `/promote`, `/deny`, and projected gate
     /// denials — never on the render tick, which must not gain I/O.
@@ -7341,21 +7356,25 @@ fn interactive_center_view(
         );
     }
 
-    let prompt = match state.reducer.input_mode {
-        crate::tui::InputMode::Prompt => "> ",
-        crate::tui::InputMode::Shell => "! ",
-    };
-    let before_cursor = format!(
-        "{prompt}{}",
-        &state.reducer.editor.text()[..state.reducer.editor.cursor()]
+    let rendered_box = input_box(
+        &InputBoxData {
+            model: state.header.model.clone(),
+            gate: state.header.substrate.gate,
+            running: state.running_count(),
+            cwd: state.header.cwd.clone(),
+            shell_mode: state.reducer.input_mode == crate::tui::InputMode::Shell,
+            text: state.reducer.editor.text().to_owned(),
+            cursor: state.reducer.editor.cursor(),
+        },
+        &theme,
+        width,
+        state.truecolor,
     );
-    let cursor_lines = wrap_text(&before_cursor, width);
-    let editor_lines = wrap_text(&format!("{prompt}{}", state.reducer.editor.text()), width);
-    let editor_start = lines.len();
-    let cursor_absolute_row = editor_start + cursor_lines.len().saturating_sub(1);
-    let cursor_absolute_column =
-        visible_width(cursor_lines.last().map(String::as_str).unwrap_or("")) + 1;
-    lines.extend(editor_lines);
+    // The box's cursor is relative to its own rows; offset by where the box
+    // starts in the center column.
+    let cursor_absolute_row = lines.len() + rendered_box.cursor_row;
+    let cursor_absolute_column = rendered_box.cursor_column;
+    lines.extend(rendered_box.lines);
 
     let viewport_start = lines.len().saturating_sub(height);
     let visible = lines.into_iter().skip(viewport_start).collect::<Vec<_>>();
@@ -11687,16 +11706,51 @@ fail_mode = "closed"
         );
         state.reducer.editor.insert_typed("hi");
 
-        // Narrow terminal: no rails, the pre-rail cursor math.
-        let (narrow, _, narrow_column) = interactive_view(&mut state, 80, 24);
-        assert_eq!(narrow_column, 5, "'> hi' puts the cursor at column 5");
+        // Narrow terminal: no rails, the cursor lands inside the drawn input
+        // box, offset by its `╎ ❯ ` lead.
+        let (narrow, narrow_row, narrow_column) = interactive_view(&mut state, 80, 24);
+        // The lead `╎ ❯ ` measures 5 cells (`❯` is 2 in the width model).
+        assert_eq!(narrow_column, 5 + 2 + 1, "'╎ ❯ hi' cursor at column 8");
         assert!(!narrow.iter().any(|line| line.contains('›')));
+        // The box's top rule carries the live status strip: the wordmark, the
+        // real model alias, and an idle (0-running) session.
+        let narrow_text = narrow
+            .iter()
+            .map(|line| strip_ansi(line))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(narrow_text.contains("+╌╌ mycel ❯"), "{narrow_text}");
+        assert!(
+            narrow_text.contains(&format!("[M] {}", prepared.model_alias)),
+            "{narrow_text}"
+        );
+        assert!(narrow_text.contains("[0 running]"), "{narrow_text}");
+
+        // Multi-line input wraps inside the box and pulls the cursor down one
+        // row per wrapped line; the wrap width is the box interior, not the
+        // full terminal width.
+        state.reducer.editor.clear();
+        state.reducer.editor.insert_typed(&"x".repeat(75)); // interior is 73
+        let (_, wrapped_row, wrapped_column) = interactive_view(&mut state, 80, 24);
+        assert_eq!(wrapped_row, narrow_row + 1);
+        assert_eq!(wrapped_column, 5 + 2 + 1);
+        state.reducer.editor.clear();
+        state.reducer.editor.insert_typed("hi");
+
+        // Shell mode swaps the prompt glyph without moving the cursor.
+        state.reducer.input_mode = crate::tui::InputMode::Shell;
+        let (shell, _, shell_column) = interactive_view(&mut state, 80, 24);
+        assert_eq!(shell_column, 4 + 2 + 1);
+        assert!(shell
+            .iter()
+            .any(|line| strip_ansi(line).starts_with("╎ ! hi")));
+        state.reducer.input_mode = crate::tui::InputMode::Prompt;
 
         // Wide terminal, both rails default-collapsed: 3-cell strips on each
         // side, one border cell each, cursor shifted by rail + border.
         let (wide, _, wide_column) = interactive_view(&mut state, 120, 24);
         assert_eq!(wide.len(), 24, "rails span the full height");
-        assert_eq!(wide_column, 5 + 3 + 1);
+        assert_eq!(wide_column, 5 + 2 + 1 + 3 + 1);
         let stripped: Vec<String> = wide.iter().map(|line| strip_ansi(line)).collect();
         assert!(
             stripped.iter().all(|line| line.contains('╎')),
@@ -11709,7 +11763,7 @@ fail_mode = "closed"
         // Open the session rail: live section content and a wider offset.
         state.tui_config.rails_session_open = true;
         let (open, _, open_column) = interactive_view(&mut state, 120, 24);
-        assert_eq!(open_column, 5 + 38 + 1);
+        assert_eq!(open_column, 5 + 2 + 1 + 38 + 1);
         let joined = open
             .iter()
             .map(|line| strip_ansi(line))
