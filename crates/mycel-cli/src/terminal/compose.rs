@@ -47,26 +47,42 @@ pub fn assemble(cols: &[Region], height: usize, border: Style) -> Vec<StyledLine
 fn push_column(spans: &mut Vec<Span>, col: &Region, row: usize) {
     let blank = StyledLine::default();
     let line = col.lines.get(row).unwrap_or(&blank);
+    spans.extend(clip_and_pad(&line.0, col.width));
+}
+
+/// Clip a run of spans to at most `max_width` visible cells, splitting the span
+/// that crosses the limit.
+pub(crate) fn clip_spans(spans: &[Span], max_width: usize) -> Vec<Span> {
+    let mut out = Vec::new();
     let mut used = 0usize;
-    for span in &line.0 {
-        if used >= col.width {
+    for span in spans {
+        if used >= max_width {
             break;
         }
-        let remaining = col.width - used;
+        let remaining = max_width - used;
         let width = visible_width(&span.text);
         if width <= remaining {
-            spans.push(span.clone());
             used += width;
+            out.push(span.clone());
         } else {
             let clipped = truncate_to_width(&span.text, remaining, "");
-            used += visible_width(&clipped);
-            spans.push(Span::new(clipped, span.style));
+            out.push(Span::new(clipped, span.style));
             break;
         }
     }
-    if used < col.width {
-        spans.push(Span::new(" ".repeat(col.width - used), Style::default()));
+    out
+}
+
+/// Fit a run of spans to exactly `target` visible cells: clip any overflow and
+/// pad short content with trailing default-style spaces. The single core behind
+/// `push_column` and the components' cell layout.
+pub(crate) fn clip_and_pad(spans: &[Span], target: usize) -> Vec<Span> {
+    let mut out = clip_spans(spans, target);
+    let used: usize = out.iter().map(|span| visible_width(&span.text)).sum();
+    if used < target {
+        out.push(Span::new(" ".repeat(target - used), Style::default()));
     }
+    out
 }
 
 #[cfg(test)]
