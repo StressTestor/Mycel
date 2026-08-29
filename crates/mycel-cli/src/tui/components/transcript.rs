@@ -4,6 +4,7 @@
 //! gutter, a per-kind marker column, then themed content. Wrapped continuation
 //! lines indent past the gutter. Pure: no I/O, colors only through `Theme`.
 
+use crate::terminal::compose::clip_spans;
 use crate::terminal::style::{Color, Span, Style, StyledLine};
 use crate::terminal::{truncate_to_width, visible_width, wrap_text};
 use crate::tui::theme::Theme;
@@ -83,7 +84,9 @@ fn deny_lines(frame: &TranscriptFrame, theme: &Theme, ctx: &FrameCtx) -> Vec<Str
     let head = text_lines.next().unwrap_or_default();
     // The first row leads with `■` and the DENY badge; the badge is rendered
     // here because the frame text says "blocked", never "DENY" (see
-    // `is_gate_deny`).
+    // `is_gate_deny`). Clip the head to the box's inner width (the same
+    // treatment the subtext gets via wrap) so a long head cannot push the
+    // closing border off the row.
     let lead = vec![
         Span::new("■ ", Style::fg(Color::Rgb(theme.accent)).bg(deny_bg)),
         Span::new(
@@ -97,7 +100,7 @@ fn deny_lines(frame: &TranscriptFrame, theme: &Theme, ctx: &FrameCtx) -> Vec<Str
             Style::fg(Color::Rgb(theme.value)).bg(deny_bg),
         ),
     ];
-    lines.push(boxed_line(lead, theme, inner_w, ctx));
+    lines.push(boxed_line(clip_spans(&lead, inner_w), theme, inner_w, ctx));
 
     for text in text_lines {
         let style = match subtext_style(text, theme) {
@@ -554,6 +557,25 @@ mod tests {
         assert!(strip_ansi(&joined).contains("DENY"));
         assert!(strip_ansi(&joined).contains("refused: protected path"));
         assert_within_width(&lines, 100);
+    }
+
+    #[test]
+    fn deny_box_clips_a_long_head_inside_the_border() {
+        let mut deny = frame(
+            FrameKind::Hook,
+            "PreToolUse hook blocked an extremely long command line that overflows any narrow terminal\n\ndetail",
+        );
+        deny.state = Some("blocked".to_owned());
+        let mut context = ctx();
+        context.width = 40;
+        let lines = transcript_frame_lines(&deny, &Theme::amanita(), &context);
+        assert_within_width(&lines, 40);
+        // The head row (after the top rule) must keep its closing border.
+        let stripped = strip_ansi(&lines[1]);
+        assert!(
+            stripped.trim_end().ends_with('╎'),
+            "long deny head must clip inside the box: {stripped:?}"
+        );
     }
 
     #[test]
