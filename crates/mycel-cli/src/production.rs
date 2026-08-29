@@ -91,7 +91,7 @@ use crate::{
         TerminalEvent, TerminalSession, TerminalSignal, TerminalSink, TerminalSize,
     },
     tui::{
-        components::header::{header_card, HeaderData, SubstrateSummary},
+        components::header::{header_card, GateDisplay, HeaderData, SubstrateSummary},
         components::transcript::{transcript_frame_lines, FrameCtx},
         ApprovalChoice, ApprovalDecision as DialogApprovalDecision, ApprovalDialogAction,
         ApprovalDialogReducer, FrameKind, LogicalAction, QuestionDialogAction,
@@ -6833,11 +6833,12 @@ fn build_header(prepared: &PreparedInteractive) -> HeaderData {
         // TODO(PR4): wire live context usage (rail data)
         ctx_used: 0,
         ctx_window: prepared.context_window,
-        // TODO(PR4): live substrate summary
+        // TODO(PR4): live substrate summary; until then the gate state is
+        // honestly Unknown, never a green ok nobody verified.
         substrate: SubstrateSummary {
             antibodies: 0,
             candidates_pending: 0,
-            gate_ok: true,
+            gate: GateDisplay::Unknown,
         },
         recent,
     }

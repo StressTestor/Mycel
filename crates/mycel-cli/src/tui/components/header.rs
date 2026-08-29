@@ -13,12 +13,23 @@ use crate::tui::theme::Theme;
 use super::fit_spans;
 use super::logo::{logo_lines, LOGO_WIDTH};
 
+/// What the card can honestly claim about the gate. `Unknown` until PR4 wires
+/// the live read; it renders as a muted dot with no verdict word, because a
+/// green `ok` on a state nobody checked would be a lie.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum GateDisplay {
+    Ok,
+    Blocked,
+    #[default]
+    Unknown,
+}
+
 /// A one-line snapshot of the substrate for the card's `substrate` section.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SubstrateSummary {
     pub antibodies: u32,
     pub candidates_pending: u32,
-    pub gate_ok: bool,
+    pub gate: GateDisplay,
 }
 
 /// The plain data the welcome card renders. No handles, no I/O — a snapshot the
@@ -170,7 +181,8 @@ fn identity_lines(data: &HeaderData, theme: &Theme) -> Vec<StyledLine> {
 
 /// The right block: `tips`, `substrate`, `recent`, with `secondary` headers and
 /// `muted` bodies. The candidate count is `accent` when pending, and the gate
-/// dot is `ok` when the gate is healthy.
+/// dot is `ok` when the gate is verified healthy, `accent` when blocked, and a
+/// wordless `muted` dot when the state is unknown.
 fn right_lines(data: &HeaderData, theme: &Theme) -> Vec<StyledLine> {
     let secondary = Style::fg(Color::Rgb(theme.secondary));
     let muted = Style::fg(Color::Rgb(theme.muted));
@@ -182,16 +194,32 @@ fn right_lines(data: &HeaderData, theme: &Theme) -> Vec<StyledLine> {
     } else {
         muted
     };
-    let (dot_style, gate_word) = if data.substrate.gate_ok {
-        (ok, "ok")
-    } else {
-        (accent, "blocked")
+    let (dot_style, gate_word) = match data.substrate.gate {
+        GateDisplay::Ok => (ok, Some("ok")),
+        GateDisplay::Blocked => (accent, Some("blocked")),
+        GateDisplay::Unknown => (muted, None),
     };
     let recent = if data.recent.is_empty() {
         "no recent sessions".to_owned()
     } else {
         data.recent.join(" · ")
     };
+
+    let mut substrate_line = vec![
+        Span::new(
+            format!("{} antibodies · ", data.substrate.antibodies),
+            muted,
+        ),
+        Span::new(
+            format!("{} candidate pending", data.substrate.candidates_pending),
+            candidate_style,
+        ),
+        Span::new(format!(" · {GATE_TAGLINE} "), muted),
+        Span::new("●", dot_style),
+    ];
+    if let Some(word) = gate_word {
+        substrate_line.push(Span::new(format!(" {word}"), muted));
+    }
 
     vec![
         StyledLine(vec![Span::new("tips", secondary)]),
@@ -200,19 +228,7 @@ fn right_lines(data: &HeaderData, theme: &Theme) -> Vec<StyledLine> {
             muted,
         )]),
         StyledLine(vec![Span::new("substrate", secondary)]),
-        StyledLine(vec![
-            Span::new(
-                format!("{} antibodies · ", data.substrate.antibodies),
-                muted,
-            ),
-            Span::new(
-                format!("{} candidate pending", data.substrate.candidates_pending),
-                candidate_style,
-            ),
-            Span::new(format!(" · {GATE_TAGLINE} "), muted),
-            Span::new("●", dot_style),
-            Span::new(format!(" {gate_word}"), muted),
-        ]),
+        StyledLine(substrate_line),
         StyledLine(vec![Span::new("recent", secondary)]),
         StyledLine(vec![Span::new(recent, muted)]),
     ]
@@ -246,7 +262,7 @@ mod tests {
             substrate: SubstrateSummary {
                 antibodies: 23,
                 candidates_pending: 1,
-                gate_ok: true,
+                gate: GateDisplay::Ok,
             },
             recent: vec!["cordyceps-patch".to_owned()],
         }
@@ -350,6 +366,37 @@ mod tests {
             joined.contains("anthropic:claude-sonnet-4-6-20250929"),
             "alias must not be clipped: {joined}"
         );
+    }
+
+    #[test]
+    fn unknown_gate_renders_a_muted_dot_with_no_verdict() {
+        let mut data = sample();
+        data.substrate.gate = GateDisplay::Unknown;
+        let lines = header_card(&data, &Theme::amanita(), 120, true);
+        let joined = lines.join("\n");
+        // muted #626d61 immediately styles the dot, never ok's green.
+        assert!(joined.contains("38;2;98;109;97m●"), "{joined}");
+        assert!(!joined.contains("38;2;85;168;104m●"));
+        let stripped = lines
+            .iter()
+            .map(|line| strip_ansi(line))
+            .collect::<String>();
+        assert!(!stripped.contains("● ok"), "{stripped}");
+        assert!(!stripped.contains("blocked"), "{stripped}");
+    }
+
+    #[test]
+    fn verified_gate_states_keep_their_verdicts() {
+        let joined = header_card(&sample(), &Theme::amanita(), 120, true).join("\n");
+        // Ok: green #55a868 dot plus the word.
+        assert!(joined.contains("38;2;85;168;104m●"));
+        let mut data = sample();
+        data.substrate.gate = GateDisplay::Blocked;
+        // 140 cells: "blocked" is 5 cells longer than "ok" and must not clip.
+        let blocked = header_card(&data, &Theme::amanita(), 140, true).join("\n");
+        // Blocked: accent #e05a1e dot plus the word.
+        assert!(blocked.contains("38;2;224;90;30m●"));
+        assert!(strip_ansi(&blocked).contains("blocked"));
     }
 
     #[test]
