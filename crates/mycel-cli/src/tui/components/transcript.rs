@@ -36,8 +36,102 @@ pub fn transcript_frame_lines(
 ) -> Vec<String> {
     match frame.kind {
         FrameKind::Tool => tool_lines(frame, theme, ctx),
+        FrameKind::Hook if is_gate_deny(frame) => deny_lines(frame, theme, ctx),
         _ => plain_lines(frame, theme, ctx),
     }
+}
+
+/// Whether a Hook frame is a gate denial.
+///
+/// Detection keys off the shape a denial actually has in today's pipeline:
+/// mycel-gate is a fail-closed PreToolUse hook binary that emits
+/// `"permissionDecision": "deny"` (crates/mycel-gate/src/main.rs:1-4,209); the
+/// hook runner maps that to `HookExecution.blocked`
+/// (crates/mycel-agent-runtime/src/hooks.rs:560-566,608), `emit_hook_report`
+/// publishes `AgentEvent::HookResult { blocked: Some(true), .. }`
+/// (crates/mycel-agent-runtime/src/turn.rs:1444-1455), production projects it
+/// to `TranscriptEvent::HookResult { blocked: true }`, and the reducer stores
+/// `kind: Hook, state: Some("blocked")` (crates/mycel-cli/src/tui/transcript.rs
+/// HookResult arm). There is no structured deny payload on the frame yet (PR4
+/// adds the gate-decision ring), so `state == "blocked"` is the whole signal
+/// and the DENY badge below is supplied by the renderer, not the text.
+fn is_gate_deny(frame: &TranscriptFrame) -> bool {
+    frame.kind == FrameKind::Hook && frame.state.as_deref() == Some("blocked")
+}
+
+/// A gate denial as a dashed box: `deny_border` rules and `╎` sides,
+/// content on `deny_bg`, an accent `■` lead with a bold DENY badge, and the
+/// remaining lines in `secondary` (diff lines keep diff styling).
+fn deny_lines(frame: &TranscriptFrame, theme: &Theme, ctx: &FrameCtx) -> Vec<String> {
+    let border = Style::fg(Color::Rgb(theme.deny_border));
+    let deny_bg = Color::Rgb(theme.deny_bg);
+    let secondary = Style::fg(Color::Rgb(theme.secondary)).bg(deny_bg);
+    let indent = Span::new(" ".repeat(GUTTER_W), Style::default());
+
+    let box_w = ctx.width.saturating_sub(GUTTER_W);
+    // `╎ ` + content + ` ╎`
+    let inner_w = box_w.saturating_sub(4).max(1);
+    let rule = "╌".repeat(box_w);
+
+    let mut lines = vec![StyledLine(vec![
+        gutter_span(frame.at_ms, theme),
+        Span::new(rule.clone(), border),
+    ])
+    .render(ctx.width, ctx.truecolor)];
+
+    let mut text_lines = frame.text.lines();
+    let head = text_lines.next().unwrap_or_default();
+    // The first row leads with `■` and the DENY badge; the badge is rendered
+    // here because the frame text says "blocked", never "DENY" (see
+    // `is_gate_deny`).
+    let lead = vec![
+        Span::new("■ ", Style::fg(Color::Rgb(theme.accent)).bg(deny_bg)),
+        Span::new(
+            "DENY",
+            Style::fg(Color::Rgb(theme.deny_bg))
+                .bg(Color::Rgb(theme.accent))
+                .bold(),
+        ),
+        Span::new(
+            format!(" {head}"),
+            Style::fg(Color::Rgb(theme.value)).bg(deny_bg),
+        ),
+    ];
+    lines.push(boxed_line(lead, theme, inner_w, ctx));
+
+    for text in text_lines {
+        let style = match subtext_style(text, theme) {
+            diff if diff.bg.is_some() => diff,
+            _ => secondary,
+        };
+        for wrapped in wrap_text(text, inner_w) {
+            lines.push(boxed_line(vec![Span::new(wrapped, style)], theme, inner_w, ctx));
+        }
+    }
+
+    lines.push(
+        StyledLine(vec![indent, Span::new(rule, border)]).render(ctx.width, ctx.truecolor),
+    );
+    lines
+}
+
+/// One content row of the deny box: blank gutter, `╎` sides, and the content
+/// padded to the box's inner width on `deny_bg`.
+fn boxed_line(content: Vec<Span>, theme: &Theme, inner_w: usize, ctx: &FrameCtx) -> String {
+    let border = Style::fg(Color::Rgb(theme.deny_border));
+    let deny_bg = Color::Rgb(theme.deny_bg);
+    let used: usize = content.iter().map(|span| visible_width(&span.text)).sum();
+    let mut spans = vec![
+        Span::new(" ".repeat(GUTTER_W), Style::default()),
+        Span::new("╎ ", border),
+    ];
+    spans.extend(content);
+    spans.push(Span::new(
+        " ".repeat(inner_w.saturating_sub(used)),
+        Style::default().bg(deny_bg),
+    ));
+    spans.push(Span::new(" ╎", border));
+    StyledLine(spans).render(ctx.width, ctx.truecolor)
 }
 
 /// A tool row: `⎿` tree glyph, status dot or spinner, the first text line as
@@ -135,25 +229,31 @@ fn marker_and_styles(kind: FrameKind, theme: &Theme) -> (&'static str, Style, St
     }
 }
 
-/// The gutter + marker frame layout shared by every non-tool kind.
+/// The gutter + marker frame layout shared by every non-tool kind. Hook
+/// frames keep diff styling on their subtext lines.
 fn plain_lines(frame: &TranscriptFrame, theme: &Theme, ctx: &FrameCtx) -> Vec<String> {
     let (marker, marker_style, content_style) = marker_and_styles(frame.kind, theme);
     let content_w = ctx.width.saturating_sub(GUTTER_W + MARKER_W).max(1);
-    wrap_text(&frame.text, content_w)
-        .into_iter()
-        .enumerate()
-        .map(|(row, text)| {
+    let diff_aware = frame.kind == FrameKind::Hook;
+    let mut lines = Vec::new();
+    for (source_row, text) in frame.text.split('\n').enumerate() {
+        let style = match subtext_style(text, theme) {
+            diff if diff_aware && source_row > 0 && diff.bg.is_some() => diff,
+            _ => content_style,
+        };
+        for wrapped in wrap_text(text, content_w) {
             let mut spans = Vec::with_capacity(3);
-            if row == 0 {
+            if lines.is_empty() {
                 spans.push(gutter_span(frame.at_ms, theme));
                 spans.push(Span::new(format!("{marker} "), marker_style));
             } else {
                 spans.push(Span::new(" ".repeat(GUTTER_W + MARKER_W), Style::default()));
             }
-            spans.push(Span::new(text, content_style));
-            StyledLine(spans).render(ctx.width, ctx.truecolor)
-        })
-        .collect()
+            spans.push(Span::new(wrapped, style));
+            lines.push(StyledLine(spans).render(ctx.width, ctx.truecolor));
+        }
+    }
+    lines
 }
 
 /// The 10-cell timestamp gutter: `HH:MM:SS` in `faint` plus a 2-cell gap.
@@ -419,6 +519,55 @@ mod tests {
         );
         assert!(!strip_ansi(&lines[0]).contains("gate allow"));
         assert_within_width(&lines, 24);
+    }
+
+    /// The exact shape `TranscriptReducer` produces for a gate denial (see
+    /// `is_gate_deny` for the evidence chain).
+    fn gate_deny_frame() -> TranscriptFrame {
+        let mut deny = frame(
+            FrameKind::Hook,
+            "PreToolUse hook blocked\n\nwrite ~/.mycel/config.toml refused: protected path",
+        );
+        deny.state = Some("blocked".to_owned());
+        deny
+    }
+
+    #[test]
+    fn gate_denial_renders_the_deny_box() {
+        let lines = transcript_frame_lines(&gate_deny_frame(), &Theme::amanita(), &ctx());
+        let joined = lines.join("\n");
+        // dashed box in deny_border #6b3111
+        assert!(joined.contains("38;2;107;49;17"));
+        assert!(joined.contains('╎'));
+        // content on deny_bg #140a04
+        assert!(joined.contains("48;2;20;10;4"));
+        // accent lead marker
+        assert!(joined.contains('■'));
+        // DENY badge on an accent background
+        assert!(joined.contains("48;2;224;90;30"));
+        assert!(strip_ansi(&joined).contains("DENY"));
+        assert!(strip_ansi(&joined).contains("refused: protected path"));
+        assert_within_width(&lines, 100);
+    }
+
+    #[test]
+    fn non_deny_hook_stays_a_plain_muted_row_with_diff_styling() {
+        let mut hook = frame(
+            FrameKind::Hook,
+            "PostToolUse hook\n\n- old line\n+ new line",
+        );
+        hook.state = Some("completed".to_owned());
+        let lines = transcript_frame_lines(&hook, &Theme::amanita(), &ctx());
+        let joined = lines.join("\n");
+        // no deny box
+        assert!(!joined.contains('╎') && !joined.contains('■'));
+        // muted head #626d61
+        assert!(joined.contains("38;2;98;109;97"));
+        // diff lines still style add/del on diff_bg
+        assert!(joined.contains("38;2;168;176;163"));
+        assert!(joined.contains("38;2;125;133;121"));
+        assert!(joined.contains("48;2;13;15;12"));
+        assert_within_width(&lines, 100);
     }
 
     #[test]
