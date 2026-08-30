@@ -508,28 +508,10 @@ impl ProviderCommandService {
     }
 
     pub fn list(&self) -> Result<Vec<ConfiguredProviderView>, ProviderCommandError> {
-        let config = self.load_config()?;
-        Ok(config
-            .providers
-            .iter()
-            .map(|(id, provider)| ConfiguredProviderView {
-                id: id.clone(),
-                provider_type: provider.provider_type,
-                base_url: provider.base_url.clone(),
-                model_count: config
-                    .models
-                    .values()
-                    .filter(|model| model.provider == *id)
-                    .count(),
-                credential: credential_status(provider, self.environment.as_ref()),
-                is_default: config.default_provider.as_deref() == Some(id)
-                    || config
-                        .default_model
-                        .as_ref()
-                        .and_then(|model| config.models.get(model))
-                        .is_some_and(|model| model.provider == *id),
-            })
-            .collect())
+        Ok(provider_views(
+            &self.load_config()?,
+            self.environment.as_ref(),
+        ))
     }
 
     pub fn remove(
@@ -770,6 +752,36 @@ impl ProviderCommandService {
         })?;
         Ok(summary(&config))
     }
+}
+
+/// Snapshot the configured providers for display. Free-standing so the
+/// interactive loop can build dialog rows from an already-loaded config
+/// without constructing the full command service. (｡◕‿↼) same rows, no ceremony
+pub fn provider_views(
+    config: &MycelConfig,
+    environment: &dyn ProviderCommandEnvironment,
+) -> Vec<ConfiguredProviderView> {
+    config
+        .providers
+        .iter()
+        .map(|(id, provider)| ConfiguredProviderView {
+            id: id.clone(),
+            provider_type: provider.provider_type,
+            base_url: provider.base_url.clone(),
+            model_count: config
+                .models
+                .values()
+                .filter(|model| model.provider == *id)
+                .count(),
+            credential: credential_status(provider, environment),
+            is_default: config.default_provider.as_deref() == Some(id)
+                || config
+                    .default_model
+                    .as_ref()
+                    .and_then(|model| config.models.get(model))
+                    .is_some_and(|model| model.provider == *id),
+        })
+        .collect()
 }
 
 fn install_plan(
@@ -1333,6 +1345,43 @@ max_context_size = 8192
         assert!(removed.models.is_empty());
         assert_eq!(removed.default_model, None);
         assert!(manager.remove("old").is_err());
+    }
+
+    #[test]
+    fn provider_views_reports_defaults_and_credentials_from_a_parsed_config() {
+        let config = parse_config(
+            r#"
+default_model = "local"
+
+[providers.local]
+type = "openai"
+base_url = "http://127.0.0.1:11434/v1"
+api_key = "test-key"
+
+[models.local]
+provider = "local"
+model = "gpt-test"
+max_context_size = 8192
+max_output_size = 128
+
+[providers.remote]
+type = "anthropic"
+base_url = "https://example.invalid/v1"
+"#,
+        )
+        .expect("config");
+        let views = provider_views(&config, &FakeEnvironment(Mutex::new(BTreeMap::new())));
+        let local = views.iter().find(|view| view.id == "local").expect("local");
+        assert_eq!(local.credential, CredentialStatus::Configured);
+        assert!(local.is_default);
+        assert_eq!(local.model_count, 1);
+        let remote = views
+            .iter()
+            .find(|view| view.id == "remote")
+            .expect("remote");
+        assert_eq!(remote.credential, CredentialStatus::Missing);
+        assert!(!remote.is_default);
+        assert_eq!(remote.model_count, 0);
     }
 
     #[tokio::test]
