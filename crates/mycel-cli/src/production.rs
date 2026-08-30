@@ -73,7 +73,8 @@ use crate::{
         set_installed_plugin_enabled, set_installed_plugin_mcp_enabled,
     },
     provider_command_runner::{
-        ProcessProviderCommandStderr, ProviderCommandRunner, ProviderCommandRunnerDependencies,
+        credential_name, provider_type_name, ProcessProviderCommandStderr, ProviderCommandRunner,
+        ProviderCommandRunnerDependencies,
     },
     provider_commands::{
         provider_views, AtomicTomlConfigStore, ConfiguredProviderView, NoProviderCommandInput,
@@ -105,9 +106,10 @@ use crate::{
         components::transcript::{transcript_frame_lines, FrameCtx},
         theme::Theme,
         ApprovalChoice, ApprovalDecision as DialogApprovalDecision, ApprovalDialogAction,
-        ApprovalDialogReducer, FrameKind, GateLog, LogicalAction, QuestionDialogAction,
-        QuestionDialogReducer, QuestionItem, QuestionOption as DialogQuestionOption, SessionPhase,
-        SessionReducer, SubmissionMode, TranscriptEvent, TranscriptReducer,
+        ApprovalDialogReducer, FrameKind, GateLog, LogicalAction, ProviderManagerReducer,
+        ProviderRow, QuestionDialogAction, QuestionDialogReducer, QuestionItem,
+        QuestionOption as DialogQuestionOption, SessionPhase, SessionReducer, SubmissionMode,
+        TranscriptEvent, TranscriptReducer,
     },
     tui_config::{
         active_theme, load_tui_config, save_tui_config, ThemeName, TuiConfig, LIGHT_THEME_WARNING,
@@ -2890,9 +2892,6 @@ struct PreparedInteractive {
     provider: String,
     /// Configured-provider snapshot for the in-TUI manager dialog, taken at
     /// prepare time. Transitions re-prepare, so mutations refresh it.
-    // Not yet read outside tests: the dialog that consumes it lands in a
-    // later task in this series.
-    #[allow(dead_code)]
     provider_views: Vec<ConfiguredProviderView>,
     context_window: u64,
     thinking_effort: Option<ThinkingEffort>,
@@ -3576,6 +3575,9 @@ struct InteractiveLoopState {
     btw: Option<BtwPanelState>,
     exit_after_turn: bool,
     dialogs: DialogHost,
+    /// Local provider-manager modal. RPC dialogs outrank it: input and render
+    /// both check `dialogs` first. they ALL yield to approvals eventually XX
+    provider_manager: Option<ProviderManagerReducer>,
     messages: mpsc::Receiver<InteractiveRuntimeMessage>,
     message_sender: mpsc::Sender<InteractiveRuntimeMessage>,
     turn_finished_sender: tokio::sync::mpsc::UnboundedSender<Result<InteractiveTurnResult, String>>,
@@ -3739,6 +3741,7 @@ impl InteractiveLoopState {
             btw: None,
             exit_after_turn: false,
             dialogs: DialogHost::new(Arc::clone(&prepared.dialog_port), dialog_receiver),
+            provider_manager: None,
             messages,
             message_sender: sender,
             turn_finished_sender,
@@ -4645,6 +4648,37 @@ impl InteractiveLoopState {
         }
     }
 
+    fn open_provider_manager(&mut self, prepared: &PreparedInteractive) {
+        let mut rows: Vec<ProviderRow> = prepared
+            .provider_views
+            .iter()
+            .map(|view| ProviderRow {
+                id: view.id.clone(),
+                label: format!(
+                    "{} · {} · {} model{} · {}{}",
+                    view.id,
+                    provider_type_name(view.provider_type),
+                    view.model_count,
+                    if view.model_count == 1 { "" } else { "s" },
+                    credential_name(&view.credential),
+                    if view.is_default { " · default" } else { "" },
+                ),
+                provider_ids: vec![view.id.clone()],
+                add_action: false,
+            })
+            .collect();
+        rows.push(ProviderRow {
+            id: "add".to_owned(),
+            label: "add a provider".to_owned(),
+            provider_ids: Vec::new(),
+            add_action: true,
+        });
+        self.provider_manager = Some(ProviderManagerReducer::new(
+            rows,
+            Some(prepared.provider.as_str()),
+        ));
+    }
+
     fn handle_session_command(
         &mut self,
         executor: &tokio::runtime::Runtime,
@@ -5066,6 +5100,11 @@ impl InteractiveLoopState {
         }
         for command in ["/provider", "/providers"] {
             if let Some(arguments) = slash_arguments(input, command) {
+                let words = arguments.split_whitespace().collect::<Vec<_>>();
+                if matches!(words.as_slice(), [] | ["list"]) {
+                    self.open_provider_manager(prepared);
+                    return true;
+                }
                 match parse_interactive_provider_command(arguments) {
                     Ok((command, close_after)) => {
                         self.session_transition = Some(InteractiveSessionTransition::Provider {
@@ -12587,6 +12626,69 @@ max_context_size = 8192
         assert_eq!(value["providers"][0]["credential"], "configured");
         assert!(!output.stdout.contains("test-key"));
         assert!(!output.stderr.contains("test-key"));
+    }
+
+    #[test]
+    fn bare_provider_command_opens_the_manager_dialog_instead_of_a_transition() {
+        let temp = TempDir::new().expect("temp");
+        let home = temp.path().join("mycel");
+        fs::create_dir_all(&home).expect("MYCEL_HOME");
+        fs::write(home.join(CONFIG_FILE), config()).expect("provider config");
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Auto))
+            .expect("prepare");
+        let executor = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("executor");
+        let mut state = InteractiveLoopState::new(
+            &executor,
+            &prepared,
+            TerminalSize {
+                columns: 120,
+                rows: 40,
+            },
+        );
+
+        let handled = state.handle_session_command(&executor, &prepared, "/provider");
+        assert!(handled);
+        assert!(
+            state.session_transition.is_none(),
+            "list must not tear the session down"
+        );
+        let manager = state.provider_manager.as_ref().expect("dialog open");
+        assert_eq!(manager.rows.len(), 2, "one provider row + add row");
+        assert_eq!(manager.rows[0].provider_ids, vec!["local".to_owned()]);
+        assert!(manager.rows[0].label.contains("local"));
+        assert!(manager.rows[0].label.contains("configured"));
+        assert!(manager.rows[1].add_action);
+        assert_eq!(
+            manager.selected, 0,
+            "selection starts on the active provider"
+        );
+
+        state.provider_manager = None;
+        let handled = state.handle_session_command(&executor, &prepared, "/provider list --json");
+        assert!(handled);
+        assert!(state.provider_manager.is_none());
+        assert!(
+            matches!(
+                state.session_transition,
+                Some(InteractiveSessionTransition::Provider {
+                    close_after: false,
+                    ..
+                })
+            ),
+            "list --json keeps the transition path",
+        );
     }
 
     #[test]

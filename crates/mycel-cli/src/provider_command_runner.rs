@@ -561,7 +561,7 @@ fn format_values(values: &[String]) -> String {
     }
 }
 
-fn credential_name(credential: &CredentialStatus) -> String {
+pub(crate) fn credential_name(credential: &CredentialStatus) -> String {
     match credential {
         CredentialStatus::Configured => "configured".to_owned(),
         CredentialStatus::Codex => "codex".to_owned(),
@@ -570,7 +570,7 @@ fn credential_name(credential: &CredentialStatus) -> String {
     }
 }
 
-const fn provider_type_name(provider_type: ProviderType) -> &'static str {
+pub(crate) const fn provider_type_name(provider_type: ProviderType) -> &'static str {
     match provider_type {
         ProviderType::Anthropic => "anthropic",
         ProviderType::OpenAi => "openai",
