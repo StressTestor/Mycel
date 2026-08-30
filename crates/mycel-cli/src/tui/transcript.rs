@@ -31,6 +31,9 @@ pub struct TranscriptFrame {
     pub tool_status: Option<ToolFrameStatus>,
     pub entity_id: Option<String>,
     pub state: Option<String>,
+    /// The `now_ms` the frame was first created at. Coalesced and streamed
+    /// appends keep the original value.
+    pub at_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,6 +137,7 @@ impl TranscriptReducer {
                     tool_status: None,
                     entity_id: None,
                     state: None,
+                    at_ms: now_ms,
                 });
             }
             TranscriptEvent::Status(text) => {
@@ -147,6 +151,7 @@ impl TranscriptReducer {
                     tool_status: None,
                     entity_id: None,
                     state: None,
+                    at_ms: now_ms,
                 });
             }
             TranscriptEvent::TurnStarted => self.end_stream(),
@@ -178,6 +183,7 @@ impl TranscriptReducer {
                     tool_status: Some(ToolFrameStatus::Running),
                     entity_id: None,
                     state: Some("running".to_owned()),
+                    at_ms: now_ms,
                 });
             }
             TranscriptEvent::ToolProgress { id, text } => {
@@ -225,6 +231,7 @@ impl TranscriptReducer {
                     tool_status: None,
                     entity_id: None,
                     state: Some(if blocked { "blocked" } else { "completed" }.to_owned()),
+                    at_ms: now_ms,
                 });
             }
             TranscriptEvent::Retrying {
@@ -240,6 +247,7 @@ impl TranscriptReducer {
                     tool_status: None,
                     entity_id: None,
                     state: Some("retrying".to_owned()),
+                    at_ms: now_ms,
                 });
             }
             TranscriptEvent::SubagentState {
@@ -255,7 +263,7 @@ impl TranscriptReducer {
                     state.as_str(),
                     "spawned" | "started" | "suspended" | "backgrounded"
                 );
-                self.upsert_entity(FrameKind::Subagent, id, text, state, active);
+                self.upsert_entity(FrameKind::Subagent, id, text, state, active, now_ms);
             }
             TranscriptEvent::BackgroundTaskState {
                 id,
@@ -272,6 +280,7 @@ impl TranscriptReducer {
                     format!("{kind}: {description}"),
                     state,
                     active,
+                    now_ms,
                 );
             }
             TranscriptEvent::GoalState {
@@ -291,6 +300,7 @@ impl TranscriptReducer {
                     tool_status: None,
                     entity_id: None,
                     state: Some(status),
+                    at_ms: now_ms,
                 });
             }
             TranscriptEvent::McpServerState {
@@ -302,7 +312,7 @@ impl TranscriptReducer {
                 self.end_stream();
                 let text = detail.map_or(name.clone(), |detail| format!("{name}\n{detail}"));
                 let active = status == "pending";
-                self.upsert_entity(FrameKind::Mcp, name, text, status, active);
+                self.upsert_entity(FrameKind::Mcp, name, text, status, active, now_ms);
             }
             TranscriptEvent::CompactionStarted { instruction } => {
                 self.flush_pending();
@@ -313,6 +323,7 @@ impl TranscriptReducer {
                     instruction.unwrap_or_else(|| "Compacting context".to_owned()),
                     "running".to_owned(),
                     true,
+                    now_ms,
                 );
             }
             TranscriptEvent::CompactionCompleted {
@@ -328,6 +339,7 @@ impl TranscriptReducer {
                     format!("{tokens_before} → {tokens_after} tokens\n{summary}"),
                     "completed".to_owned(),
                     false,
+                    now_ms,
                 );
             }
             TranscriptEvent::CompactionCancelled => {
@@ -339,6 +351,7 @@ impl TranscriptReducer {
                     "Compaction cancelled".to_owned(),
                     "cancelled".to_owned(),
                     false,
+                    now_ms,
                 );
             }
             TranscriptEvent::CompactionBlocked { reason } => {
@@ -350,6 +363,7 @@ impl TranscriptReducer {
                     reason.unwrap_or_else(|| "Compaction blocked".to_owned()),
                     "blocked".to_owned(),
                     false,
+                    now_ms,
                 );
             }
             TranscriptEvent::StepCompleted | TranscriptEvent::TurnEnded => {
@@ -395,7 +409,7 @@ impl TranscriptReducer {
         let Some(kind) = self.pending_kind.take() else {
             return;
         };
-        self.pending_since_ms = None;
+        let since_ms = self.pending_since_ms.take().unwrap_or_default();
         if self.pending_text.is_empty() {
             return;
         }
@@ -420,6 +434,7 @@ impl TranscriptReducer {
             tool_status: None,
             entity_id: None,
             state: None,
+            at_ms: since_ms,
         });
         self.active_stream = Some((kind, index));
     }
@@ -459,6 +474,7 @@ impl TranscriptReducer {
         text: String,
         state: String,
         active: bool,
+        now_ms: u64,
     ) {
         if let Some(frame) = self
             .frames
@@ -479,6 +495,7 @@ impl TranscriptReducer {
             tool_status: None,
             entity_id: Some(id),
             state: Some(state),
+            at_ms: now_ms,
         });
     }
 }
@@ -486,6 +503,35 @@ impl TranscriptReducer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frames_carry_the_now_ms_they_were_first_created_at() {
+        let mut reducer = TranscriptReducer::default();
+        reducer.push(TranscriptEvent::UserMessage("hi".to_owned()), 9_000_000);
+        assert_eq!(reducer.frames()[0].at_ms, 9_000_000);
+
+        reducer.push(
+            TranscriptEvent::AssistantDelta("first".to_owned()),
+            9_000_100,
+        );
+        reducer.flush_now();
+        reducer.push(
+            TranscriptEvent::AssistantDelta(" second".to_owned()),
+            9_500_000,
+        );
+        reducer.flush_now();
+        let frame = reducer
+            .frames()
+            .iter()
+            .rev()
+            .find(|frame| frame.kind == FrameKind::Assistant)
+            .expect("assistant frame");
+        assert_eq!(frame.text, "first second");
+        assert_eq!(
+            frame.at_ms, 9_000_100,
+            "streamed appends keep the original at_ms"
+        );
+    }
 
     /// Streamed assistant deltas coalesce for COALESCE_MS before they become
     /// a frame. Anything that reads `frames()` right after a delta lands

@@ -1,8 +1,10 @@
 //! Terminal primitives and the injectable production TTY ownership boundary.
 
+pub mod compose;
 mod driver;
 mod input;
 mod render;
+pub mod style;
 mod unicode;
 mod virtual_terminal;
 

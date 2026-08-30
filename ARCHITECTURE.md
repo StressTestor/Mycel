@@ -69,7 +69,13 @@ Mycel/
     mycel-cli/               bins: mycel and mycel-substrate; terminal + ecology UI
       src/clipboard.rs       bounded macOS/Linux image paste -> provider media parts
       src/system_prompt.rs   bounded environment, instructions, tree, and skill context
-      src/tui_config.rs      private terminal theme/editor/client preferences
+      src/terminal/style.rs  styled spans: 24-bit SGR encoding with a 256-color downgrade
+      src/terminal/compose.rs  fixed-column region compositor + the shared clip-and-pad core
+      src/tui/theme.rs       theme model: seven built-in themes, derived TUI-only color roles
+      src/tui/gate_log.rs    bounded in-memory ring of observed gate decisions for the inspector
+      src/tui/components/    pure TUI components: pixel logo, welcome header card, transcript frames,
+                             session rail, inspector, notification strip, input box, status bar, flourish
+      src/tui_config.rs      private terminal theme/editor/rails/startup/client preferences
       src/workspace_config.rs  private project-local additional-root persistence
     mycel-gate/              PreToolUse hook bin, fail-closed antibody gate
     mycel-observe/           PostToolUseFailure hook bin, captures failures (m2)
@@ -183,11 +189,32 @@ followed symlink into a wide tree stops at the directory-visit cap with a
 ### terminal client state and side questions
 
 Client-only preferences live in private `MYCEL_HOME/tui.toml`, separate from
-provider and agent policy in `config.toml`. The Rust TUI accepts only the built-in
-`auto`, `dark`, and `light` themes; it does not reproduce the inherited custom
-theme/plugin machinery. `/theme`, `/editor`, `/settings`, and `/reload-tui`
-update or reload the bounded TOML document through a 0600 atomic replace.
-ANSI control sequences are excluded from width and truncation calculations.
+provider and agent policy in `config.toml`. The Rust TUI accepts the seven
+built-in named themes (`amanita` default, `hacker`, `foxfire`, `cordyceps`,
+`phosphor`, `amber`, `synthwave`) plus the `auto`/`dark`/`light` aliases;
+`auto` and `dark` resolve to amanita, and `light` resolves to amanita with a
+startup warning until a light palette is designed. It does not reproduce the
+inherited custom theme/plugin machinery. `/theme`, `/editor`, `/settings`, and
+`/reload-tui` update or reload the bounded TOML document through a 0600 atomic
+replace. Interactive rendering goes through pure components in
+`src/tui/components/`: a themed welcome header card (logo, session identity,
+tips/substrate/recent, staged narrow-width collapse), a rich transcript
+renderer (wall-clock gutter, per-kind markers, tool rows with spinner/status,
+gate denials as a dashed deny box), collapsible body-band rails (the left
+session rail and the right gate inspector fed by `tui/gate_log.rs`, toggled
+with ctrl+l / ctrl+r and persisted under `tui.toml [rails]`, collapsing before
+they starve the center column), a candidate notification strip between the
+header and the transcript, a drawn input box whose top rule carries the live
+model/gate/running/cwd strip (the mockup's context meter is omitted: occupancy
+is not derivable from the loop's event stream), and a full-width bottom status
+bar whose keybind hints render only bindings the reducer actually has. Counts
+pluralize through `util::count_noun`. `tui.toml [startup] flourish` (default
+false) enables a ~1s pre-loop logo sequence with the theme's tag line and the
+live gate summary; ctrl+c or a signal during it exits cleanly because the
+frame cadence runs through the terminal event reader. The loop caches the
+resolved theme, truecolor detection, and the rendered header; the caches
+re-resolve on `/theme` and `/reload-tui` and invalidate on resize. ANSI
+control sequences are excluded from width and truncation calculations.
 Ctrl-G restores the terminal before running the explicitly configured editor
 against a private bounded temporary file, then resumes the same session with
 the edited draft.
@@ -434,6 +461,26 @@ mycel-substrate maintain --db <path> --workspace <dir> [--now <ts>]
 ```
 
 ## last updated
+
+2026-08-29 — TUI rebuild (PR4-PR5) landed: collapsible body-band rails
+(`components/session_rail.rs`, `components/inspector.rs`, decision ring in
+`tui/gate_log.rs`; ctrl+l / ctrl+r toggles persisted under `tui.toml [rails]`)
+and the remaining chrome (`components/notification.rs`,
+`components/input_box.rs`, `components/status_bar.rs`,
+`components/flourish.rs`): candidate notification strip, drawn input box with
+the live inline status strip and in-box cursor/wrap math, reserved bottom
+status bar, pluralized live counts, and the opt-in `[startup] flourish = true`
+pre-loop logo sequence (default off; interruptible through the terminal event
+reader).
+
+2026-08-28 — TUI rebuild (PR1-PR3) landed: `terminal/style.rs` styled spans,
+`terminal/compose.rs` compositor with the shared clip-and-pad core,
+`tui/theme.rs` seven-theme model, and `tui/components/` (logo, welcome header
+card, rich transcript renderer with deny boxes). `tui.toml` now accepts the
+seven named themes; `light` warns and resolves to amanita. The interactive loop
+caches theme/truecolor/header render, re-resolved on `/theme` and `/reload-tui`
+and invalidated on resize, and startup reuses the session-index discovery for
+the header's recent list instead of a second locked repair scan.
 
 2026-08-28 — added `docs/design/`: two self-contained HTML design references for
 the TUI (a frozen mid-session frame showing a gate DENY, and a looping boot

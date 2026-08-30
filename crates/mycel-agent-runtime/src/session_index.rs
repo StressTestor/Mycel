@@ -77,6 +77,20 @@ impl SessionIndex {
         work_dir: &Path,
         additional_dirs: &[PathBuf],
     ) -> Result<SessionSummary, SessionIndexError> {
+        self.register_session_discovering(id, work_dir, additional_dirs)
+            .map(|(summary, _)| summary)
+    }
+
+    /// `register_session`, but also returning the full repaired discovery the
+    /// registration already produced, so a caller that wants the session list
+    /// (for example a recent-sessions display) does not have to re-acquire the
+    /// index lock and re-run the repair scan through `list`.
+    pub fn register_session_discovering(
+        &self,
+        id: &str,
+        work_dir: &Path,
+        additional_dirs: &[PathBuf],
+    ) -> Result<(SessionSummary, SessionDiscovery), SessionIndexError> {
         self.register_metadata(id, work_dir, additional_dirs, None, None)
     }
 
@@ -99,6 +113,7 @@ impl SessionIndex {
             return Err(SessionIndexError::SessionNotFound(source_id.to_owned()));
         }
         self.register_metadata(target_id, work_dir, additional_dirs, Some(source_id), title)
+            .map(|(summary, _)| summary)
     }
 
     pub fn set_title(&self, id: &str, title: &str) -> Result<SessionSummary, SessionIndexError> {
@@ -154,15 +169,26 @@ impl SessionIndex {
     }
 
     pub fn refresh(&self, id: &str) -> Result<SessionSummary, SessionIndexError> {
+        self.refresh_discovering(id).map(|(summary, _)| summary)
+    }
+
+    /// `refresh`, but also returning the full repaired discovery the refresh
+    /// already produced (see `register_session_discovering`).
+    pub fn refresh_discovering(
+        &self,
+        id: &str,
+    ) -> Result<(SessionSummary, SessionDiscovery), SessionIndexError> {
         validate_session_id(id)
             .map_err(|error| SessionIndexError::InvalidSessionId(error.to_string()))?;
         let _lock = self.acquire_lock()?;
         let discovery = self.repair_locked()?;
-        discovery
+        let summary = discovery
             .sessions
-            .into_iter()
+            .iter()
             .find(|session| session.id == id)
-            .ok_or_else(|| SessionIndexError::SessionNotFound(id.to_owned()))
+            .cloned()
+            .ok_or_else(|| SessionIndexError::SessionNotFound(id.to_owned()))?;
+        Ok((summary, discovery))
     }
 
     pub fn get(&self, id: &str) -> Result<Option<SessionSummary>, SessionIndexError> {
@@ -231,7 +257,7 @@ impl SessionIndex {
         additional_dirs: &[PathBuf],
         forked_from: Option<&str>,
         title: Option<&str>,
-    ) -> Result<SessionSummary, SessionIndexError> {
+    ) -> Result<(SessionSummary, SessionDiscovery), SessionIndexError> {
         validate_session_id(id)
             .map_err(|error| SessionIndexError::InvalidSessionId(error.to_string()))?;
         if let Some(source) = forked_from {
@@ -271,11 +297,13 @@ impl SessionIndex {
         };
         self.write_metadata(id, &metadata)?;
         let discovery = self.repair_locked()?;
-        discovery
+        let summary = discovery
             .sessions
-            .into_iter()
+            .iter()
             .find(|session| session.id == id)
-            .ok_or_else(|| SessionIndexError::SessionNotFound(id.to_owned()))
+            .cloned()
+            .ok_or_else(|| SessionIndexError::SessionNotFound(id.to_owned()))?;
+        Ok((summary, discovery))
     }
 
     fn repair_locked(&self) -> Result<SessionDiscovery, SessionIndexError> {
@@ -1181,6 +1209,36 @@ mod tests {
             index.validate_resume("newer", &other),
             Err(SessionIndexError::CrossWorkingDirectory { .. })
         ));
+    }
+
+    #[test]
+    fn discovering_variants_return_the_summary_plus_the_full_discovery() {
+        let temp = TestDir::new().expect("temp");
+        let cwd = temp.path().join("workspace");
+        fs::create_dir_all(&cwd).expect("cwd");
+        write_records(temp.path(), "older", 1, 10, "older prompt");
+        write_records(temp.path(), "newer", 2, 20, "newer prompt");
+        let index = SessionIndex::new(temp.path());
+        let (registered, discovery) = index
+            .register_session_discovering("older", &cwd, &[])
+            .expect("register older");
+        assert_eq!(registered.id, "older");
+        assert_eq!(discovery.sessions.len(), 1);
+        index.register_session("newer", &cwd, &[]).expect("newer");
+
+        let (refreshed, discovery) = index.refresh_discovering("older").expect("refresh");
+        assert_eq!(refreshed.id, "older");
+        // The bundled discovery is the same repaired, sorted list `list(None)`
+        // would produce, without a second lock acquisition and repair scan.
+        assert_eq!(
+            discovery
+                .sessions
+                .iter()
+                .map(|session| session.id.as_str())
+                .collect::<Vec<_>>(),
+            ["newer", "older"]
+        );
+        assert_eq!(discovery, index.list(None).expect("list"));
     }
 
     #[test]

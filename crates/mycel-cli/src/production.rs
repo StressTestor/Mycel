@@ -54,7 +54,9 @@ use crate::{
     },
     clipboard::{read_clipboard_image, PastedImageStore},
     doctor::run_doctor,
-    ecology::{parse_ecology_submission, EcologyDispatch, EcologyService},
+    ecology::{
+        parse_ecology_submission, EcologyDispatch, EcologyService, GateStatus, SubstrateStatus,
+    },
     exit::{GoalStatus, TerminationSignal},
     export::{
         run_export, ExportConfirmation, FilesystemSessionExportStore, ProcessExportConfirmation,
@@ -86,17 +88,30 @@ use crate::{
         INIT_PROMPT,
     },
     terminal::{
+        compose::{assemble, Region},
+        style::{truecolor_enabled, Color, Span, Style, StyledLine},
         visible_width, wrap_text, DifferentialRenderer, InputDecoder, InputEvent, KeyCode,
         ProcessTerminalBackend, TerminalBackend, TerminalDriver, TerminalEvent, TerminalSession,
         TerminalSignal, TerminalSink, TerminalSize,
     },
     tui::{
+        components::flourish::flourish_frames,
+        components::header::{header_card, GateDisplay, HeaderData, SubstrateSummary},
+        components::input_box::{input_box, InputBoxData},
+        components::inspector::{inspector, inspector_collapsed, AntibodyDetail, InspectorData},
+        components::notification::notification_strip,
+        components::session_rail::{session_rail, session_rail_collapsed, RailData},
+        components::status_bar::{status_bar, StatusBarData},
+        components::transcript::{transcript_frame_lines, FrameCtx},
+        theme::Theme,
         ApprovalChoice, ApprovalDecision as DialogApprovalDecision, ApprovalDialogAction,
-        ApprovalDialogReducer, FrameKind, LogicalAction, QuestionDialogAction,
+        ApprovalDialogReducer, FrameKind, GateLog, LogicalAction, QuestionDialogAction,
         QuestionDialogReducer, QuestionItem, QuestionOption as DialogQuestionOption, SessionPhase,
-        SessionReducer, SubmissionMode, TranscriptEvent, TranscriptFrame, TranscriptReducer,
+        SessionReducer, SubmissionMode, TranscriptEvent, TranscriptReducer,
     },
-    tui_config::{load_tui_config, save_tui_config, ThemeName, TuiConfig},
+    tui_config::{
+        active_theme, load_tui_config, save_tui_config, ThemeName, TuiConfig, LIGHT_THEME_WARNING,
+    },
     workspace_config::{
         load_workspace_local_config, remember_workspace_additional_dir, resolve_workspace_directory,
     },
@@ -110,6 +125,8 @@ const CODEX_FLAG: &str = "codex_subscription_auth";
 const CODEX_FLAG_ENV: &str = "MYCEL_EXPERIMENTAL_CODEX_SUBSCRIPTION_AUTH";
 const GOOGLE_APPLICATION_CREDENTIALS: &str = "GOOGLE_APPLICATION_CREDENTIALS";
 const INTERACTIVE_POLL: Duration = Duration::from_millis(25);
+/// How long each braille spinner frame is held on running tool rows.
+const SPINNER_INTERVAL_MS: u64 = 90;
 /// After an exit is requested while a turn is in flight (Ctrl-D once, then
 /// stdin closes), how long the session waits for that turn to finish on its
 /// own before cancelling it and exiting anyway. Bounded on purpose: a stalled
@@ -2870,6 +2887,8 @@ struct PreparedInteractive {
     system_prompt: Arc<str>,
     model_alias: String,
     model_aliases: Vec<String>,
+    provider: String,
+    context_window: u64,
     thinking_effort: Option<ThinkingEffort>,
     effort_options: Vec<String>,
     allow_unknown_effort: bool,
@@ -2877,12 +2896,21 @@ struct PreparedInteractive {
     plan_file: PathBuf,
     plan_mode: bool,
     swarm_mode: bool,
+    /// Welcome-card recent-session titles, captured from the discovery the
+    /// startup register/refresh already produced.
+    recent_sessions: Vec<String>,
+    /// The current session's title (or short id) for the session rail, from
+    /// the same discovery.
+    session_name: String,
     warning: Option<String>,
     tui_config: TuiConfig,
     mcp: Option<McpRuntime>,
     orchestration: Arc<NativeOrchestrationBundle>,
     orchestration_events: Arc<ProductionOrchestrationEvents>,
     ecology: EcologyService,
+    /// Substrate snapshot taken once during preparation; the loop state
+    /// refreshes it after ecology-mutating events, never per-tick.
+    substrate: SubstrateStatus,
     plugins: PluginComposition,
 }
 
@@ -2939,6 +2967,10 @@ async fn prepare_interactive(
         plugins,
     } = context;
     let (tui_config, tui_config_warning) = load_tui_config(&home);
+    // The rebuilt TUI has no light palette; `light` resolves to amanita (see
+    // `active_theme`), and pretending otherwise would be silent.
+    let light_theme_warning =
+        (tui_config.theme == ThemeName::Light).then(|| LIGHT_THEME_WARNING.to_owned());
     let mut factory = ProviderFactory::new(transport, home.clone(), version);
     if let Some(path) = resolved.google_application_credentials.clone() {
         factory = factory.with_google_application_credentials(path);
@@ -3075,19 +3107,45 @@ async fn prepare_interactive(
     let session_index = SessionIndex::new(&home);
     let session_id = session_handle.id().as_str().to_owned();
     let indexed = if is_new {
-        session_index.register_session(&session_id, &working_dir, &additional_dirs)
+        session_index.register_session_discovering(&session_id, &working_dir, &additional_dirs)
     } else {
-        session_index.refresh(&session_id)
+        session_index.refresh_discovering(&session_id)
     };
-    if let Err(error) = indexed {
-        let close = session_handle.close().await;
-        return Err(match close {
-            Ok(()) => format!("could not update session index: {error}"),
-            Err(close) => format!(
-                "could not update session index: {error}; additionally session cleanup failed: {close}"
-            ),
-        });
-    }
+    // The register/refresh already ran the full locked repair scan; keep its
+    // discovery for the welcome card's recent-sessions list so startup never
+    // pays a second index lock and repair (review item 5, option (a)).
+    let (session_name, recent_sessions) = match indexed {
+        Ok((_, discovery)) => {
+            // The rail's session name comes from the same discovery: the
+            // current session's title when one is set, else its short id.
+            let name = discovery
+                .sessions
+                .iter()
+                .find(|summary| summary.id == session_id)
+                .and_then(|summary| summary.title.clone())
+                .unwrap_or_else(|| crate::util::short_id(&session_id));
+            let recent = discovery
+                .sessions
+                .into_iter()
+                .take(3)
+                .map(|summary| {
+                    summary
+                        .title
+                        .unwrap_or_else(|| crate::util::short_id(&summary.id))
+                })
+                .collect();
+            (name, recent)
+        }
+        Err(error) => {
+            let close = session_handle.close().await;
+            return Err(match close {
+                Ok(()) => format!("could not update session index: {error}"),
+                Err(close) => format!(
+                    "could not update session index: {error}; additionally session cleanup failed: {close}"
+                ),
+            });
+        }
+    };
     let current_permission = session_handle.snapshot().await.state.permission_mode;
     if current_permission != permission {
         if let Err(error) = session_handle.set_permission_mode(permission).await {
@@ -3269,6 +3327,7 @@ async fn prepare_interactive(
     let swarm_mode = state.swarm_mode;
     let warning = std::iter::once(session_handle.warning().map(str::to_owned))
         .chain(std::iter::once(tui_config_warning))
+        .chain(std::iter::once(light_theme_warning))
         .chain(skills.warnings.into_iter().map(Some))
         .chain(system_prompt_warnings.into_iter().map(Some))
         .chain(plugins.warnings.iter().cloned().map(Some))
@@ -3279,6 +3338,7 @@ async fn prepare_interactive(
             combined
         });
     let model_aliases = config.models.keys().cloned().collect::<Vec<_>>();
+    let ecology = EcologyService::new(home.clone());
 
     Ok(PreparedInteractive {
         _runtime: runtime,
@@ -3298,6 +3358,8 @@ async fn prepare_interactive(
         btw_engine_config: engine_config,
         compaction,
         system_prompt,
+        provider: resolved.provider_id.clone(),
+        context_window: resolved.max_context_tokens,
         model_alias: resolved.alias,
         model_aliases,
         thinking_effort: resolved.thinking_effort,
@@ -3307,12 +3369,15 @@ async fn prepare_interactive(
         plan_file,
         plan_mode,
         swarm_mode,
+        recent_sessions,
+        session_name,
         warning,
         tui_config,
         mcp: mcp_runtime,
         orchestration,
         orchestration_events,
-        ecology: EcologyService::new(home),
+        substrate: ecology.summary(Utc::now()),
+        ecology,
         plugins,
     })
 }
@@ -3500,7 +3565,6 @@ struct InteractiveLoopState {
     decoder: InputDecoder,
     renderer: DifferentialRenderer,
     size: TerminalSize,
-    started: Instant,
     active: Option<ActiveTurn>,
     btw: Option<BtwPanelState>,
     exit_after_turn: bool,
@@ -3512,6 +3576,29 @@ struct InteractiveLoopState {
     system_queue: VecDeque<(String, String)>,
     thinking_effort: Option<ThinkingEffort>,
     tui_config: TuiConfig,
+    /// Theme and truecolor support resolved once at construction and
+    /// re-resolved by `refresh_render_caches` when the TUI config changes;
+    /// the ~40Hz render loop must not re-read config or the environment.
+    theme: Theme,
+    truecolor: bool,
+    /// The header card rendered at a given width; the card's data changes only
+    /// on substrate refreshes, so this invalidates on resize, theme change,
+    /// or `refresh_substrate`.
+    header_cache: Option<(usize, Vec<String>)>,
+    header: HeaderData,
+    /// Live substrate snapshot for the header and rails. Refreshed by
+    /// `refresh_substrate` on ecology-mutating events only.
+    substrate: SubstrateStatus,
+    /// Bounded ring of observed gate decisions feeding the inspector; fed from
+    /// the main session's event stream (BTW side-channel events stay out).
+    gate_log: GateLog,
+    /// Substrate record behind the most recent denial, resolved at deny time
+    /// from the reason's `(source: antibody:<id>)` pointer. `None` when the
+    /// deny came from the protected-path floor or the pointer did not resolve.
+    last_deny_antibody: Option<AntibodyDetail>,
+    /// The current session's title (or short id) for the rail, copied from
+    /// the prepared discovery so the render path never touches `prepared`.
+    session_name: String,
     swarm_mode: bool,
     hyphae_task_active: bool,
     pasted_images: PastedImageStore,
@@ -3520,6 +3607,9 @@ struct InteractiveLoopState {
     terminal_sequences: VecDeque<Vec<u8>>,
     last_view: Vec<String>,
     last_cursor: Option<(usize, usize)>,
+    /// Braille spinner frame index for running tool rows; advanced from
+    /// `now_ms` on every loop tick so it is deterministic per wall-clock time.
+    spinner_phase: usize,
 }
 
 impl InteractiveLoopState {
@@ -3611,18 +3701,14 @@ impl InteractiveLoopState {
                 }
             }
         });
-        let mut transcript = TranscriptReducer::default();
-        transcript.push(
-            TranscriptEvent::Status(format!(
+        let transcript = seed_transcript(
+            format!(
                 "session {} · model {}",
                 prepared.session.id(),
                 prepared.model_alias
-            )),
-            0,
+            ),
+            prepared.warning.as_deref(),
         );
-        if let Some(warning) = &prepared.warning {
-            transcript.push(TranscriptEvent::Status(format!("warning: {warning}")), 0);
-        }
         let dialog_receiver = prepared
             .dialog_receiver
             .lock()
@@ -3642,7 +3728,6 @@ impl InteractiveLoopState {
             decoder: InputDecoder::default(),
             renderer: DifferentialRenderer::default(),
             size,
-            started: Instant::now(),
             active: None,
             btw: None,
             exit_after_turn: false,
@@ -3653,7 +3738,15 @@ impl InteractiveLoopState {
             event_pump,
             system_queue: VecDeque::new(),
             thinking_effort: prepared.thinking_effort.clone(),
+            theme: active_theme(&prepared.tui_config.theme),
+            truecolor: truecolor_enabled(),
+            header_cache: None,
             tui_config: prepared.tui_config.clone(),
+            header: build_header(prepared),
+            substrate: prepared.substrate,
+            gate_log: GateLog::default(),
+            last_deny_antibody: None,
+            session_name: prepared.session_name.clone(),
             swarm_mode: prepared.swarm_mode,
             hyphae_task_active: false,
             pasted_images: PastedImageStore::default(),
@@ -3662,15 +3755,98 @@ impl InteractiveLoopState {
             terminal_sequences: VecDeque::new(),
             last_view: Vec::new(),
             last_cursor: None,
+            spinner_phase: 0,
         }
     }
 
+    /// Wall-clock unix epoch milliseconds. Transcript frames stamp this so
+    /// the gutter can render local `HH:MM:SS`; the reducer only ever compares
+    /// differences, so the epoch base does not change coalescing.
     fn now_ms(&self) -> u64 {
-        self.started
-            .elapsed()
-            .as_millis()
-            .try_into()
-            .unwrap_or(u64::MAX)
+        epoch_now_ms()
+    }
+
+    /// Re-resolve the cached theme and truecolor support from the current TUI
+    /// config and drop the cached header render. Every path that replaces
+    /// `tui_config` with a possibly different theme (`/theme`, `/reload-tui`)
+    /// must call this, or the view keeps rendering the stale theme forever.
+    fn refresh_render_caches(&mut self) {
+        self.theme = active_theme(&self.tui_config.theme);
+        self.truecolor = truecolor_enabled();
+        self.header_cache = None;
+    }
+
+    /// Snapshot the inspector's data: the decision ring, the resolved
+    /// last-deny antibody, and the cached candidate count. Pure reads only.
+    fn inspector_data(&self) -> InspectorData {
+        InspectorData {
+            activity: self.gate_log.decisions().cloned().collect(),
+            antibody: self.last_deny_antibody.clone(),
+            candidates_pending: self.substrate.candidates_pending,
+        }
+    }
+
+    /// Snapshot the session rail's data from state the loop already holds.
+    /// Pure reads only: the substrate snapshot is the event-driven cache, and
+    /// the hyphae stats come from the transcript's Subagent frames — the only
+    /// hyphae state reachable without an async orchestration read (`/hyphae`
+    /// goes through a host-tool turn, `handle_hyphae_command`).
+    fn rail_data(&self) -> RailData {
+        let now = self.now_ms();
+        let mut hyphae_active = 0usize;
+        let mut hyphae_last = None;
+        for frame in self.transcript.frames() {
+            if frame.kind != FrameKind::Subagent {
+                continue;
+            }
+            if frame.streaming {
+                hyphae_active += 1;
+            }
+            let name = frame.text.lines().next().unwrap_or_default();
+            let state = frame.state.as_deref().unwrap_or("unknown");
+            hyphae_last = Some(format!(
+                "{name} · {state} · {}",
+                format_age(now.saturating_sub(frame.at_ms))
+            ));
+        }
+        RailData {
+            name: self.session_name.clone(),
+            model: self.header.model.clone(),
+            provider: self.header.provider.clone(),
+            cwd: self.header.cwd.clone(),
+            shell_mode: self.reducer.input_mode == crate::tui::InputMode::Shell,
+            plan: self.reducer.plan,
+            // See `build_header`: occupancy is not carried by the event
+            // stream, so the rail renders the window alone.
+            ctx_used: None,
+            ctx_window: self.header.ctx_window,
+            substrate: self.substrate,
+            hyphae_active,
+            hyphae_last,
+        }
+    }
+
+    /// Live `[N running]` for the input box's status strip: the in-flight
+    /// main turn (`active`, set by `start_turn`/`start_shell`) plus streaming
+    /// Subagent frames — the same transcript-derived hyphae count the session
+    /// rail renders (see `rail_data`). Pure reads only.
+    fn running_count(&self) -> usize {
+        let hyphae = self
+            .transcript
+            .frames()
+            .iter()
+            .filter(|frame| frame.kind == FrameKind::Subagent && frame.streaming)
+            .count();
+        usize::from(self.active.is_some()) + hyphae
+    }
+
+    /// Re-read the substrate summary and invalidate the header render.
+    /// Event-driven only: called after `/promote`, `/deny`, and projected gate
+    /// denials — never on the render tick, which must not gain I/O.
+    fn refresh_substrate(&mut self, prepared: &PreparedInteractive) {
+        self.substrate = prepared.ecology.summary(Utc::now());
+        self.header.substrate = substrate_summary_display(&self.substrate);
+        self.header_cache = None;
     }
 
     fn open_btw(
@@ -4439,10 +4615,27 @@ impl InteractiveLoopState {
                         self.start_btw_turn(executor, prepared, input.text);
                     }
                 }
+                LogicalAction::ToggleSessionRail => self.toggle_rail(prepared, false),
+                LogicalAction::ToggleInspector => self.toggle_rail(prepared, true),
                 LogicalAction::Queue(_) | LogicalAction::Newline | LogicalAction::Clear => {}
             }
         }
         exit
+    }
+
+    /// Flip one rail's open state and persist it. The in-memory toggle always
+    /// applies (the view must follow the key press); a failed save degrades to
+    /// a status line instead of blocking the toggle.
+    fn toggle_rail(&mut self, prepared: &PreparedInteractive, inspector: bool) {
+        let open = if inspector {
+            &mut self.tui_config.rails_inspector_open
+        } else {
+            &mut self.tui_config.rails_session_open
+        };
+        *open = !*open;
+        if let Err(error) = save_tui_config(&prepared.home, &self.tui_config) {
+            self.status(format!("could not persist rail state: {error}"));
+        }
     }
 
     fn handle_session_command(
@@ -4481,6 +4674,7 @@ impl InteractiveLoopState {
             }
             let (config, warning) = load_tui_config(&prepared.home);
             self.tui_config = config;
+            self.refresh_render_caches();
             self.renderer.reset();
             self.last_view.clear();
             self.status(warning.unwrap_or_else(|| {
@@ -4522,11 +4716,12 @@ impl InteractiveLoopState {
             match save_tui_config(&prepared.home, &config) {
                 Ok(path) => {
                     self.tui_config = config;
+                    self.refresh_render_caches();
                     self.renderer.reset();
                     self.last_view.clear();
                     self.status(format!(
                         "theme set to {} · {}",
-                        theme.as_str(),
+                        self.tui_config.theme.as_str(),
                         path.display()
                     ));
                 }
@@ -4889,9 +5084,16 @@ impl InteractiveLoopState {
             return true;
         }
         if let Some((command, arguments)) = parse_ecology_submission(input) {
+            let mutates = matches!(
+                command,
+                crate::ecology::EcologyCommand::Promote | crate::ecology::EcologyCommand::Deny
+            );
             match prepared.ecology.run(command, arguments, Utc::now()) {
                 EcologyDispatch::Panel { title, lines } => {
                     self.status(format!("{title}\n{}", lines.join("\n")));
+                    if mutates {
+                        self.refresh_substrate(prepared);
+                    }
                 }
                 EcologyDispatch::Error(error) => self.status(format!("ecology error: {error}")),
                 EcologyDispatch::Status(status) => self.status(status),
@@ -5914,6 +6116,20 @@ impl InteractiveLoopState {
                     {
                         self.reducer.plan = *plan_mode;
                     }
+                    // A recorded denial means the gate captured a sentinel
+                    // event into the substrate: re-read the summary so the
+                    // candidate count moves with it, and resolve the denial's
+                    // antibody pointer for the inspector while still at the
+                    // event boundary (the render tick must not gain I/O).
+                    if self.gate_log.observe(event.as_ref(), now) {
+                        self.refresh_substrate(prepared);
+                        self.last_deny_antibody = self
+                            .gate_log
+                            .last()
+                            .and_then(|decision| parse_antibody_source(&decision.detail))
+                            .and_then(|id| prepared.ecology.find_antibody(id))
+                            .map(|antibody| antibody_detail(&antibody));
+                    }
                     project_interactive_event(*event, &mut self.transcript, now);
                 }
                 Ok(InteractiveRuntimeMessage::EventLagged(count)) => {
@@ -6603,125 +6819,236 @@ fn interactive_terminal_body<B: TerminalBackend>(
     // When stdin closes with an exit already requested and a turn still in
     // flight, this marks the start of the bounded grace wait for that turn.
     let mut exit_grace_started: Option<Instant> = None;
-    let result = (|| loop {
-        state.process_runtime_messages(executor, prepared)?;
-        if let Some(transition) = state.session_transition.take() {
-            break Ok(InteractiveTerminalOutcome::Transition(transition));
-        }
-        state.dialogs.poll();
-        state.poll_cron(executor, prepared)?;
-        let now = state.now_ms();
-        state.transcript.tick(now);
-        if let Some(panel) = state.btw.as_mut() {
-            panel.transcript.tick(now);
-        }
-        while let Some(sequence) = state.terminal_sequences.pop_front() {
-            terminal
-                .write(&sequence)
-                .map_err(|error| format!("could not write terminal control sequence: {error}"))?;
-        }
-        render_interactive(&mut state, terminal)?;
-        if state.exit_after_turn && state.active.is_none() {
-            break Ok(InteractiveTerminalOutcome::Completion(
-                RuntimeCompletion::success(),
-            ));
-        }
-
-        match terminal
-            .read_event(Some(INTERACTIVE_POLL))
-            .map_err(|error| format!("could not read terminal input: {error}"))?
-        {
-            TerminalEvent::Input(bytes) => {
-                let mut exit_requested = false;
-                for input in state.decoder.feed(&bytes) {
-                    if state.dialogs.is_active() {
-                        state.dialogs.apply(input);
-                        continue;
-                    }
-                    if state.btw.is_some() && is_escape(&input) {
-                        state.close_btw(executor, Some("BTW closed."));
-                        continue;
-                    }
-                    if state.btw.is_some() && is_control_c(&input) {
-                        state.cancel_or_close_btw(executor);
-                        continue;
-                    }
-                    if is_control_g(&input) && state.request_external_editor(prepared) {
-                        exit_requested = true;
-                        break;
-                    }
-                    if is_control_d(&input) && state.reducer.editor.text().is_empty() {
-                        if let Some(active) = &state.active {
-                            if state.exit_after_turn {
-                                active.cancellation.cancel();
-                                exit_requested = true;
-                            } else {
-                                state.exit_after_turn = true;
-                                state.status(
-                                    "exit requested; waiting for current turn (Ctrl-D again to cancel)",
-                                );
-                            }
-                        } else {
-                            exit_requested = true;
-                        }
-                        break;
-                    }
-                    state.reducer.apply(input);
-                    if state.process_actions(executor, prepared) {
-                        exit_requested = true;
-                        break;
-                    }
-                }
-                if exit_requested {
-                    break Ok(match state.session_transition.take() {
-                        Some(transition) => InteractiveTerminalOutcome::Transition(transition),
-                        None => {
-                            InteractiveTerminalOutcome::Completion(RuntimeCompletion::success())
-                        }
-                    });
-                }
+    let result = (|| {
+        if prepared.tui_config.startup_flourish {
+            if let Some(outcome) = run_startup_flourish(&mut state, terminal)? {
+                return Ok(outcome);
             }
-            TerminalEvent::Resize(size) => {
-                state.size = size;
-                state.renderer.reset();
-                state.last_view.clear();
-                state.last_cursor = None;
+            // Typed-ahead during the flourish sits buffered in the reducer;
+            // drain its actions now so a submit does not wait for the next
+            // keypress.
+            if state.process_actions(executor, prepared) {
+                return Ok(match state.session_transition.take() {
+                    Some(transition) => InteractiveTerminalOutcome::Transition(transition),
+                    None => InteractiveTerminalOutcome::Completion(RuntimeCompletion::success()),
+                });
             }
-            TerminalEvent::Signal(signal) => {
-                break Ok(InteractiveTerminalOutcome::Completion(
-                    RuntimeCompletion::Signal(map_terminal_signal(signal)),
-                ));
+        }
+        loop {
+            state.process_runtime_messages(executor, prepared)?;
+            if let Some(transition) = state.session_transition.take() {
+                break Ok(InteractiveTerminalOutcome::Transition(transition));
             }
-            TerminalEvent::EndOfInput if state.exit_after_turn && state.active.is_some() => {
-                // Exit already requested, stdin gone, turn still running: give
-                // the turn a bounded grace period to finish on its own, then
-                // cancel it and exit. Never wait on it forever - a stalled
-                // provider must not make the session unkillable.
-                let started = *exit_grace_started.get_or_insert_with(Instant::now);
-                if started.elapsed() >= EXIT_TURN_GRACE {
-                    if let Some(active) = &state.active {
-                        active.cancellation.cancel();
-                    }
-                    state.status(format!(
-                        "exit: current turn did not finish within {}s; cancelled",
-                        EXIT_TURN_GRACE.as_secs()
-                    ));
-                    break Ok(InteractiveTerminalOutcome::Completion(
-                        RuntimeCompletion::success(),
-                    ));
-                }
-                std::thread::sleep(INTERACTIVE_POLL);
+            state.dialogs.poll();
+            state.poll_cron(executor, prepared)?;
+            let now = state.now_ms();
+            state.spinner_phase = usize::try_from(now / SPINNER_INTERVAL_MS).unwrap_or(0);
+            state.transcript.tick(now);
+            if let Some(panel) = state.btw.as_mut() {
+                panel.transcript.tick(now);
             }
-            TerminalEvent::EndOfInput => {
+            while let Some(sequence) = state.terminal_sequences.pop_front() {
+                terminal.write(&sequence).map_err(|error| {
+                    format!("could not write terminal control sequence: {error}")
+                })?;
+            }
+            render_interactive(&mut state, terminal)?;
+            if state.exit_after_turn && state.active.is_none() {
                 break Ok(InteractiveTerminalOutcome::Completion(
                     RuntimeCompletion::success(),
                 ));
             }
-            TerminalEvent::Timeout | TerminalEvent::KeyboardProtocolChanged(_) => {}
+
+            match terminal
+                .read_event(Some(INTERACTIVE_POLL))
+                .map_err(|error| format!("could not read terminal input: {error}"))?
+            {
+                TerminalEvent::Input(bytes) => {
+                    let mut exit_requested = false;
+                    for input in state.decoder.feed(&bytes) {
+                        if state.dialogs.is_active() {
+                            state.dialogs.apply(input);
+                            continue;
+                        }
+                        if state.btw.is_some() && is_escape(&input) {
+                            state.close_btw(executor, Some("BTW closed."));
+                            continue;
+                        }
+                        if state.btw.is_some() && is_control_c(&input) {
+                            state.cancel_or_close_btw(executor);
+                            continue;
+                        }
+                        if is_control_g(&input) && state.request_external_editor(prepared) {
+                            exit_requested = true;
+                            break;
+                        }
+                        if is_control_d(&input) && state.reducer.editor.text().is_empty() {
+                            if let Some(active) = &state.active {
+                                if state.exit_after_turn {
+                                    active.cancellation.cancel();
+                                    exit_requested = true;
+                                } else {
+                                    state.exit_after_turn = true;
+                                    state.status(
+                                    "exit requested; waiting for current turn (Ctrl-D again to cancel)",
+                                );
+                                }
+                            } else {
+                                exit_requested = true;
+                            }
+                            break;
+                        }
+                        state.reducer.apply(input);
+                        if state.process_actions(executor, prepared) {
+                            exit_requested = true;
+                            break;
+                        }
+                    }
+                    if exit_requested {
+                        break Ok(match state.session_transition.take() {
+                            Some(transition) => InteractiveTerminalOutcome::Transition(transition),
+                            None => {
+                                InteractiveTerminalOutcome::Completion(RuntimeCompletion::success())
+                            }
+                        });
+                    }
+                }
+                TerminalEvent::Resize(size) => {
+                    state.size = size;
+                    state.header_cache = None;
+                    state.renderer.reset();
+                    state.last_view.clear();
+                    state.last_cursor = None;
+                }
+                TerminalEvent::Signal(signal) => {
+                    break Ok(InteractiveTerminalOutcome::Completion(
+                        RuntimeCompletion::Signal(map_terminal_signal(signal)),
+                    ));
+                }
+                TerminalEvent::EndOfInput if state.exit_after_turn && state.active.is_some() => {
+                    // Exit already requested, stdin gone, turn still running: give
+                    // the turn a bounded grace period to finish on its own, then
+                    // cancel it and exit. Never wait on it forever - a stalled
+                    // provider must not make the session unkillable.
+                    let started = *exit_grace_started.get_or_insert_with(Instant::now);
+                    if started.elapsed() >= EXIT_TURN_GRACE {
+                        if let Some(active) = &state.active {
+                            active.cancellation.cancel();
+                        }
+                        state.status(format!(
+                            "exit: current turn did not finish within {}s; cancelled",
+                            EXIT_TURN_GRACE.as_secs()
+                        ));
+                        break Ok(InteractiveTerminalOutcome::Completion(
+                            RuntimeCompletion::success(),
+                        ));
+                    }
+                    std::thread::sleep(INTERACTIVE_POLL);
+                }
+                TerminalEvent::EndOfInput => {
+                    break Ok(InteractiveTerminalOutcome::Completion(
+                        RuntimeCompletion::success(),
+                    ));
+                }
+                TerminalEvent::Timeout | TerminalEvent::KeyboardProtocolChanged(_) => {}
+            }
         }
     })();
     state.shutdown(executor);
     result
+}
+
+/// Cadence between flourish frames (~120ms per logo row, per the design).
+const FLOURISH_STEP: Duration = Duration::from_millis(120);
+/// Hold on the final flourish frame before the normal view paints over it.
+const FLOURISH_HOLD: Duration = Duration::from_millis(300);
+
+/// Play the startup flourish before the first differential paint. Returns
+/// `Some(outcome)` when a terminating event arrived mid-sequence.
+///
+/// Raw mode disables ISIG (`cfmakeraw`, terminal/driver.rs
+/// `enable_raw_mode`), so ctrl+c arrives as INPUT (0x03, or its CSI-u form
+/// once the kitty query pushed flags), never as SIGINT — a plain sleep
+/// cadence would sit on it for the whole sequence. The cadence therefore
+/// runs through `read_event`, which surfaces ctrl+c immediately and also
+/// returns external SIGINT/SIGTERM as Signal events with the terminal
+/// already restored (driver.rs `read_event`). Other typed-ahead input is
+/// decoded into the reducer so nothing is dropped.
+fn run_startup_flourish<B: TerminalBackend>(
+    state: &mut InteractiveLoopState,
+    terminal: &mut TerminalSession<'_, B>,
+) -> Result<Option<InteractiveTerminalOutcome>, String> {
+    let width = usize::from(state.size.columns.max(1));
+    let height = usize::from(state.size.rows.max(1));
+    let frames = flourish_frames(
+        &state.header.substrate,
+        &state.theme,
+        width,
+        height,
+        state.truecolor,
+    );
+    let total = frames.len();
+    for (index, frame) in frames.into_iter().enumerate() {
+        let mut bytes = Vec::new();
+        for (row, line) in frame.iter().enumerate() {
+            bytes.extend_from_slice(format!("\x1b[{};1H\x1b[2K", row + 1).as_bytes());
+            bytes.extend_from_slice(line.as_bytes());
+        }
+        terminal
+            .write(&bytes)
+            .map_err(|error| format!("could not write flourish frame: {error}"))?;
+        terminal
+            .flush_output()
+            .map_err(|error| format!("could not flush flourish frame: {error}"))?;
+        let hold = if index + 1 == total {
+            FLOURISH_HOLD
+        } else {
+            FLOURISH_STEP
+        };
+        let deadline = Instant::now() + hold;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match terminal
+                .read_event(Some(remaining))
+                .map_err(|error| format!("could not read terminal input: {error}"))?
+            {
+                TerminalEvent::Input(bytes) => {
+                    for input in state.decoder.feed(&bytes) {
+                        if is_control_c(&input) || is_control_d(&input) {
+                            return Ok(Some(InteractiveTerminalOutcome::Completion(
+                                RuntimeCompletion::success(),
+                            )));
+                        }
+                        state.reducer.apply(input);
+                    }
+                }
+                TerminalEvent::Signal(signal) => {
+                    return Ok(Some(InteractiveTerminalOutcome::Completion(
+                        RuntimeCompletion::Signal(map_terminal_signal(signal)),
+                    )));
+                }
+                TerminalEvent::EndOfInput => {
+                    return Ok(Some(InteractiveTerminalOutcome::Completion(
+                        RuntimeCompletion::success(),
+                    )));
+                }
+                TerminalEvent::Resize(size) => {
+                    // A resize abandons the animation for the real view.
+                    state.size = size;
+                    state.header_cache = None;
+                    state.renderer.reset();
+                    state.last_view.clear();
+                    state.last_cursor = None;
+                    return Ok(None);
+                }
+                TerminalEvent::Timeout | TerminalEvent::KeyboardProtocolChanged(_) => {}
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn is_control_d(event: &InputEvent) -> bool {
@@ -6789,21 +7116,338 @@ fn render_interactive<B: TerminalBackend>(
     Ok(())
 }
 
+/// Snapshot the welcome-card data from the prepared session. The substrate
+/// summary was read once in `prepare_interactive`; the loop refreshes it on
+/// ecology-mutating events. Recent sessions were captured in
+/// `prepare_interactive` from the discovery its register/refresh produced, so
+/// building the header never re-acquires the cross-process index lock or
+/// re-runs the repair scan.
+fn build_header(prepared: &PreparedInteractive) -> HeaderData {
+    HeaderData {
+        model: prepared.model_alias.clone(),
+        provider: prepared.provider.clone(),
+        cwd: display_home_path(&prepared.working_dir, prepared.user_home.as_deref()),
+        // TODO: context OCCUPANCY is not derivable from the loop's event
+        // stream. `AgentEvent::TurnEnded` carries no usage
+        // (crates/mycel-agent-protocol/src/event.rs:692-699) and the session's
+        // `usage_by_model` (read by `/usage` above) accumulates turn totals,
+        // which is not the live context size. Until the runtime exposes
+        // occupancy, 0 here renders as the window alone, never a made-up fill.
+        ctx_used: 0,
+        ctx_window: prepared.context_window,
+        substrate: substrate_summary_display(&prepared.substrate),
+        recent: prepared.recent_sessions.clone(),
+    }
+}
+
+/// Map the ecology-side substrate snapshot onto the header card's display
+/// summary. `Tripwire` (wired fail-closed, db missing: everything refused) is
+/// the card's `blocked`; `Disarmed` covers unwired and fail-open wiring.
+fn substrate_summary_display(substrate: &SubstrateStatus) -> SubstrateSummary {
+    SubstrateSummary {
+        antibodies: substrate.antibodies_active,
+        candidates_pending: substrate.candidates_pending,
+        gate: match substrate.gate {
+            GateStatus::Ok => GateDisplay::Ok,
+            GateStatus::Tripwire => GateDisplay::Blocked,
+            GateStatus::Disarmed => GateDisplay::Disarmed,
+            GateStatus::Unknown => GateDisplay::Unknown,
+        },
+    }
+}
+
+/// Pull the antibody id out of a gate deny reason. Substrate-matched refusals
+/// end in `(source: antibody:<uuid>)` (crates/mycel-core/src/lib.rs `refusal`
+/// construction; crates/mycel-gate/src/main.rs `emit_block`); floor and
+/// structural denies carry `mycel-gate:` pointers instead and resolve to
+/// `None`. `rfind` guards against remediation text containing the marker.
+fn parse_antibody_source(detail: &str) -> Option<uuid::Uuid> {
+    const MARKER: &str = "(source: antibody:";
+    let start = detail.rfind(MARKER)? + MARKER.len();
+    let rest = &detail[start..];
+    let end = rest.find(')')?;
+    rest[..end].trim().parse().ok()
+}
+
+/// Snapshot the substrate record for the inspector's detail box. Labels match
+/// the enums' snake_case serde names; the mockup's `name`, last-hit date, and
+/// per-decision trace do not exist in the record (see `AntibodyDetail`).
+fn antibody_detail(antibody: &mycel_core::Antibody) -> AntibodyDetail {
+    use mycel_core::{AntibodySource, Confidence, RefusalMode, Severity, SignatureScope};
+    let mut signature = Vec::new();
+    for (field, value) in [
+        ("command_pattern", &antibody.signature.command_pattern),
+        ("tool_pattern", &antibody.signature.tool_pattern),
+        ("file_pattern", &antibody.signature.file_pattern),
+        ("error_class", &antibody.signature.error_class),
+        ("agent_role", &antibody.signature.agent_role),
+    ] {
+        if let Some(value) = value {
+            signature.push((field.to_owned(), value.clone()));
+        }
+    }
+    AntibodyDetail {
+        id: crate::util::short_id(&antibody.id.to_string()),
+        source: match antibody.source {
+            AntibodySource::SentinelBlock => "sentinel_block",
+            AntibodySource::FailedRun => "failed_run",
+            AntibodySource::Manual => "manual",
+        }
+        .to_owned(),
+        scope: match antibody.signature.scope {
+            SignatureScope::Project => "project",
+            SignatureScope::Global => "global",
+            SignatureScope::Personal => "personal",
+        }
+        .to_owned(),
+        severity: match antibody.severity {
+            Severity::Refuse => "refuse",
+            Severity::Warn => "warn",
+            Severity::Info => "info",
+        }
+        .to_owned(),
+        confidence: match antibody.confidence {
+            Confidence::Solid => "solid",
+            Confidence::Directional => "directional",
+            Confidence::Vibes => "vibes",
+        }
+        .to_owned(),
+        refusal: match antibody.refusal_mode {
+            RefusalMode::Hard => "hard",
+            RefusalMode::Soft => "soft",
+            RefusalMode::LogOnly => "log-only",
+        }
+        .to_owned(),
+        hits: antibody.hit_count,
+        signature,
+        remediation: antibody.remediation.clone(),
+    }
+}
+
+/// Compact age for the rail's hyphae line: `now` under a minute, then whole
+/// minutes, then whole hours.
+fn format_age(elapsed_ms: u64) -> String {
+    let minutes = elapsed_ms / 60_000;
+    if minutes == 0 {
+        "now".to_owned()
+    } else if minutes < 60 {
+        format!("{minutes}m ago")
+    } else {
+        format!("{}h ago", minutes / 60)
+    }
+}
+
+/// Wall-clock unix epoch milliseconds, shared by the loop tick and the
+/// construction-time seed frames so every gutter timestamp is real.
+fn epoch_now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| {
+            u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+        })
+}
+
+/// Seed the transcript shown at construction: the session/model line plus any
+/// startup warning. Both frames share one wall-clock stamp.
+fn seed_transcript(session_line: String, warning: Option<&str>) -> TranscriptReducer {
+    let now = epoch_now_ms();
+    let mut transcript = TranscriptReducer::default();
+    transcript.push(TranscriptEvent::Status(session_line), now);
+    if let Some(warning) = warning {
+        transcript.push(TranscriptEvent::Status(format!("warning: {warning}")), now);
+    }
+    transcript
+}
+
+/// Render a path with the user's home directory collapsed to `~`.
+fn display_home_path(path: &Path, home: Option<&Path>) -> String {
+    if let Some(home) = home {
+        if let Ok(relative) = path.strip_prefix(home) {
+            if relative.as_os_str().is_empty() {
+                return "~".to_owned();
+            }
+            return format!("~/{}", relative.display());
+        }
+    }
+    path.display().to_string()
+}
+
+/// Below this terminal width no rails render at all: the body is center-only,
+/// exactly the pre-rail behavior.
+const MIN_RAILS_TERM_W: usize = 90;
+/// Width of a collapsed rail strip.
+const COLLAPSED_RAIL_W: usize = 3;
+/// Open rail widths from the mockup's pixel proportions (300px and 452px on
+/// the 13px JetBrains Mono grid, ≈7.9px/cell → 38 and 50 cells).
+const SESSION_RAIL_OPEN_W: usize = 38;
+const INSPECTOR_OPEN_W: usize = 50;
+/// An open rail is honored only while the center keeps at least this many
+/// columns; below it the rail degrades to its collapsed strip.
+const MIN_CENTER_W: usize = 60;
+/// Cells of the dashed border `join_row` draws between body columns.
+const RAIL_BORDER_W: usize = 1;
+
+/// Resolve the body band's `(session_rail_w, center_w, inspector_w)`. Rail
+/// widths are `None` below `MIN_RAILS_TERM_W`. When both rails cannot be open
+/// at once, the inspector collapses first (the session rail is the primary
+/// surface), then the session rail.
+fn resolve_body_layout(
+    width: usize,
+    session_open: bool,
+    inspector_open: bool,
+) -> (Option<usize>, usize, Option<usize>) {
+    if width < MIN_RAILS_TERM_W {
+        return (None, width, None);
+    }
+    let center = |session: usize, inspector: usize| {
+        width.saturating_sub(session + inspector + 2 * RAIL_BORDER_W)
+    };
+    let mut session = if session_open {
+        SESSION_RAIL_OPEN_W
+    } else {
+        COLLAPSED_RAIL_W
+    };
+    let mut inspector = if inspector_open {
+        INSPECTOR_OPEN_W
+    } else {
+        COLLAPSED_RAIL_W
+    };
+    if center(session, inspector) < MIN_CENTER_W {
+        inspector = COLLAPSED_RAIL_W;
+    }
+    if center(session, inspector) < MIN_CENTER_W {
+        session = COLLAPSED_RAIL_W;
+    }
+    (Some(session), center(session, inspector), Some(inspector))
+}
+
+/// Compose the full view: the center column (welcome card, transcript,
+/// editor) flanked by the collapsible rails, joined by `compose::join_row`'s
+/// dashed borders. Returns the visible lines plus the 1-based cursor
+/// position; the cursor's absolute column is offset by the left rail and its
+/// border when rails render.
 fn interactive_view(
-    state: &InteractiveLoopState,
+    state: &mut InteractiveLoopState,
     width: usize,
     height: usize,
 ) -> (Vec<String>, usize, usize) {
-    let mut lines = Vec::new();
+    // The terminal's bottom row is reserved for the status bar whenever at
+    // least two rows exist; the body band composes above it. A one-row
+    // terminal keeps the editor over the bar.
+    let body_h = if height >= 2 { height - 1 } else { height };
+    let bar = (body_h < height).then(|| {
+        status_bar(
+            &StatusBarData {
+                gate: state.header.substrate.gate,
+                model: state.header.model.clone(),
+                antibodies: state.header.substrate.antibodies,
+                candidates_pending: state.header.substrate.candidates_pending,
+            },
+            &state.theme,
+            width,
+            state.truecolor,
+        )
+    });
+    let (rail_w, center_w, inspector_w) = resolve_body_layout(
+        width,
+        state.tui_config.rails_session_open,
+        state.tui_config.rails_inspector_open,
+    );
+    let (mut center, cursor_row, center_cursor_column) =
+        interactive_center_view(state, center_w, body_h);
+    let (Some(rail_w), Some(inspector_w)) = (rail_w, inspector_w) else {
+        if let Some(bar) = bar {
+            // Pad short content so the bar still pins to the bottom row.
+            center.resize(body_h, String::new());
+            center.push(bar);
+        }
+        return (center, cursor_row, center_cursor_column);
+    };
+
+    let theme = state.theme.clone();
+    let truecolor = state.truecolor;
+    let rail_data = state.rail_data();
+    let rail_lines = if rail_w > COLLAPSED_RAIL_W {
+        session_rail(&rail_data, &theme, rail_w, body_h, truecolor)
+    } else {
+        session_rail_collapsed(&rail_data, &theme, rail_w, body_h, truecolor)
+    };
+    let inspector_data = state.inspector_data();
+    let inspector_lines = if inspector_w > COLLAPSED_RAIL_W {
+        inspector(&inspector_data, &theme, inspector_w, body_h, truecolor)
+    } else {
+        inspector_collapsed(&inspector_data, &theme, inspector_w, body_h, truecolor)
+    };
+
+    // Pre-rendered lines wrap as single default-style spans: `visible_width`
+    // and `clip_and_pad` are ANSI-aware, and every center line is at most
+    // `center_w` cells, so the compositor only ever pads.
+    let to_region = |region_w: usize, rendered: Vec<String>| Region {
+        width: region_w,
+        lines: rendered
+            .into_iter()
+            .map(|line| StyledLine(vec![Span::new(line, Style::default())]))
+            .collect(),
+    };
+    let columns = [
+        to_region(rail_w, rail_lines),
+        to_region(center_w, center),
+        to_region(inspector_w, inspector_lines),
+    ];
+    let border = Style::fg(Color::Rgb(theme.border));
+    let mut composed: Vec<String> = assemble(&columns, body_h, border)
+        .into_iter()
+        .map(|row| row.render(width, truecolor))
+        .collect();
+    composed.extend(bar);
+    (
+        composed,
+        cursor_row,
+        (center_cursor_column + rail_w + RAIL_BORDER_W).clamp(1, width.saturating_add(1)),
+    )
+}
+
+fn interactive_center_view(
+    state: &mut InteractiveLoopState,
+    width: usize,
+    height: usize,
+) -> (Vec<String>, usize, usize) {
+    // Theme and truecolor come from the caches `refresh_render_caches`
+    // maintains; resolving them here would re-read config and the environment
+    // at ~40Hz. The header render is likewise cached against the CENTER width
+    // (so a rail toggle re-keys it) and invalidated when its data refreshes.
+    let frame_ctx = FrameCtx {
+        width,
+        truecolor: state.truecolor,
+        spinner_phase: state.spinner_phase,
+    };
+    if state.header_cache.as_ref().map(|(cached, _)| *cached) != Some(width) {
+        let rendered = header_card(&state.header, &state.theme, width, state.truecolor);
+        state.header_cache = Some((width, rendered));
+    }
+    let theme = state.theme.clone();
+    let mut lines = state
+        .header_cache
+        .as_ref()
+        .map(|(_, rendered)| rendered.clone())
+        .unwrap_or_default();
+    // The strip reads the same event-driven substrate cache as the header, so
+    // it refreshes with `refresh_substrate` and costs no I/O per render.
+    let strip = notification_strip(
+        state.header.substrate.candidates_pending,
+        &theme,
+        width,
+        state.truecolor,
+    );
+    if !strip.is_empty() {
+        lines.push(String::new());
+        lines.extend(strip);
+    }
     for frame in state.transcript.frames() {
         if !lines.is_empty() {
             lines.push(String::new());
         }
-        lines.extend(frame_lines(
-            frame,
-            width,
-            resolved_theme(state.tui_config.theme),
-        ));
+        lines.extend(transcript_frame_lines(frame, &theme, &frame_ctx));
     }
     if state.reducer.phase != SessionPhase::Idle {
         lines.push(match state.reducer.phase {
@@ -6818,11 +7462,7 @@ fn interactive_view(
         lines.push(String::new());
         lines.push("┌─ BTW ─ side channel ─────────────────────────".to_owned());
         for frame in panel.transcript.frames() {
-            lines.extend(frame_lines(
-                frame,
-                width,
-                resolved_theme(state.tui_config.theme),
-            ));
+            lines.extend(transcript_frame_lines(frame, &theme, &frame_ctx));
         }
         lines.push(if panel.active.is_some() {
             "└─ running · ctrl-c cancels · esc closes".to_owned()
@@ -6850,21 +7490,25 @@ fn interactive_view(
         );
     }
 
-    let prompt = match state.reducer.input_mode {
-        crate::tui::InputMode::Prompt => "> ",
-        crate::tui::InputMode::Shell => "! ",
-    };
-    let before_cursor = format!(
-        "{prompt}{}",
-        &state.reducer.editor.text()[..state.reducer.editor.cursor()]
+    let rendered_box = input_box(
+        &InputBoxData {
+            model: state.header.model.clone(),
+            gate: state.header.substrate.gate,
+            running: state.running_count(),
+            cwd: state.header.cwd.clone(),
+            shell_mode: state.reducer.input_mode == crate::tui::InputMode::Shell,
+            text: state.reducer.editor.text().to_owned(),
+            cursor: state.reducer.editor.cursor(),
+        },
+        &theme,
+        width,
+        state.truecolor,
     );
-    let cursor_lines = wrap_text(&before_cursor, width);
-    let editor_lines = wrap_text(&format!("{prompt}{}", state.reducer.editor.text()), width);
-    let editor_start = lines.len();
-    let cursor_absolute_row = editor_start + cursor_lines.len().saturating_sub(1);
-    let cursor_absolute_column =
-        visible_width(cursor_lines.last().map(String::as_str).unwrap_or("")) + 1;
-    lines.extend(editor_lines);
+    // The box's cursor is relative to its own rows; offset by where the box
+    // starts in the center column.
+    let cursor_absolute_row = lines.len() + rendered_box.cursor_row;
+    let cursor_absolute_column = rendered_box.cursor_column;
+    lines.extend(rendered_box.lines);
 
     let viewport_start = lines.len().saturating_sub(height);
     let visible = lines.into_iter().skip(viewport_start).collect::<Vec<_>>();
@@ -7106,32 +7750,10 @@ fn push_wrapped(lines: &mut Vec<String>, text: &str, width: usize) {
     lines.extend(wrap_text(&sanitized, width));
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ResolvedTheme {
-    Dark,
-    Light,
-}
-
-fn resolved_theme(theme: ThemeName) -> ResolvedTheme {
-    match theme {
-        ThemeName::Dark => ResolvedTheme::Dark,
-        ThemeName::Light => ResolvedTheme::Light,
-        ThemeName::Auto => std::env::var("COLORFGBG")
-            .ok()
-            .and_then(|value| value.rsplit(';').next()?.parse::<u8>().ok())
-            .map_or(ResolvedTheme::Dark, |background| {
-                if background >= 8 {
-                    ResolvedTheme::Light
-                } else {
-                    ResolvedTheme::Dark
-                }
-            }),
-    }
-}
-
 fn format_tui_settings(config: &TuiConfig) -> String {
+    let rail_state = |open: bool| if open { "open" } else { "collapsed" };
     format!(
-        "theme: {}\neditor: {}\npaste burst fallback: {}\nnotifications: {} ({})\nconfig: ~/.mycel/tui.toml",
+        "theme: {}\neditor: {}\npaste burst fallback: {}\nnotifications: {} ({})\nrails: session {} (ctrl+l) · inspector {} (ctrl+r)\nstartup flourish: {}\nconfig: ~/.mycel/tui.toml",
         config.theme.as_str(),
         config.editor_command.as_deref().unwrap_or("auto"),
         if config.disable_paste_burst {
@@ -7145,47 +7767,14 @@ fn format_tui_settings(config: &TuiConfig) -> String {
             "disabled"
         },
         config.notification_condition.as_str(),
+        rail_state(config.rails_session_open),
+        rail_state(config.rails_inspector_open),
+        if config.startup_flourish {
+            "enabled"
+        } else {
+            "disabled"
+        },
     )
-}
-
-fn frame_lines(frame: &TranscriptFrame, width: usize, theme: ResolvedTheme) -> Vec<String> {
-    let label = match frame.kind {
-        FrameKind::User => "you",
-        FrameKind::Thinking => "thinking",
-        FrameKind::Assistant => "assistant",
-        FrameKind::Tool => "tool",
-        FrameKind::Hook => "hook",
-        FrameKind::Status => "status",
-        FrameKind::Subagent => "subagent",
-        FrameKind::BackgroundTask => "task",
-        FrameKind::Goal => "goal",
-        FrameKind::Mcp => "mcp",
-        FrameKind::Compaction => "compaction",
-    };
-    let color = match (theme, frame.kind) {
-        (ResolvedTheme::Dark, FrameKind::User) => "38;5;81",
-        (ResolvedTheme::Dark, FrameKind::Assistant) => "38;5;114",
-        (ResolvedTheme::Dark, FrameKind::Thinking) => "38;5;244",
-        (ResolvedTheme::Dark, FrameKind::Tool) => "38;5;215",
-        (ResolvedTheme::Dark, FrameKind::Goal | FrameKind::Subagent) => "38;5;141",
-        (ResolvedTheme::Dark, _) => "38;5;250",
-        (ResolvedTheme::Light, FrameKind::User) => "38;5;25",
-        (ResolvedTheme::Light, FrameKind::Assistant) => "38;5;28",
-        (ResolvedTheme::Light, FrameKind::Thinking) => "38;5;242",
-        (ResolvedTheme::Light, FrameKind::Tool) => "38;5;130",
-        (ResolvedTheme::Light, FrameKind::Goal | FrameKind::Subagent) => "38;5;90",
-        (ResolvedTheme::Light, _) => "38;5;238",
-    };
-    wrap_text(&format!("{label}: {}", frame.text), width)
-        .into_iter()
-        .map(|line| {
-            if line.is_empty() {
-                line
-            } else {
-                format!("\x1b[{color}m{line}\x1b[0m")
-            }
-        })
-        .collect()
 }
 
 fn project_interactive_event(event: AgentEvent, transcript: &mut TranscriptReducer, now_ms: u64) {
@@ -8484,7 +9073,23 @@ mod tests {
         terminal::{
             BackendEvent, TerminalBackend, DISABLE_BRACKETED_PASTE, LEAVE_ALTERNATE_SCREEN,
         },
+        tui::TranscriptFrame,
     };
+
+    #[test]
+    fn display_home_path_collapses_home_prefix() {
+        let home = Path::new("/Users/joe");
+        assert_eq!(
+            display_home_path(Path::new("/Users/joe/dev/mycoforge"), Some(home)),
+            "~/dev/mycoforge"
+        );
+        assert_eq!(display_home_path(home, Some(home)), "~");
+        assert_eq!(
+            display_home_path(Path::new("/etc/hosts"), Some(home)),
+            "/etc/hosts"
+        );
+        assert_eq!(display_home_path(Path::new("/tmp/x"), None), "/tmp/x");
+    }
 
     #[derive(Default)]
     struct TestEnvironment(Mutex<HashMap<String, String>>);
@@ -8938,14 +9543,28 @@ mod tests {
                     if found {
                         self.output_waits.pop_front();
                     } else {
-                        let deadline =
-                            deadline.get_or_insert_with(|| Instant::now() + Duration::from_secs(2));
+                        // 15s, not 2s: the themed renderer made every tick's
+                        // view build heavier by design, and on a loaded 2-core
+                        // CI runner the async goal completion missed the old
+                        // 2s window deterministically (2/2 runs on PR #29)
+                        // while passing locally. The request_wait above already
+                        // uses a 10s bound for the same reason. A completion
+                        // that truly never renders still fails here at 15s.
+                        let deadline = deadline
+                            .get_or_insert_with(|| Instant::now() + Duration::from_secs(15));
                         if Instant::now() >= *deadline {
+                            // Embed the rendered tail so a CI-only timeout
+                            // shows what the terminal actually drew instead of
+                            // the needle; without it the failure is opaque on
+                            // runners that cannot be inspected interactively.
+                            let rendered = self.output.lock().expect("terminal output");
+                            let tail_start = rendered.len().saturating_sub(1200);
                             return Err(io::Error::new(
                                 io::ErrorKind::TimedOut,
                                 format!(
-                                    "timed out waiting for terminal output {:?}",
-                                    String::from_utf8_lossy(needle)
+                                    "timed out waiting for terminal output {:?}; rendered tail: {:?}",
+                                    String::from_utf8_lossy(needle),
+                                    String::from_utf8_lossy(&rendered[tail_start..])
                                 ),
                             ));
                         }
@@ -9667,8 +10286,147 @@ fail_mode = "closed"
         let rendered = String::from_utf8_lossy(&output.lock().expect("output")).into_owned();
         assert!(rendered.contains("theme: light"));
         assert!(rendered.contains("editor: nvim"));
-        assert!(rendered.contains("\x1b[38;5;238mstatus:"));
+        // Frames render styled; the exact SGR encoding depends on the test
+        // process's COLORTERM, so assert styling exists without pinning codes.
+        assert!(rendered.contains("\x1b["));
         assert!(transport.requests.lock().expect("requests").is_empty());
+    }
+
+    #[test]
+    fn startup_flourish_renders_before_the_loop_and_ctrl_c_exits_cleanly() {
+        let temp = TempDir::new().expect("temp");
+        let home = temp.path().join("mycel");
+        fs::create_dir_all(&home).expect("home");
+        fs::write(home.join("tui.toml"), "[startup]\nflourish = true\n").expect("tui config");
+        let transport = Arc::new(ScriptedTransport::default());
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            transport.clone(),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Auto))
+            .expect("prepare");
+        assert!(prepared.tui_config.startup_flourish, "flag loaded");
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let mut backend = MemoryBackend::scripted([BackendEvent::Input(vec![0x03])]);
+        backend.output = output.clone();
+        let restored = backend.restored.clone();
+        let mut driver = TerminalDriver::new(backend);
+        adapter
+            .run_prepared_interactive(prepared, &mut driver)
+            .expect("flourish run");
+
+        let rendered = String::from_utf8_lossy(&output.lock().expect("output")).into_owned();
+        // The first reveal frame (the logo's dashed root row) was painted
+        // before ctrl+c cut the sequence, and the session exited cleanly with
+        // the terminal restored. No later frame content ever rendered.
+        assert!(
+            rendered.contains("╌╌┴"),
+            "flourish frame missing: {rendered}"
+        );
+        assert!(
+            !rendered.contains(Theme::amanita().tag),
+            "ctrl+c must cut the sequence before the wordmark frame"
+        );
+        assert!(restored.load(Ordering::SeqCst), "terminal restored");
+        assert!(transport.requests.lock().expect("requests").is_empty());
+    }
+
+    #[test]
+    fn configured_light_theme_warns_at_startup_and_named_themes_do_not() {
+        for (theme, expect_warning) in [("light", true), ("amanita", false)] {
+            let temp = TempDir::new().expect("temp");
+            let home = temp.path().join("mycel");
+            fs::create_dir_all(&home).expect("home");
+            fs::write(home.join("tui.toml"), format!("theme = \"{theme}\"\n")).expect("tui config");
+            let transport = Arc::new(ScriptedTransport::default());
+            let adapter = adapter(
+                &temp,
+                Arc::new(RecordingConfig {
+                    source: config(),
+                    paths: Mutex::new(Vec::new()),
+                }),
+                transport.clone(),
+            );
+            let prepared = adapter
+                .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Auto))
+                .expect("prepare");
+            let warned = prepared
+                .warning
+                .as_deref()
+                .is_some_and(|warning| warning.contains(LIGHT_THEME_WARNING));
+            assert_eq!(
+                warned, expect_warning,
+                "theme {theme}: {:?}",
+                prepared.warning
+            );
+            let output = Arc::new(Mutex::new(Vec::new()));
+            let mut backend = MemoryBackend::scripted([BackendEvent::Input(vec![0x04])]);
+            backend.output = output.clone();
+            let mut driver = TerminalDriver::new(backend);
+            adapter
+                .run_prepared_interactive(prepared, &mut driver)
+                .expect("run");
+            let rendered = String::from_utf8_lossy(&output.lock().expect("output")).into_owned();
+            assert_eq!(
+                rendered.contains("light theme is not supported"),
+                expect_warning,
+                "theme {theme} rendering"
+            );
+        }
+    }
+
+    #[test]
+    fn seed_frames_carry_the_real_wall_clock() {
+        let transcript =
+            seed_transcript("session s · model m".to_owned(), Some("substrate warning"));
+        let frames = transcript.frames();
+        assert_eq!(frames.len(), 2);
+        for frame in frames {
+            assert_ne!(frame.at_ms, 0, "seed frames must not render as epoch 0");
+        }
+        // Both seed frames share one stamp so the gutter shows a single time.
+        assert_eq!(frames[0].at_ms, frames[1].at_ms);
+    }
+
+    #[test]
+    fn theme_command_recolors_the_live_view_through_the_cache() {
+        let temp = TempDir::new().expect("temp");
+        let transport = Arc::new(ScriptedTransport::default());
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            transport.clone(),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Auto))
+            .expect("prepare");
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let mut backend = MemoryBackend::scripted([
+            BackendEvent::Input(b"/theme phosphor\r".to_vec()),
+            BackendEvent::Input(vec![0x04]),
+        ]);
+        backend.output = output.clone();
+        let mut driver = TerminalDriver::new(backend);
+        adapter
+            .run_prepared_interactive(prepared, &mut driver)
+            .expect("run");
+        let rendered = String::from_utf8_lossy(&output.lock().expect("output")).into_owned();
+        // The renders after the command must carry phosphor's accent (#33ff66):
+        // truecolor SGR or its 256-cube downgrade (index 84), depending on the
+        // test environment's COLORTERM. A stale cached theme keeps painting
+        // amanita and neither appears.
+        assert!(
+            rendered.contains("38;2;51;255;102") || rendered.contains("38;5;84"),
+            "no phosphor accent in the post-/theme render"
+        );
     }
 
     #[test]
@@ -9681,11 +10439,21 @@ fail_mode = "closed"
             tool_status: None,
             entity_id: None,
             state: None,
+            at_ms: 0,
         };
-        for theme in [ResolvedTheme::Dark, ResolvedTheme::Light] {
-            let line = frame_lines(&frame, 80, theme).join("");
-            assert!(line.starts_with("\x1b["));
-            assert_eq!(visible_width(&line), visible_width("assistant: hello 界"));
+        let ctx = FrameCtx {
+            width: 80,
+            truecolor: true,
+            spinner_phase: 0,
+        };
+        for theme_name in ["amanita", "phosphor"] {
+            let theme = active_theme(&ThemeName::Named(theme_name.to_owned()));
+            let lines = transcript_frame_lines(&frame, &theme, &ctx);
+            for line in &lines {
+                assert!(line.starts_with("\x1b["));
+                assert!(line.contains("hello 界"));
+                assert!(visible_width(line) <= 80);
+            }
         }
     }
 
@@ -10544,11 +11312,20 @@ fail_mode = "closed"
         // Six blind Timeout ticks were meant to let the goal run to completion
         // before Ctrl-D; under contention that is not enough and the test
         // races the goal. Wait for the completion render instead (bounded).
+        //
+        // The waited-for text is the completion REASON, which the Goal frame
+        // renders deterministically as its detail line. The old needle,
+        // "complete", was never rendered on purpose: goal status lives in
+        // `frame.state`, which no renderer draws. It matched only through the
+        // UpdateGoal tool result's echoed JSON snapshot, whose `status` field
+        // is a race — a snapshot echoed before the goal actor applies the
+        // completion says "active" (deterministically so on 2-core CI runners,
+        // PR #29 runs 33283536430..33283957781, instrumented tail evidence).
         let mut backend = MemoryBackend::scripted([
             BackendEvent::Input(b"/goal ship the patch\r".to_vec()),
             BackendEvent::Input(vec![0x04]),
         ])
-        .wait_after_events_for_output(1, b"complete".to_vec());
+        .wait_after_events_for_output(1, b"interactive objective done".to_vec());
         backend.output = output.clone();
         let mut driver = TerminalDriver::new(backend);
         adapter
@@ -10558,7 +11335,9 @@ fail_mode = "closed"
         let rendered = String::from_utf8_lossy(&output.lock().expect("output")).into_owned();
         assert!(rendered.contains("/goal ship the patch"));
         assert!(rendered.contains("ship the patch"));
-        assert!(rendered.contains("complete"));
+        // The completion reason is the deterministic completion render; the
+        // status word itself lives in frame state and is not drawn.
+        assert!(rendered.contains("interactive objective done"));
         assert_eq!(transport.requests.lock().expect("requests").len(), 1);
     }
 
@@ -10805,6 +11584,579 @@ fail_mode = "closed"
             .executor
             .block_on(resumed.session.close())
             .expect("close resumed session");
+    }
+
+    #[test]
+    fn prepared_header_carries_the_live_substrate_summary() {
+        let temp = TempDir::new().expect("temp");
+        let home = temp.path().join("mycel");
+        fs::create_dir_all(home.join("substrate")).expect("substrate dir");
+        // Seed one live antibody through the same service `/deny` uses, and
+        // arm the gate wiring the summary reads.
+        let ecology = EcologyService::new(&home);
+        mycel_mcp::McpTools::open(&ecology.paths().database).expect("initialize db");
+        ecology.run(crate::ecology::EcologyCommand::Deny, "rm -rf /", Utc::now());
+        fs::write(
+            home.join("config.toml"),
+            "[[hooks]]\nevent = \"PreToolUse\"\nmatcher = \"\"\ncommand = \"$HOME/.mycel/bin/mycel-gate\"\nfail_mode = \"closed\"\n",
+        )
+        .expect("gate wiring");
+
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Manual))
+            .expect("prepare");
+        assert_eq!(
+            prepared.substrate,
+            SubstrateStatus {
+                antibodies_active: 1,
+                candidates_pending: 0,
+                gate: GateStatus::Ok,
+            }
+        );
+        let header = build_header(&prepared);
+        assert_eq!(
+            header.substrate,
+            SubstrateSummary {
+                antibodies: 1,
+                candidates_pending: 0,
+                gate: GateDisplay::Ok,
+            }
+        );
+        // The live Ok state renders the green dot with its verdict word.
+        let rendered = header_card(&header, &Theme::amanita(), 120, true).join("\n");
+        assert!(rendered.contains("1 antibody ·"), "{rendered}");
+        assert!(rendered.contains("38;2;85;168;104m●"), "{rendered}");
+
+        adapter
+            .executor
+            .block_on(shutdown_orchestration(Some(
+                prepared.orchestration.as_ref(),
+            )))
+            .expect("shut down orchestration");
+        adapter
+            .executor
+            .block_on(shutdown_mcp(prepared.mcp.as_ref()))
+            .expect("shut down MCP");
+        adapter
+            .executor
+            .block_on(prepared.session.close())
+            .expect("close session");
+    }
+
+    #[test]
+    fn rail_data_snapshots_session_identity_and_transcript_hyphae() {
+        let temp = TempDir::new().expect("temp");
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Manual))
+            .expect("prepare");
+        let mut state = InteractiveLoopState::new(
+            &adapter.executor,
+            &prepared,
+            TerminalSize {
+                columns: 120,
+                rows: 30,
+            },
+        );
+        let now = state.now_ms();
+        state.transcript.push(
+            TranscriptEvent::SubagentState {
+                id: "sub/1".to_owned(),
+                name: "test-runner".to_owned(),
+                state: "started".to_owned(),
+                detail: None,
+            },
+            now,
+        );
+        let data = state.rail_data();
+        // A fresh session carries the index's default title
+        // (session_index.rs DEFAULT_TITLE), which the rail shows verbatim.
+        assert_eq!(data.name, "New Session");
+        assert_eq!(data.model, prepared.model_alias);
+        assert_eq!(data.provider, prepared.provider);
+        assert_eq!(data.ctx_window, prepared.context_window);
+        assert_eq!(data.substrate, prepared.substrate);
+        assert_eq!(data.hyphae_active, 1);
+        let last = data.hyphae_last.expect("hyphae line");
+        assert!(last.starts_with("test-runner · started · "), "{last}");
+
+        state.transcript.push(
+            TranscriptEvent::SubagentState {
+                id: "sub/1".to_owned(),
+                name: "test-runner".to_owned(),
+                state: "exited".to_owned(),
+                detail: None,
+            },
+            now,
+        );
+        let data = state.rail_data();
+        assert_eq!(data.hyphae_active, 0);
+        assert!(data
+            .hyphae_last
+            .expect("hyphae line")
+            .starts_with("test-runner · exited"));
+
+        state.event_pump.abort();
+        adapter
+            .executor
+            .block_on(shutdown_orchestration(Some(
+                prepared.orchestration.as_ref(),
+            )))
+            .expect("shut down orchestration");
+        adapter
+            .executor
+            .block_on(shutdown_mcp(prepared.mcp.as_ref()))
+            .expect("shut down MCP");
+        adapter
+            .executor
+            .block_on(prepared.session.close())
+            .expect("close session");
+    }
+
+    #[test]
+    fn projected_gate_deny_resolves_the_antibody_for_the_inspector() {
+        let temp = TempDir::new().expect("temp");
+        let home = temp.path().join("mycel");
+        fs::create_dir_all(home.join("substrate")).expect("substrate dir");
+        let antibody_id = uuid::Uuid::new_v4();
+        let antibody = mycel_core::Antibody {
+            id: antibody_id,
+            signature: mycel_core::Signature {
+                error_class: None,
+                file_pattern: Some("~/.mycel/**".to_owned()),
+                agent_role: None,
+                tool_pattern: Some("write".to_owned()),
+                command_pattern: None,
+                scope: mycel_core::SignatureScope::Project,
+            },
+            source: mycel_core::AntibodySource::Manual,
+            severity: mycel_core::Severity::Refuse,
+            confidence: mycel_core::Confidence::Solid,
+            refusal_mode: mycel_core::RefusalMode::Hard,
+            remediation: "stage the change in-repo".to_owned(),
+            examples: Vec::new(),
+            created_at: Utc::now(),
+            expires_at: None,
+            hit_count: 3,
+        };
+        let ecology = EcologyService::new(&home);
+        mycel_mcp::McpTools::open(&ecology.paths().database)
+            .expect("initialize db")
+            .insert_antibodies([antibody])
+            .expect("insert antibody");
+
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Manual))
+            .expect("prepare");
+        let mut state = InteractiveLoopState::new(
+            &adapter.executor,
+            &prepared,
+            TerminalSize {
+                columns: 120,
+                rows: 30,
+            },
+        );
+        // Replay the exact event shapes the runtime publishes for a denied
+        // call (turn.rs `emit_hook_report` + the synthetic result).
+        state
+            .message_sender
+            .send(InteractiveRuntimeMessage::Event(Box::new(
+                AgentEvent::ToolCallStarted {
+                    turn_id: 1,
+                    tool_call_id: "call/1".to_owned(),
+                    name: "write".to_owned(),
+                    args: serde_json::json!({"file_path": "~/.mycel/config.toml"}),
+                    description: None,
+                    display: None,
+                },
+            )))
+            .expect("send started");
+        state
+            .message_sender
+            .send(InteractiveRuntimeMessage::Event(Box::new(
+                AgentEvent::HookResult {
+                    turn_id: Some(1),
+                    hook_event: "PreToolUse".to_owned(),
+                    content: format!("Denied by operator. (source: antibody:{antibody_id})"),
+                    blocked: Some(true),
+                },
+            )))
+            .expect("send deny");
+        state
+            .process_runtime_messages(&adapter.executor, &prepared)
+            .expect("process events");
+
+        let detail = state
+            .last_deny_antibody
+            .clone()
+            .expect("deny resolved its antibody");
+        assert_eq!(detail.id, crate::util::short_id(&antibody_id.to_string()));
+        assert_eq!(detail.source, "manual");
+        assert_eq!(detail.severity, "refuse");
+        assert_eq!(detail.refusal, "hard");
+        assert_eq!(detail.hits, 3);
+        assert!(detail
+            .signature
+            .contains(&("file_pattern".to_owned(), "~/.mycel/**".to_owned())));
+
+        let inspector = state.inspector_data();
+        assert_eq!(inspector.antibody.as_ref(), Some(&detail));
+        let last = inspector.activity.last().expect("deny in the ring");
+        assert_eq!(last.verdict, crate::tui::GateVerdict::Deny);
+        assert_eq!(last.tool, "write");
+        assert_eq!(last.target, "~/.mycel/config.toml");
+
+        state.event_pump.abort();
+        adapter
+            .executor
+            .block_on(shutdown_orchestration(Some(
+                prepared.orchestration.as_ref(),
+            )))
+            .expect("shut down orchestration");
+        adapter
+            .executor
+            .block_on(shutdown_mcp(prepared.mcp.as_ref()))
+            .expect("shut down MCP");
+        adapter
+            .executor
+            .block_on(prepared.session.close())
+            .expect("close session");
+    }
+
+    fn strip_ansi(line: &str) -> String {
+        let mut out = String::new();
+        let mut chars = line.chars();
+        while let Some(character) = chars.next() {
+            if character == '\x1b' {
+                for control in chars.by_ref() {
+                    if control == 'm' {
+                        break;
+                    }
+                }
+            } else {
+                out.push(character);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn body_layout_degrades_open_rails_before_starving_the_center() {
+        // Too narrow for any rail: center-only.
+        assert_eq!(resolve_body_layout(80, true, true), (None, 80, None));
+        // Default collapsed strips.
+        assert_eq!(
+            resolve_body_layout(120, false, false),
+            (Some(3), 112, Some(3))
+        );
+        // One open rail fits at 120.
+        assert_eq!(
+            resolve_body_layout(120, true, false),
+            (Some(38), 77, Some(3))
+        );
+        // Both open would leave a 30-cell center: the inspector collapses
+        // first, then the session rail if still starved.
+        assert_eq!(
+            resolve_body_layout(120, true, true),
+            (Some(38), 77, Some(3))
+        );
+        assert_eq!(
+            resolve_body_layout(200, true, true),
+            (Some(38), 110, Some(50))
+        );
+        assert_eq!(resolve_body_layout(90, true, true), (Some(3), 82, Some(3)));
+    }
+
+    #[test]
+    fn body_band_composes_rails_and_offsets_the_editor_cursor() {
+        let temp = TempDir::new().expect("temp");
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Manual))
+            .expect("prepare");
+        let mut state = InteractiveLoopState::new(
+            &adapter.executor,
+            &prepared,
+            TerminalSize {
+                columns: 120,
+                rows: 24,
+            },
+        );
+        state.reducer.editor.insert_typed("hi");
+
+        // Narrow terminal: no rails, the cursor lands inside the drawn input
+        // box, offset by its `╎ ❯ ` lead.
+        let (narrow, narrow_row, narrow_column) = interactive_view(&mut state, 80, 24);
+        // The lead `╎ ❯ ` measures 5 cells (`❯` is 2 in the width model).
+        assert_eq!(narrow_column, 5 + 2 + 1, "'╎ ❯ hi' cursor at column 8");
+        assert!(!narrow.iter().any(|line| line.contains('›')));
+        // The box's top rule carries the live status strip: the wordmark, the
+        // real model alias, and an idle (0-running) session.
+        let narrow_text = narrow
+            .iter()
+            .map(|line| strip_ansi(line))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(narrow_text.contains("+╌╌ mycel ❯"), "{narrow_text}");
+        assert!(
+            narrow_text.contains(&format!("[M] {}", prepared.model_alias)),
+            "{narrow_text}"
+        );
+        assert!(narrow_text.contains("[0 running]"), "{narrow_text}");
+        // The status bar pins to the terminal's last row even without rails,
+        // and a one-row terminal gives that row back to the editor.
+        assert_eq!(narrow.len(), 24);
+        assert!(
+            strip_ansi(narrow.last().expect("bar row")).contains("▸▸ gate fail-closed"),
+            "{narrow_text}"
+        );
+        let (single_row, _, _) = interactive_view(&mut state, 80, 1);
+        assert!(!single_row
+            .iter()
+            .any(|line| strip_ansi(line).contains("▸▸")));
+
+        // Multi-line input wraps inside the box and pulls the cursor down one
+        // row per wrapped line; the wrap width is the box interior, not the
+        // full terminal width.
+        state.reducer.editor.clear();
+        state.reducer.editor.insert_typed(&"x".repeat(75)); // interior is 73
+        let (_, wrapped_row, wrapped_column) = interactive_view(&mut state, 80, 24);
+        assert_eq!(wrapped_row, narrow_row + 1);
+        assert_eq!(wrapped_column, 5 + 2 + 1);
+        state.reducer.editor.clear();
+        state.reducer.editor.insert_typed("hi");
+
+        // Shell mode swaps the prompt glyph without moving the cursor.
+        state.reducer.input_mode = crate::tui::InputMode::Shell;
+        let (shell, _, shell_column) = interactive_view(&mut state, 80, 24);
+        assert_eq!(shell_column, 4 + 2 + 1);
+        assert!(shell
+            .iter()
+            .any(|line| strip_ansi(line).starts_with("╎ ! hi")));
+        state.reducer.input_mode = crate::tui::InputMode::Prompt;
+
+        // Wide terminal, both rails default-collapsed: 3-cell strips on each
+        // side, one border cell each, cursor shifted by rail + border.
+        let (wide, _, wide_column) = interactive_view(&mut state, 120, 24);
+        assert_eq!(wide.len(), 24, "rails span the full height");
+        assert_eq!(wide_column, 5 + 2 + 1 + 3 + 1);
+        let stripped: Vec<String> = wide.iter().map(|line| strip_ansi(line)).collect();
+        assert!(
+            stripped[..stripped.len() - 1]
+                .iter()
+                .all(|line| line.contains('╎')),
+            "every body row carries the column borders"
+        );
+        assert!(
+            stripped
+                .last()
+                .expect("bar row")
+                .contains("▸▸ gate fail-closed"),
+            "the status bar takes the reserved bottom row"
+        );
+        // Collapsed strips show their expand chevrons.
+        assert!(stripped.iter().any(|line| line.starts_with(" ›")));
+        assert!(stripped.iter().any(|line| line.trim_end().ends_with('‹')));
+
+        // Open the session rail: live section content and a wider offset.
+        // One extra row: the status bar now owns the bottom row, so height 25
+        // gives the open rail the same 24 body rows the pre-bar layout had.
+        state.tui_config.rails_session_open = true;
+        let (open, _, open_column) = interactive_view(&mut state, 120, 25);
+        assert_eq!(open_column, 5 + 2 + 1 + 38 + 1);
+        let joined = open
+            .iter()
+            .map(|line| strip_ansi(line))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("session ╌"));
+        assert!(joined.contains("New Session"));
+        assert!(joined.contains("promotion is manual."));
+
+        state.event_pump.abort();
+        adapter
+            .executor
+            .block_on(shutdown_orchestration(Some(
+                prepared.orchestration.as_ref(),
+            )))
+            .expect("shut down orchestration");
+        adapter
+            .executor
+            .block_on(shutdown_mcp(prepared.mcp.as_ref()))
+            .expect("shut down MCP");
+        adapter
+            .executor
+            .block_on(prepared.session.close())
+            .expect("close session");
+    }
+
+    #[test]
+    fn notification_strip_renders_between_header_and_transcript_when_pending() {
+        let temp = TempDir::new().expect("temp");
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Manual))
+            .expect("prepare");
+        let mut state = InteractiveLoopState::new(
+            &adapter.executor,
+            &prepared,
+            TerminalSize {
+                columns: 120,
+                rows: 24,
+            },
+        );
+
+        // A quiet substrate renders no strip.
+        let (quiet, _, _) = interactive_view(&mut state, 80, 24);
+        let quiet_text = quiet
+            .iter()
+            .map(|line| strip_ansi(line))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(!quiet_text.contains("pending review"), "{quiet_text}");
+
+        // Pending candidates render the strip after the header card's bottom
+        // border and before the transcript's seed frame.
+        state.header.substrate.candidates_pending = 2;
+        let (lines, _, _) = interactive_view(&mut state, 80, 24);
+        let stripped: Vec<String> = lines.iter().map(|line| strip_ansi(line)).collect();
+        let strip_row = stripped
+            .iter()
+            .position(|line| line.contains("2 candidates pending review · run /candidates"))
+            .expect("notification strip renders");
+        let header_bottom = stripped
+            .iter()
+            .position(|line| line.starts_with('╰'))
+            .expect("header bottom border");
+        let seed_row = stripped
+            .iter()
+            .position(|line| line.contains("session "))
+            .expect("transcript seed frame");
+        assert!(header_bottom < strip_row, "strip below the header");
+        assert!(strip_row < seed_row, "strip above the transcript");
+
+        state.event_pump.abort();
+        adapter
+            .executor
+            .block_on(shutdown_orchestration(Some(
+                prepared.orchestration.as_ref(),
+            )))
+            .expect("shut down orchestration");
+        adapter
+            .executor
+            .block_on(shutdown_mcp(prepared.mcp.as_ref()))
+            .expect("shut down MCP");
+        adapter
+            .executor
+            .block_on(prepared.session.close())
+            .expect("close session");
+    }
+
+    #[test]
+    fn rail_toggle_keybinds_flip_and_persist_the_state() {
+        let temp = TempDir::new().expect("temp");
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Manual))
+            .expect("prepare");
+        let mut state = InteractiveLoopState::new(
+            &adapter.executor,
+            &prepared,
+            TerminalSize {
+                columns: 120,
+                rows: 24,
+            },
+        );
+        let control = |character: char| {
+            InputEvent::Key(crate::terminal::KeyEvent {
+                code: KeyCode::Char(character),
+                modifiers: crate::terminal::Modifiers {
+                    control: true,
+                    ..crate::terminal::Modifiers::default()
+                },
+                kind: crate::terminal::KeyKind::Press,
+            })
+        };
+
+        assert!(!state.tui_config.rails_session_open);
+        state.reducer.apply(control('l'));
+        assert!(!state.process_actions(&adapter.executor, &prepared));
+        assert!(state.tui_config.rails_session_open);
+        state.reducer.apply(control('r'));
+        assert!(!state.process_actions(&adapter.executor, &prepared));
+        assert!(state.tui_config.rails_inspector_open);
+        // Persisted: a fresh load sees both open.
+        let (loaded, warning) = load_tui_config(&prepared.home);
+        assert!(warning.is_none());
+        assert!(loaded.rails_session_open);
+        assert!(loaded.rails_inspector_open);
+
+        // Toggling back persists the collapse too.
+        state.reducer.apply(control('r'));
+        assert!(!state.process_actions(&adapter.executor, &prepared));
+        assert!(!state.tui_config.rails_inspector_open);
+        let (loaded, _) = load_tui_config(&prepared.home);
+        assert!(!loaded.rails_inspector_open);
+
+        state.event_pump.abort();
+        adapter
+            .executor
+            .block_on(shutdown_orchestration(Some(
+                prepared.orchestration.as_ref(),
+            )))
+            .expect("shut down orchestration");
+        adapter
+            .executor
+            .block_on(shutdown_mcp(prepared.mcp.as_ref()))
+            .expect("shut down MCP");
+        adapter
+            .executor
+            .block_on(prepared.session.close())
+            .expect("close session");
     }
 
     #[test]

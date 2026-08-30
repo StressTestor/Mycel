@@ -6,32 +6,49 @@ use std::{
 
 use toml::Value;
 
+use crate::tui::theme::Theme;
+
 const CONFIG_LIMIT: u64 = 1024 * 1024;
 pub(crate) const INVALID_TUI_CONFIG_MESSAGE: &str =
     "Invalid TUI config in ~/.mycel/tui.toml; using defaults.";
+/// Startup warning surfaced when the configured theme is `light`, which the
+/// rebuilt TUI resolves to amanita (see `active_theme`).
+pub(crate) const LIGHT_THEME_WARNING: &str =
+    "light theme is not supported by the rebuilt TUI yet; using amanita";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ThemeName {
     Auto,
     Dark,
     Light,
+    Named(String),
 }
 
 impl ThemeName {
-    pub const fn as_str(self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::Auto => "auto",
             Self::Dark => "dark",
             Self::Light => "light",
+            Self::Named(name) => name.as_str(),
         }
     }
 
+    // Validates against `Theme::ALL` by name to avoid constructing a
+    // throwaway `Theme`.
     pub fn parse(value: &str) -> Result<Self, String> {
-        match value.trim().to_ascii_lowercase().as_str() {
+        let value = value.trim().to_ascii_lowercase();
+        match value.as_str() {
             "auto" => Ok(Self::Auto),
             "dark" => Ok(Self::Dark),
             "light" => Ok(Self::Light),
-            _ => Err("theme must be auto, dark, or light".to_owned()),
+            named if Theme::ALL.iter().any(|(candidate, _)| *candidate == named) => {
+                Ok(Self::Named(value))
+            }
+            _ => Err(format!(
+                "theme must be one of: auto, dark, light, {}",
+                Theme::ALL.map(|(name, _)| name).join(", ")
+            )),
         }
     }
 }
@@ -58,6 +75,13 @@ pub(crate) struct TuiConfig {
     pub disable_paste_burst: bool,
     pub notifications_enabled: bool,
     pub notification_condition: NotificationCondition,
+    /// Body-band rail state, persisted across sessions by the toggle
+    /// keybinds. Both default collapsed (the mockup's frozen frame).
+    pub rails_session_open: bool,
+    pub rails_inspector_open: bool,
+    /// The ~1s startup logo sequence. Off by default: startup latency is only
+    /// spent by explicit opt-in.
+    pub startup_flourish: bool,
 }
 
 impl Default for TuiConfig {
@@ -68,6 +92,9 @@ impl Default for TuiConfig {
             disable_paste_burst: false,
             notifications_enabled: true,
             notification_condition: NotificationCondition::Unfocused,
+            rails_session_open: false,
+            rails_inspector_open: false,
+            startup_flourish: false,
         }
     }
 }
@@ -140,6 +167,31 @@ fn try_load_tui_config(path: &Path) -> Result<TuiConfig, String> {
             config.editor_command = (!command.is_empty()).then(|| command.to_owned());
         }
     }
+    if let Some(rails) = table.get("rails") {
+        let rails = rails
+            .as_table()
+            .ok_or_else(|| "rails must be a TOML table".to_owned())?;
+        if let Some(open) = rails.get("session_open") {
+            config.rails_session_open = open
+                .as_bool()
+                .ok_or_else(|| "rails.session_open must be a boolean".to_owned())?;
+        }
+        if let Some(open) = rails.get("inspector_open") {
+            config.rails_inspector_open = open
+                .as_bool()
+                .ok_or_else(|| "rails.inspector_open must be a boolean".to_owned())?;
+        }
+    }
+    if let Some(startup) = table.get("startup") {
+        let startup = startup
+            .as_table()
+            .ok_or_else(|| "startup must be a TOML table".to_owned())?;
+        if let Some(flourish) = startup.get("flourish") {
+            config.startup_flourish = flourish
+                .as_bool()
+                .ok_or_else(|| "startup.flourish must be a boolean".to_owned())?;
+        }
+    }
     if let Some(notifications) = table.get("notifications") {
         let notifications = notifications
             .as_table()
@@ -176,10 +228,13 @@ pub(crate) fn save_tui_config(home: &Path, config: &TuiConfig) -> Result<PathBuf
     ensure_private_directory(home)?;
     let editor = config.editor_command.as_deref().unwrap_or("");
     let encoded = format!(
-        "# ~/.mycel/tui.toml\n# Client preferences for Mycel.\n# Agent/runtime settings stay in ~/.mycel/config.toml.\n\ntheme = {}\ndisable_paste_burst = {}\n\n[editor]\ncommand = {}\n\n[notifications]\nenabled = {}\nnotification_condition = {}\n",
+        "# ~/.mycel/tui.toml\n# Client preferences for Mycel.\n# Agent/runtime settings stay in ~/.mycel/config.toml.\n\ntheme = {}\ndisable_paste_burst = {}\n\n[editor]\ncommand = {}\n\n[rails]\nsession_open = {}\ninspector_open = {}\n\n[startup]\nflourish = {}\n\n[notifications]\nenabled = {}\nnotification_condition = {}\n",
         toml::Value::String(config.theme.as_str().to_owned()),
         config.disable_paste_burst,
         toml::Value::String(editor.to_owned()),
+        config.rails_session_open,
+        config.rails_inspector_open,
+        config.startup_flourish,
         config.notifications_enabled,
         toml::Value::String(config.notification_condition.as_str().to_owned()),
     );
@@ -234,11 +289,58 @@ fn ensure_private_directory(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Resolve a configured theme name to a concrete `Theme`. Named themes map by
+/// name (falling back to amanita if the name is somehow unknown). The
+/// auto/dark/light aliases all resolve to amanita: the seven built-in themes
+/// are dark and no light palette has been designed, so a configured `light`
+/// gets `LIGHT_THEME_WARNING` at startup rather than a silent dark card.
+pub(crate) fn active_theme(name: &ThemeName) -> Theme {
+    match name {
+        // A `Named` value only arises from `ThemeName::parse`, which validated
+        // it against `Theme::ALL`; failing to resolve here means the two paths
+        // drifted. Loud in debug, amanita fallback in release.
+        ThemeName::Named(named) => Theme::by_name(named).unwrap_or_else(|| {
+            debug_assert!(false, "parse-validated theme {named:?} did not resolve");
+            Theme::amanita()
+        }),
+        ThemeName::Auto | ThemeName::Dark | ThemeName::Light => Theme::amanita(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    #[test]
+    fn active_theme_resolves_named_and_aliases_to_amanita() {
+        assert_eq!(
+            active_theme(&ThemeName::Named("hacker".to_owned())).name,
+            "hacker"
+        );
+        assert_eq!(active_theme(&ThemeName::Auto).name, "amanita");
+        assert_eq!(active_theme(&ThemeName::Dark).name, "amanita");
+        assert_eq!(active_theme(&ThemeName::Light).name, "amanita");
+    }
+
+    #[test]
+    fn every_builtin_name_round_trips_from_parse_to_resolution() {
+        // The end-to-end guarantee behind `active_theme`'s debug_assert: every
+        // name the validator accepts resolves to the theme of that exact name.
+        for (name, _) in Theme::ALL {
+            let parsed = ThemeName::parse(name).expect("builtin name parses");
+            assert_eq!(active_theme(&parsed).name, name);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "did not resolve")]
+    fn unvalidated_named_theme_is_loud_in_debug() {
+        // Constructing `Named` without `parse` is a programming error; the
+        // debug assert makes the drift loud instead of silently amanita.
+        active_theme(&ThemeName::Named("nope".to_owned()));
+    }
 
     #[test]
     fn defaults_partial_config_and_private_round_trip_are_stable() {
@@ -252,6 +354,9 @@ mod tests {
             disable_paste_burst: true,
             notifications_enabled: false,
             notification_condition: NotificationCondition::Always,
+            rails_session_open: true,
+            rails_inspector_open: false,
+            startup_flourish: true,
         };
         let path = save_tui_config(temp.path(), &configured).expect("save");
         assert_eq!(load_tui_config(temp.path()), (configured, None));
@@ -282,5 +387,64 @@ mod tests {
         let (_, warning) = load_tui_config(temp.path());
         assert_eq!(warning.as_deref(), Some(INVALID_TUI_CONFIG_MESSAGE));
         assert!(save_tui_config(temp.path(), &TuiConfig::default()).is_err());
+    }
+
+    #[test]
+    fn rails_default_collapsed_and_reject_non_boolean_state() {
+        let temp = tempdir().expect("temp");
+        let (config, warning) = load_tui_config(temp.path());
+        assert!(!config.rails_session_open);
+        assert!(!config.rails_inspector_open);
+        assert!(warning.is_none());
+
+        fs::write(
+            temp.path().join("tui.toml"),
+            "[rails]\nsession_open = true\n",
+        )
+        .expect("partial rails");
+        let (config, warning) = load_tui_config(temp.path());
+        assert!(config.rails_session_open);
+        assert!(!config.rails_inspector_open);
+        assert!(warning.is_none());
+
+        fs::write(
+            temp.path().join("tui.toml"),
+            "[rails]\ninspector_open = \"yes\"\n",
+        )
+        .expect("invalid rails");
+        let (config, warning) = load_tui_config(temp.path());
+        assert_eq!(config, TuiConfig::default());
+        assert_eq!(warning.as_deref(), Some(INVALID_TUI_CONFIG_MESSAGE));
+    }
+
+    #[test]
+    fn flourish_defaults_off_and_rejects_non_boolean_state() {
+        let temp = tempdir().expect("temp");
+        let (config, warning) = load_tui_config(temp.path());
+        assert!(!config.startup_flourish, "flourish must default off");
+        assert!(warning.is_none());
+
+        fs::write(temp.path().join("tui.toml"), "[startup]\nflourish = true\n")
+            .expect("flourish on");
+        let (config, warning) = load_tui_config(temp.path());
+        assert!(config.startup_flourish);
+        assert!(warning.is_none());
+
+        fs::write(
+            temp.path().join("tui.toml"),
+            "[startup]\nflourish = \"yes\"\n",
+        )
+        .expect("invalid flourish");
+        let (config, warning) = load_tui_config(temp.path());
+        assert_eq!(config, TuiConfig::default());
+        assert_eq!(warning.as_deref(), Some(INVALID_TUI_CONFIG_MESSAGE));
+    }
+
+    #[test]
+    fn theme_names_parse() {
+        assert!(ThemeName::parse("hacker").is_ok());
+        assert!(ThemeName::parse("amanita").is_ok());
+        assert!(ThemeName::parse("dark").is_ok());
+        assert!(ThemeName::parse("bogus").is_err());
     }
 }

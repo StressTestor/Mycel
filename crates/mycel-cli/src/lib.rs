@@ -25,6 +25,7 @@ mod system_prompt;
 pub mod terminal;
 pub mod tui;
 mod tui_config;
+mod util;
 mod workspace_config;
 
 pub use export::{

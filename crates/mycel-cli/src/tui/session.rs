@@ -42,6 +42,8 @@ pub enum LogicalAction {
     TogglePlan(bool),
     PasteMedia,
     ExitArmed,
+    ToggleSessionRail,
+    ToggleInspector,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -133,6 +135,19 @@ impl SessionReducer {
                 }
                 KeyCode::Char('-' | '_') => {
                     self.editor.undo();
+                    return;
+                }
+                // Rail toggles: ctrl+l (left session rail) and ctrl+r (right
+                // inspector). The spec's suggested ctrl+b/ctrl+g are taken
+                // (ctrl+b detach/cursor above, ctrl+g external editor in the
+                // terminal loop), and neither l nor r carries an editing
+                // binding here.
+                KeyCode::Char('l') => {
+                    self.actions.push(LogicalAction::ToggleSessionRail);
+                    return;
+                }
+                KeyCode::Char('r') => {
+                    self.actions.push(LogicalAction::ToggleInspector);
                     return;
                 }
                 _ => {}
