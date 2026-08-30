@@ -106,10 +106,10 @@ use crate::{
         components::transcript::{transcript_frame_lines, FrameCtx},
         theme::Theme,
         ApprovalChoice, ApprovalDecision as DialogApprovalDecision, ApprovalDialogAction,
-        ApprovalDialogReducer, FrameKind, GateLog, LogicalAction, ProviderManagerReducer,
-        ProviderRow, QuestionDialogAction, QuestionDialogReducer, QuestionItem,
-        QuestionOption as DialogQuestionOption, SessionPhase, SessionReducer, SubmissionMode,
-        TranscriptEvent, TranscriptReducer,
+        ApprovalDialogReducer, FrameKind, GateLog, LogicalAction, ProviderManagerAction,
+        ProviderManagerReducer, ProviderRow, QuestionDialogAction, QuestionDialogReducer,
+        QuestionItem, QuestionOption as DialogQuestionOption, SessionPhase, SessionReducer,
+        SubmissionMode, TranscriptEvent, TranscriptReducer,
     },
     tui_config::{
         active_theme, load_tui_config, save_tui_config, ThemeName, TuiConfig, LIGHT_THEME_WARNING,
@@ -4679,6 +4679,53 @@ impl InteractiveLoopState {
         ));
     }
 
+    /// Drain one input event through the open provider-manager dialog and
+    /// apply whatever actions it produced. Returns true when a session
+    /// transition was requested, mirroring `process_actions`' exit contract
+    /// so the loop breaks the same way.
+    fn apply_provider_manager_input(
+        &mut self,
+        input: InputEvent,
+        prepared: &PreparedInteractive,
+    ) -> bool {
+        if is_control_c(&input) {
+            self.provider_manager = None;
+            return false;
+        }
+        let Some(manager) = self.provider_manager.as_mut() else {
+            return false;
+        };
+        manager.apply(input);
+        let actions = std::mem::take(&mut manager.actions);
+        for action in actions {
+            match action {
+                ProviderManagerAction::Close => {
+                    self.provider_manager = None;
+                }
+                ProviderManagerAction::Add => {
+                    self.provider_manager = None;
+                    self.status("add a provider: /login (codex oauth) · /provider login kimi");
+                }
+                ProviderManagerAction::Delete(ids) => {
+                    self.provider_manager = None;
+                    let Some(provider_id) = ids.first().cloned() else {
+                        continue;
+                    };
+                    // deleting the ACTIVE provider strands the session's model,
+                    // so that one keeps the fail-closed exit >:[ on purpose
+                    let close_after = provider_id == prepared.provider;
+                    self.session_transition = Some(InteractiveSessionTransition::Provider {
+                        command: Command::Provider(ProviderArgs {
+                            command: ProviderCommand::Remove { provider_id },
+                        }),
+                        close_after,
+                    });
+                }
+            }
+        }
+        self.session_transition.is_some()
+    }
+
     fn handle_session_command(
         &mut self,
         executor: &tokio::runtime::Runtime,
@@ -6914,6 +6961,13 @@ fn interactive_terminal_body<B: TerminalBackend>(
                     for input in state.decoder.feed(&bytes) {
                         if state.dialogs.is_active() {
                             state.dialogs.apply(input);
+                            continue;
+                        }
+                        if state.provider_manager.is_some() {
+                            if state.apply_provider_manager_input(input, prepared) {
+                                exit_requested = true;
+                                break;
+                            }
                             continue;
                         }
                         if state.btw.is_some() && is_escape(&input) {
@@ -9738,6 +9792,25 @@ command = "true"
 fail_mode = "closed"
 "#
         .to_owned()
+    }
+
+    fn config_two_providers() -> String {
+        let mut source = config();
+        source.push_str(
+            r#"
+[providers.remote]
+type = "openai"
+base_url = "https://example.invalid/v1"
+api_key = "remote-key"
+
+[models.remote]
+provider = "remote"
+model = "gpt-remote"
+max_context_size = 8192
+max_output_size = 128
+"#,
+        );
+        source
     }
 
     fn prompt(session: SessionSelection) -> PromptRequest {
@@ -12689,6 +12762,108 @@ max_context_size = 8192
             ),
             "list --json keeps the transition path",
         );
+    }
+
+    #[test]
+    fn provider_dialog_delete_routes_remove_and_only_active_provider_exits() {
+        let temp = TempDir::new().expect("temp");
+        let home = temp.path().join("mycel");
+        fs::create_dir_all(&home).expect("MYCEL_HOME");
+        fs::write(home.join(CONFIG_FILE), config_two_providers()).expect("provider config");
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config_two_providers(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Auto))
+            .expect("prepare");
+        let executor = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("executor");
+        let mut state = InteractiveLoopState::new(
+            &executor,
+            &prepared,
+            TerminalSize {
+                columns: 120,
+                rows: 40,
+            },
+        );
+        let mut decoder = InputDecoder::default();
+        let feed = |state: &mut InteractiveLoopState, decoder: &mut InputDecoder, bytes: &[u8]| {
+            let mut exit = false;
+            for input in decoder.feed(bytes) {
+                exit |= state.apply_provider_manager_input(input, &prepared);
+            }
+            exit
+        };
+
+        // esc closes, nothing else happens. a lone \x1b byte stays BUFFERED in
+        // InputDecoder::feed (only flush or more bytes resolve it), so tests send
+        // esc in its kitty CSI-u form, which decodes immediately.
+        state.open_provider_manager(&prepared);
+        assert!(!feed(&mut state, &mut decoder, b"\x1b[27u"));
+        assert!(state.provider_manager.is_none());
+        assert!(state.session_transition.is_none());
+
+        // ctrl-c closes too (DialogHost convention)
+        state.open_provider_manager(&prepared);
+        assert!(!feed(&mut state, &mut decoder, &[0x03]));
+        assert!(state.provider_manager.is_none());
+
+        // delete the NON-active provider: transition with close_after false.
+        // arrow movement must not report exit, so the feeds are split.
+        state.open_provider_manager(&prepared);
+        assert!(!feed(&mut state, &mut decoder, b"\x1b[B"));
+        assert!(feed(&mut state, &mut decoder, b"dy"));
+        match state.session_transition.take() {
+            Some(InteractiveSessionTransition::Provider {
+                command,
+                close_after,
+            }) => {
+                assert!(!close_after, "non-active delete resumes the session");
+                assert!(
+                    matches!(
+                        command,
+                        Command::Provider(ProviderArgs {
+                            command: ProviderCommand::Remove { ref provider_id },
+                        }) if provider_id == "remote"
+                    ),
+                    "delete must target the selected row",
+                );
+            }
+            other => panic!("expected provider transition, got {other:?}"),
+        }
+        assert!(state.provider_manager.is_none());
+
+        // delete the ACTIVE provider: close_after true (fail-closed exit)
+        state.open_provider_manager(&prepared);
+        assert!(feed(&mut state, &mut decoder, b"dy"));
+        assert!(matches!(
+            state.session_transition.take(),
+            Some(InteractiveSessionTransition::Provider {
+                close_after: true,
+                ..
+            })
+        ));
+
+        // 'n' at the confirm keeps the dialog open and deletes nothing
+        state.open_provider_manager(&prepared);
+        assert!(!feed(&mut state, &mut decoder, b"dn"));
+        assert!(state.provider_manager.is_some());
+        assert!(state.session_transition.is_none());
+
+        // Add: dialog closes, status hint lands, no transition
+        state.open_provider_manager(&prepared);
+        let manager = state.provider_manager.as_mut().expect("open");
+        manager.selected = manager.rows.len() - 1;
+        assert!(!feed(&mut state, &mut decoder, b"\r"));
+        assert!(state.provider_manager.is_none());
+        assert!(state.session_transition.is_none());
     }
 
     #[test]
