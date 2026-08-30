@@ -7590,6 +7590,25 @@ fn interactive_center_view(
         );
     }
 
+    if let Some(manager) = &state.provider_manager {
+        lines.push(String::new());
+        lines.extend(provider_manager_view_lines(manager, width));
+        let cursor_absolute_row = lines.len().saturating_sub(1);
+        let cursor_absolute_column =
+            visible_width(lines.last().map(String::as_str).unwrap_or("")) + 1;
+        let viewport_start = lines.len().saturating_sub(height);
+        let visible = lines.into_iter().skip(viewport_start).collect::<Vec<_>>();
+        let cursor_row = cursor_absolute_row
+            .saturating_sub(viewport_start)
+            .saturating_add(1)
+            .clamp(1, height);
+        return (
+            visible,
+            cursor_row,
+            cursor_absolute_column.clamp(1, width.saturating_add(1)),
+        );
+    }
+
     let rendered_box = input_box(
         &InputBoxData {
             model: state.header.model.clone(),
@@ -7761,6 +7780,31 @@ fn dialog_view_lines(host: &DialogHost, width: usize) -> Vec<String> {
             }
         }
         None => {}
+    }
+    lines
+}
+
+fn provider_manager_view_lines(manager: &ProviderManagerReducer, width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    push_wrapped(&mut lines, "providers", width);
+    lines.push(String::new());
+    for (index, row) in manager.rows.iter().enumerate() {
+        let marker = if index == manager.selected { ">" } else { " " };
+        push_wrapped(&mut lines, &format!("{marker} {}", row.label), width);
+    }
+    lines.push(String::new());
+    if let Some(ids) = &manager.confirm {
+        push_wrapped(
+            &mut lines,
+            &format!("delete {}? y/n", ids.join(", ")),
+            width,
+        );
+    } else {
+        push_wrapped(
+            &mut lines,
+            "up/down selects · enter adds · d deletes · esc closes",
+            width,
+        );
     }
     lines
 }
@@ -12864,6 +12908,34 @@ max_context_size = 8192
         assert!(!feed(&mut state, &mut decoder, b"\r"));
         assert!(state.provider_manager.is_none());
         assert!(state.session_transition.is_none());
+    }
+
+    #[test]
+    fn provider_manager_view_marks_selection_and_confirm_state() {
+        let rows = vec![
+            ProviderRow {
+                id: "local".to_owned(),
+                label: "local · openai · 1 model · configured · default".to_owned(),
+                provider_ids: vec!["local".to_owned()],
+                add_action: false,
+            },
+            ProviderRow {
+                id: "add".to_owned(),
+                label: "add a provider".to_owned(),
+                provider_ids: Vec::new(),
+                add_action: true,
+            },
+        ];
+        let mut manager = ProviderManagerReducer::new(rows, Some("local"));
+        let lines = provider_manager_view_lines(&manager, 120);
+        let joined = lines.join("\n");
+        assert!(joined.contains("providers"));
+        assert!(joined.contains("> local · openai · 1 model · configured · default"));
+        assert!(joined.contains("  add a provider"));
+        assert!(joined.contains("esc closes"));
+        manager.confirm = Some(vec!["local".to_owned()]);
+        let joined = provider_manager_view_lines(&manager, 120).join("\n");
+        assert!(joined.contains("delete local? y/n"));
     }
 
     #[test]
