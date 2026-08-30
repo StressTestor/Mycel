@@ -12939,7 +12939,7 @@ max_context_size = 8192
     }
 
     #[test]
-    fn interactive_provider_list_restores_terminal_and_resumes_the_session() {
+    fn interactive_provider_list_opens_dialog_without_relaunching() {
         let temp = TempDir::new().expect("temp");
         let home = temp.path().join("mycel");
         fs::create_dir_all(&home).expect("MYCEL_HOME");
@@ -12956,6 +12956,9 @@ max_context_size = 8192
         let output = Arc::new(Mutex::new(Vec::new()));
         let mut backend = MemoryBackend::scripted([
             BackendEvent::Input(b"/provider list\r".to_vec()),
+            // esc in kitty CSI-u form: a lone \x1b would sit buffered in the
+            // decoder and never close the dialog in a scripted backend
+            BackendEvent::Input(b"\x1b[27u".to_vec()),
             BackendEvent::Input(vec![0x04]),
         ]);
         backend.output = output.clone();
@@ -12965,10 +12968,18 @@ max_context_size = 8192
                 &interactive(SessionSelection::New, PermissionMode::Auto),
                 &mut driver,
             )
-            .expect("interactive provider list");
+            .expect("interactive provider dialog");
 
         let rendered = String::from_utf8_lossy(&output.lock().expect("output")).into_owned();
-        assert!(rendered.contains("local"), "{rendered:?}");
+        assert!(
+            rendered.contains("local · openai · 1 model · configured · default"),
+            "dialog row must render: {rendered:?}",
+        );
+        assert!(rendered.contains("add a provider"), "{rendered:?}");
+        assert!(
+            !rendered.contains("ID\tTYPE"),
+            "the out-of-TUI list formatter must not run: {rendered:?}",
+        );
         assert!(!rendered.contains("test-key"), "{rendered:?}");
         assert!(transport.requests.lock().expect("requests").is_empty());
     }
