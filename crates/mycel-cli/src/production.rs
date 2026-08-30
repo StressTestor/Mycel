@@ -4681,8 +4681,8 @@ impl InteractiveLoopState {
 
     /// Drain one input event through the open provider-manager dialog and
     /// apply whatever actions it produced. Returns true when a session
-    /// transition was requested, mirroring `process_actions`' exit contract
-    /// so the loop breaks the same way.
+    /// transition is pending after applying this input, mirroring
+    /// `process_actions`' exit contract so the loop breaks the same way.
     fn apply_provider_manager_input(
         &mut self,
         input: InputEvent,
@@ -4708,6 +4708,7 @@ impl InteractiveLoopState {
                 }
                 ProviderManagerAction::Delete(ids) => {
                     self.provider_manager = None;
+                    debug_assert_eq!(ids.len(), 1, "open_provider_manager builds one-id rows");
                     let Some(provider_id) = ids.first().cloned() else {
                         continue;
                     };
@@ -7802,7 +7803,7 @@ fn provider_manager_view_lines(manager: &ProviderManagerReducer, width: usize) -
     } else {
         push_wrapped(
             &mut lines,
-            "up/down selects · enter adds · d deletes · esc closes",
+            "up/down and page keys select · enter on the add row adds · d deletes · esc closes",
             width,
         );
     }
@@ -12787,10 +12788,7 @@ max_context_size = 8192
         assert!(manager.rows[0].label.contains("local"));
         assert!(manager.rows[0].label.contains("configured"));
         assert!(manager.rows[1].add_action);
-        assert_eq!(
-            manager.selected, 0,
-            "selection starts on the active provider"
-        );
+        assert_eq!(manager.selected, 0);
 
         state.provider_manager = None;
         let handled = state.handle_session_command(&executor, &prepared, "/provider list --json");

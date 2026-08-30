@@ -227,6 +227,12 @@ closes its record log, and removes the generated runtime directory. This keeps
 the side-channel behavior without persisting an orphan session or giving it
 filesystem/network tools.
 
+The interactive loop enforces one modal precedence order across every surface
+that can own input: RPC dialogs outrank the provider-manager dialog, which
+outranks `/btw`. Both the input-dispatch loop and the render path in
+`production.rs` check them in that order, so a future modal has to be wired
+into both places to stay consistent with the rest.
+
 ### TUI command family (immune-system surface)
 
 `crates/mycel-cli/src/ecology.rs` implements seven native commands. Read-only
@@ -461,6 +467,13 @@ mycel-substrate maintain --db <path> --workspace <dir> [--now <ts>]
 ```
 
 ## last updated
+
+2026-08-29 — `/provider` and `/provider list` open an in-TUI provider-manager
+dialog (`open_provider_manager`, `ProviderManagerReducer` in
+`tui/dialogs/management.rs`) instead of tearing the session down. Established
+the modal precedence invariant documented above: RPC dialogs outrank the
+provider-manager dialog, which outranks `/btw`, checked in that order by both
+the input-dispatch loop and the render path in `production.rs`.
 
 2026-08-29 — TUI rebuild (PR4-PR5) landed: collapsible body-band rails
 (`components/session_rail.rs`, `components/inspector.rs`, decision ring in
