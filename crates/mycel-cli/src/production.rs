@@ -4709,7 +4709,11 @@ impl InteractiveLoopState {
                 ProviderManagerAction::Delete(ids) => {
                     self.provider_manager = None;
                     debug_assert_eq!(ids.len(), 1, "open_provider_manager builds one-id rows");
+                    // The debug_assert above vanishes in release builds, so an
+                    // empty `ids` here would otherwise silently do nothing
+                    // after the user already confirmed a delete. Surface it.
                     let Some(provider_id) = ids.first().cloned() else {
+                        self.status("delete produced no provider id; nothing removed");
                         continue;
                     };
                     // deleting the ACTIVE provider strands the session's model,
@@ -5155,6 +5159,17 @@ impl InteractiveLoopState {
                 }
                 match parse_interactive_provider_command(arguments) {
                     Ok((command, close_after)) => {
+                        // Mirror the dialog's delete contract: removing a
+                        // provider other than the ACTIVE one is safe to
+                        // resume from, so only an active-provider remove
+                        // keeps the parser's fail-closed exit (see
+                        // apply_provider_manager_input's Delete arm).
+                        let close_after = match &command {
+                            Command::Provider(ProviderArgs {
+                                command: ProviderCommand::Remove { provider_id },
+                            }) if provider_id != &prepared.provider => false,
+                            _ => close_after,
+                        };
                         self.session_transition = Some(InteractiveSessionTransition::Provider {
                             command,
                             close_after,
@@ -12804,6 +12819,86 @@ max_context_size = 8192
             ),
             "list --json keeps the transition path",
         );
+    }
+
+    #[test]
+    fn typed_provider_remove_agrees_with_dialog_delete_close_after() {
+        // The dialog's Delete arm only fail-closes on the ACTIVE provider
+        // (apply_provider_manager_input). Typed `/provider remove <id>` must
+        // agree: parse_interactive_provider_command always returns
+        // close_after: true for `remove`, so handle_session_command's
+        // `/provider` arm has to override it for a non-active id.
+        let temp = TempDir::new().expect("temp");
+        let home = temp.path().join("mycel");
+        fs::create_dir_all(&home).expect("MYCEL_HOME");
+        fs::write(home.join(CONFIG_FILE), config_two_providers()).expect("provider config");
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config_two_providers(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Auto))
+            .expect("prepare");
+        let executor = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("executor");
+        let mut state = InteractiveLoopState::new(
+            &executor,
+            &prepared,
+            TerminalSize {
+                columns: 120,
+                rows: 40,
+            },
+        );
+
+        // typed remove of the NON-active provider resumes the session.
+        let handled = state.handle_session_command(&executor, &prepared, "/provider remove remote");
+        assert!(handled);
+        match state.session_transition.take() {
+            Some(InteractiveSessionTransition::Provider {
+                command,
+                close_after,
+            }) => {
+                assert!(!close_after, "typed non-active remove must resume");
+                assert!(
+                    matches!(
+                        command,
+                        Command::Provider(ProviderArgs {
+                            command: ProviderCommand::Remove { ref provider_id },
+                        }) if provider_id == "remote"
+                    ),
+                    "remove must target the typed id",
+                );
+            }
+            other => panic!("expected provider transition, got {other:?}"),
+        }
+
+        // typed remove of the ACTIVE provider keeps the fail-closed exit.
+        let handled = state.handle_session_command(&executor, &prepared, "/provider remove local");
+        assert!(handled);
+        match state.session_transition.take() {
+            Some(InteractiveSessionTransition::Provider {
+                command,
+                close_after,
+            }) => {
+                assert!(close_after, "typed active remove must fail-closed exit");
+                assert!(
+                    matches!(
+                        command,
+                        Command::Provider(ProviderArgs {
+                            command: ProviderCommand::Remove { ref provider_id },
+                        }) if provider_id == "local"
+                    ),
+                    "remove must target the typed id",
+                );
+            }
+            other => panic!("expected provider transition, got {other:?}"),
+        }
     }
 
     #[test]
