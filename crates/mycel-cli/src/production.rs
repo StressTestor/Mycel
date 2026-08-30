@@ -9553,11 +9553,18 @@ mod tests {
                         let deadline = deadline
                             .get_or_insert_with(|| Instant::now() + Duration::from_secs(15));
                         if Instant::now() >= *deadline {
+                            // Embed the rendered tail so a CI-only timeout
+                            // shows what the terminal actually drew instead of
+                            // the needle; without it the failure is opaque on
+                            // runners that cannot be inspected interactively.
+                            let rendered = self.output.lock().expect("terminal output");
+                            let tail_start = rendered.len().saturating_sub(1200);
                             return Err(io::Error::new(
                                 io::ErrorKind::TimedOut,
                                 format!(
-                                    "timed out waiting for terminal output {:?}",
-                                    String::from_utf8_lossy(needle)
+                                    "timed out waiting for terminal output {:?}; rendered tail: {:?}",
+                                    String::from_utf8_lossy(needle),
+                                    String::from_utf8_lossy(&rendered[tail_start..])
                                 ),
                             ));
                         }
