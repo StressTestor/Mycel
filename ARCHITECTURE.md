@@ -473,7 +473,10 @@ dialog (`open_provider_manager`, `ProviderManagerReducer` in
 `tui/dialogs/management.rs`) instead of tearing the session down. Established
 the modal precedence invariant documented above: RPC dialogs outrank the
 provider-manager dialog, which outranks `/btw`, checked in that order by both
-the input-dispatch loop and the render path in `production.rs`.
+the input-dispatch loop and the render path in `production.rs`. Typed
+`/provider remove <id>` now matches the dialog's delete contract: removing a
+non-active provider resumes the session, removing the active one keeps the
+fail-closed exit.
 
 2026-08-29 — TUI rebuild (PR4-PR5) landed: collapsible body-band rails
 (`components/session_rail.rs`, `components/inspector.rs`, decision ring in
