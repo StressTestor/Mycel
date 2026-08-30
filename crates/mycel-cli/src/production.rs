@@ -7593,16 +7593,12 @@ fn interactive_center_view(
         let cursor_absolute_row = lines.len().saturating_sub(1);
         let cursor_absolute_column =
             visible_width(lines.last().map(String::as_str).unwrap_or("")) + 1;
-        let viewport_start = lines.len().saturating_sub(height);
-        let visible = lines.into_iter().skip(viewport_start).collect::<Vec<_>>();
-        let cursor_row = cursor_absolute_row
-            .saturating_sub(viewport_start)
-            .saturating_add(1)
-            .clamp(1, height);
-        return (
-            visible,
-            cursor_row,
-            cursor_absolute_column.clamp(1, width.saturating_add(1)),
+        return clamp_center_viewport(
+            lines,
+            cursor_absolute_row,
+            cursor_absolute_column,
+            height,
+            width,
         );
     }
 
@@ -7612,16 +7608,12 @@ fn interactive_center_view(
         let cursor_absolute_row = lines.len().saturating_sub(1);
         let cursor_absolute_column =
             visible_width(lines.last().map(String::as_str).unwrap_or("")) + 1;
-        let viewport_start = lines.len().saturating_sub(height);
-        let visible = lines.into_iter().skip(viewport_start).collect::<Vec<_>>();
-        let cursor_row = cursor_absolute_row
-            .saturating_sub(viewport_start)
-            .saturating_add(1)
-            .clamp(1, height);
-        return (
-            visible,
-            cursor_row,
-            cursor_absolute_column.clamp(1, width.saturating_add(1)),
+        return clamp_center_viewport(
+            lines,
+            cursor_absolute_row,
+            cursor_absolute_column,
+            height,
+            width,
         );
     }
 
@@ -7645,6 +7637,27 @@ fn interactive_center_view(
     let cursor_absolute_column = rendered_box.cursor_column;
     lines.extend(rendered_box.lines);
 
+    clamp_center_viewport(
+        lines,
+        cursor_absolute_row,
+        cursor_absolute_column,
+        height,
+        width,
+    )
+}
+
+/// Clamp a fully-rendered center-column body (RPC dialogs, the provider
+/// manager, or the input-box fallback) into the visible viewport: keep only
+/// the last `height` lines and translate the cursor's absolute row/column
+/// into viewport-relative, 1-indexed terminal coordinates. Shared by every
+/// `interactive_center_view` branch so this arithmetic exists once.
+fn clamp_center_viewport(
+    lines: Vec<String>,
+    cursor_absolute_row: usize,
+    cursor_absolute_column: usize,
+    height: usize,
+    width: usize,
+) -> (Vec<String>, usize, usize) {
     let viewport_start = lines.len().saturating_sub(height);
     let visible = lines.into_iter().skip(viewport_start).collect::<Vec<_>>();
     let cursor_row = cursor_absolute_row
