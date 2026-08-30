@@ -11312,11 +11312,20 @@ fail_mode = "closed"
         // Six blind Timeout ticks were meant to let the goal run to completion
         // before Ctrl-D; under contention that is not enough and the test
         // races the goal. Wait for the completion render instead (bounded).
+        //
+        // The waited-for text is the completion REASON, which the Goal frame
+        // renders deterministically as its detail line. The old needle,
+        // "complete", was never rendered on purpose: goal status lives in
+        // `frame.state`, which no renderer draws. It matched only through the
+        // UpdateGoal tool result's echoed JSON snapshot, whose `status` field
+        // is a race — a snapshot echoed before the goal actor applies the
+        // completion says "active" (deterministically so on 2-core CI runners,
+        // PR #29 runs 33283536430..33283957781, instrumented tail evidence).
         let mut backend = MemoryBackend::scripted([
             BackendEvent::Input(b"/goal ship the patch\r".to_vec()),
             BackendEvent::Input(vec![0x04]),
         ])
-        .wait_after_events_for_output(1, b"complete".to_vec());
+        .wait_after_events_for_output(1, b"interactive objective done".to_vec());
         backend.output = output.clone();
         let mut driver = TerminalDriver::new(backend);
         adapter
@@ -11326,7 +11335,9 @@ fail_mode = "closed"
         let rendered = String::from_utf8_lossy(&output.lock().expect("output")).into_owned();
         assert!(rendered.contains("/goal ship the patch"));
         assert!(rendered.contains("ship the patch"));
-        assert!(rendered.contains("complete"));
+        // The completion reason is the deterministic completion render; the
+        // status word itself lives in frame state and is not drawn.
+        assert!(rendered.contains("interactive objective done"));
         assert_eq!(transport.requests.lock().expect("requests").len(), 1);
     }
 
