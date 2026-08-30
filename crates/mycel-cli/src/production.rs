@@ -76,8 +76,8 @@ use crate::{
         ProcessProviderCommandStderr, ProviderCommandRunner, ProviderCommandRunnerDependencies,
     },
     provider_commands::{
-        AtomicTomlConfigStore, NoProviderCommandInput, ProcessProviderEnvironment,
-        TokioProviderCommandClock,
+        provider_views, AtomicTomlConfigStore, ConfiguredProviderView, NoProviderCommandInput,
+        ProcessProviderEnvironment, TokioProviderCommandClock,
     },
     runtime::{
         AdapterOutput, RuntimeAdapter, RuntimeAdapterError, RuntimeCompletion, RuntimeRequest,
@@ -2888,6 +2888,12 @@ struct PreparedInteractive {
     model_alias: String,
     model_aliases: Vec<String>,
     provider: String,
+    /// Configured-provider snapshot for the in-TUI manager dialog, taken at
+    /// prepare time. Transitions re-prepare, so mutations refresh it.
+    // Not yet read outside tests: the dialog that consumes it lands in a
+    // later task in this series.
+    #[allow(dead_code)]
+    provider_views: Vec<ConfiguredProviderView>,
     context_window: u64,
     thinking_effort: Option<ThinkingEffort>,
     effort_options: Vec<String>,
@@ -3359,6 +3365,7 @@ async fn prepare_interactive(
         compaction,
         system_prompt,
         provider: resolved.provider_id.clone(),
+        provider_views: provider_views(&config, &ProcessProviderEnvironment),
         context_window: resolved.max_context_tokens,
         model_alias: resolved.alias,
         model_aliases,
@@ -9070,6 +9077,7 @@ mod tests {
     use crate::{
         cli::{OutputFormat, ProviderArgs, ProviderCommand},
         headless::HeadlessError,
+        provider_commands::CredentialStatus,
         terminal::{
             BackendEvent, TerminalBackend, DISABLE_BRACKETED_PASTE, LEAVE_ALTERNATE_SCREEN,
         },
@@ -10023,6 +10031,32 @@ fail_mode = "closed"
             .executor
             .block_on(prepared.session.close())
             .expect("close session");
+    }
+
+    #[test]
+    fn prepare_interactive_snapshots_provider_views() {
+        let temp = TempDir::new().expect("temp");
+        let home = temp.path().join("mycel");
+        fs::create_dir_all(&home).expect("MYCEL_HOME");
+        fs::write(home.join(CONFIG_FILE), config()).expect("provider config");
+        let adapter = adapter(
+            &temp,
+            Arc::new(RecordingConfig {
+                source: config(),
+                paths: Mutex::new(Vec::new()),
+            }),
+            Arc::new(ScriptedTransport::default()),
+        );
+        let prepared = adapter
+            .prepare_interactive(&interactive(SessionSelection::New, PermissionMode::Auto))
+            .expect("prepare");
+        assert_eq!(prepared.provider_views.len(), 1);
+        assert_eq!(prepared.provider_views[0].id, "local");
+        assert_eq!(
+            prepared.provider_views[0].credential,
+            CredentialStatus::Configured,
+        );
+        assert!(prepared.provider_views[0].is_default);
     }
 
     #[test]
