@@ -9543,8 +9543,15 @@ mod tests {
                     if found {
                         self.output_waits.pop_front();
                     } else {
-                        let deadline =
-                            deadline.get_or_insert_with(|| Instant::now() + Duration::from_secs(2));
+                        // 15s, not 2s: the themed renderer made every tick's
+                        // view build heavier by design, and on a loaded 2-core
+                        // CI runner the async goal completion missed the old
+                        // 2s window deterministically (2/2 runs on PR #29)
+                        // while passing locally. The request_wait above already
+                        // uses a 10s bound for the same reason. A completion
+                        // that truly never renders still fails here at 15s.
+                        let deadline = deadline
+                            .get_or_insert_with(|| Instant::now() + Duration::from_secs(15));
                         if Instant::now() >= *deadline {
                             return Err(io::Error::new(
                                 io::ErrorKind::TimedOut,
